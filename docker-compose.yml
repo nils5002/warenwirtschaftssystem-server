@@ -1,27 +1,9 @@
 services:
-  postgres:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-warehouse}
-      POSTGRES_USER: ${POSTGRES_USER:-warehouse}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warehouse_password}
-    volumes:
-      - warehouse_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-warehouse} -d ${POSTGRES_DB:-warehouse}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       APP_NAME: ${APP_NAME:-Warehouse-System}
       APP_ENV: ${APP_ENV:-production}
@@ -29,24 +11,18 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
-
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://warehouse:warehouse_password@postgres:5432/warehouse}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./app/data/app.db}
       DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-true}
       WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
-
       HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
       BACKUP_PATH: ${BACKUP_PATH:-/app/data/backups}
-
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}
-
     volumes:
       - warehouse_app_data:/app/data
-
     ports:
       - "${BACKEND_PORT:-8001}:8000"
-
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 15s
@@ -64,10 +40,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-
     ports:
       - "${FRONTEND_PORT:-8080}:80"
-
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ || exit 1"]
       interval: 15s
@@ -76,4 +50,3 @@ services:
 
 volumes:
   warehouse_app_data:
-  warehouse_postgres_data:
