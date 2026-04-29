@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "iCloud Sorter Web API"
+    app_name: str = "Warehouse-System"
     app_version: str = "0.2.0"
     app_env: str = "development"
 

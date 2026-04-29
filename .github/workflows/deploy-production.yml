@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          URL="https://warehouse.nilshome.loan/"
+          URL="${EXTERNAL_HEALTH_URL:-https://warehouse.example.com/}"
           ATTEMPTS=12
           SLEEP_SECONDS=5
 

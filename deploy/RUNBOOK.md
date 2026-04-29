@@ -1,75 +1,54 @@
-# Runbook: Git -> Produktion (ohne Verlust der Aussenanbindung)
+# Runbook: Git -> Produktion (domain-/provider-neutral)
 
-## 1) Dateitrennung
+## 1) Trennung
 
-### A) Kommt aus Git (Code)
+Aus Git:
+- `backend/**`, `frontend/**`, `docker-compose.yml`, `deploy/**`, Doku
 
-- `backend/**` (Anwendungscode, Migrationen, Requirements)
-- `frontend/**` (UI-Code)
-- `docker-compose.yml` (Basisstack)
-- `deploy/**` (Deploy-Skripte/Runbook)
-- Dokumentation (`README.md`, `*.md`)
-
-### B) Bleibt serverlokal (nicht aus Git)
-
+Serverlokal:
 - `/opt/web/cloud_web_runtime/.env`
 - `/opt/web/cloud_web_runtime/docker-compose.prod.yml`
-- `/opt/web/cloud_web_runtime/cloudflared/**`
-- weitere Secrets/Certs unter `/opt/web/cloud_web_runtime/**`
+- optionale Reverse-Proxy-/TLS-Dateien
 
-## 2) Erstinitialisierung auf dem Server
+## 2) Erstinitialisierung
 
 ```sh
 cd /opt/web/cloud_web
 sh deploy/server/bootstrap_runtime.sh
 ```
 
-Danach produktive Dateien in `/opt/web/cloud_web_runtime` pruefen.
-
-## 3) Standard-Deploy auf dem Server
+## 3) Standard-Deploy
 
 ```sh
 cd /opt/web/cloud_web
 sh deploy/server/deploy.sh main
 ```
 
-Deploy-Verhalten:
-- Git-Update passiert in `/opt/web/cloud_web`.
-- Danach werden Code-Dateien nach `/opt/stacks/cloud_web` synchronisiert.
-- Runtime-Dateien bleiben in `/opt/web/cloud_web_runtime` und werden nicht aus Git ueberschrieben.
-- Vor Deploy wird ein Backup in `/opt/web/cloud_web_runtime/backups` erstellt.
-- Nach Deploy laufen Health-Checks (lokal + extern).
-- Bei fehlgeschlagenem Health-Check erfolgt ein Auto-Rollback auf das letzte funktionierende Commit.
+Verhalten:
+- Git-Update im Repo
+- Sync nach Deploy-Ziel
+- `docker compose up -d --build`
+- lokaler Health-Check
+- externer Health-Check optional ueber `EXTERNAL_HEALTH_URL`
+- Auto-Rollback bei Fehler
 
-## 4) Standard-Deploy von lokal aus
+## 4) Domainwechsel
 
-```powershell
-powershell -ExecutionPolicy Bypass -File deploy/local/deploy-prod.ps1 -Server "root@SERVER_IP" -ServerAppDir "/opt/web/cloud_web" -Branch "main"
-```
+Nur ENV anpassen:
+- `BASE_URL`
+- `FRONTEND_URL`
+- `CORS_ORIGINS`
 
-## 5) Sicherheitsprinzip
+Optional:
+- `FRONTEND_PORT`
+- `BACKEND_PORT`
 
-`deploy/server/deploy.sh` bricht ab, wenn Runtime-Dateien fehlen. Dadurch wird verhindert, dass versehentlich nur mit Basis-Compose deployt wird und produktive Routing-/Tunnel-Settings verloren gehen.
+## 5) Reverse Proxy
 
-## 6) Auto-Deploy aktivieren (einfach)
+HTTPS/TLS wird vor der App terminiert (Nginx, Apache, Traefik, Caddy, Cloudflare Proxy, LB).
+Die App selbst spricht intern HTTP.
 
-```sh
-cd /opt/web/cloud_web
-sh deploy/server/install_auto_deploy_cron.sh
-```
+## 6) Cloudflare
 
-Standard: alle 2 Minuten Polling auf `origin/main`, Deploy nur bei neuem Commit.
-
-Wichtig:
-- Wenn GitHub-Actions-Deploy aktiv ist, Cron wieder entfernen:
-
-```sh
-crontab -l | grep -v cloud_web_auto_deploy | crontab -
-```
-
-## 7) Rollback
-
-```sh
-cd /opt/web/cloud_web
-sh deploy/server/rollback.sh
-```
+Cloudflare ist optional als DNS/Proxy nutzbar.
+Cloudflare Tunnel ist keine Voraussetzung.

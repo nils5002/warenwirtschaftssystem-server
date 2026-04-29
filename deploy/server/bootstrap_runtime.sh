@@ -20,7 +20,6 @@ copy_if_missing() {
 
 mkdir -p "$RUNTIME_DIR"
 mkdir -p "$RUNTIME_DIR/backups"
-mkdir -p "$RUNTIME_DIR/cloudflared"
 
 cd "$APP_DIR"
 
@@ -36,11 +35,6 @@ for candidate in docker-compose.prod.yml docker-compose.production.yml docker-co
     break
   fi
 done
-
-if [ -d "cloudflared" ] && [ -z "$(ls -A "$RUNTIME_DIR/cloudflared" 2>/dev/null || true)" ]; then
-  cp -R "cloudflared/." "$RUNTIME_DIR/cloudflared/" || true
-  log "Cloudflared-Verzeichnis initial uebernommen nach $RUNTIME_DIR/cloudflared"
-fi
 
 if [ ! -f "$RUNTIME_DIR/.env" ] && [ -f "$APP_DIR/deploy/server/example-runtime/.env.prod.example" ]; then
   cp "$APP_DIR/deploy/server/example-runtime/.env.prod.example" "$RUNTIME_DIR/.env"
