@@ -11,23 +11,23 @@ services:
       FRONTEND_URL: ${FRONTEND_URL}
       CORS_ORIGINS: ${CORS_ORIGINS}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
+
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./app/data/app.db}
       DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-true}
       WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
+
       HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
       BACKUP_PATH: ${BACKUP_PATH:-/app/data/backups}
+
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}
+
     volumes:
       - warehouse_app_data:/app/data
+
     ports:
       - "${BACKEND_PORT:-8001}:8000"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
 
   frontend:
     build:
@@ -38,15 +38,10 @@ services:
         VITE_API_BASE: ${VITE_API_BASE:-/api}
     restart: unless-stopped
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
+
     ports:
       - "${FRONTEND_PORT:-8080}:80"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
 
 volumes:
   warehouse_app_data:
