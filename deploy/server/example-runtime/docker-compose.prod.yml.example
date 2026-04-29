@@ -1,0 +1,25 @@
+services:
+  backend:
+    environment:
+      APP_ENV: production
+      DB_AUTO_CREATE_SCHEMA: "false"
+      WMS_SEED_LEGACY_ON_STARTUP: "false"
+    # In Produktion nur intern erreichbar machen (Cloudflare/Proxy davor)
+    ports: []
+    restart: unless-stopped
+
+  postgres:
+    # DB-Ports in Produktion i. d. R. nicht oeffentlich mappen
+    ports: []
+    restart: unless-stopped
+
+  # Optional: Nur aktivieren, wenn der Tunnel in diesem Stack laufen soll.
+  # Wenn Dockge/Host-Service den Tunnel schon sauber bereitstellt, auskommentiert lassen.
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel --config /etc/cloudflared/config.yml run
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /opt/web/cloud_web_runtime/cloudflared:/etc/cloudflared:ro
+  #   depends_on:
+  #     - backend

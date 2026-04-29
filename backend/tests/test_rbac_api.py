@@ -1,0 +1,281 @@
+from __future__ import annotations
+
+from datetime import date, timedelta
+from uuid import uuid4
+
+from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.database.models import UserRecord
+from app.database.session import SessionLocal
+from app.main import app
+
+
+def _headers(role: str, user_id: str | None = None, project_context: str | None = None) -> dict[str, str]:
+    headers = {"X-User-Role": role}
+    if user_id:
+        headers["X-User-Id"] = user_id
+    if project_context:
+        headers["X-Project-Context"] = project_context
+    return headers
+
+
+def _set_users_status(user_ids: list[str], status: str) -> None:
+    if not user_ids:
+        return
+    with SessionLocal() as db:
+        records = db.scalars(select(UserRecord).where(UserRecord.external_id.in_(user_ids))).all()
+        for record in records:
+            record.status = status
+        db.commit()
+
+
+def test_admin_can_manage_users_but_projectmanager_cannot() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payload = {
+        "id": f"usr-rbac-{suffix}",
+        "name": f"RBAC User {suffix}",
+        "email": f"rbac.{suffix}@example.local",
+        "role": "Mitarbeiter",
+        "lastActive": "Neu",
+        "status": "Aktiv",
+        "department": "QA",
+        "location": "Berlin",
+    }
+
+    admin_res = client.post("/api/wms/users", headers=_headers("Admin"), json=payload)
+    assert admin_res.status_code == 200
+
+    denied_res = client.post("/api/wms/users", headers=_headers("Projektmanager"), json=payload)
+    assert denied_res.status_code == 403
+
+
+def test_mitarbeiter_can_checkout_but_not_modify_asset_masterdata() -> None:
+    client = TestClient(app)
+    overview = client.get("/api/wms/overview", headers=_headers("Admin"))
+    assert overview.status_code == 200
+    assets = overview.json()["assets"]
+    assert assets, "Test benötigt mindestens ein Asset"
+    asset = next(
+        (
+            item
+            for item in assets
+            if str(item.get("status", "")).lower() in {"verfuegbar", "verfügbar"}
+        ),
+        None,
+    )
+    if asset is None:
+        suffix = uuid4().hex[:8]
+        payload = {
+            "id": f"asset-rbac-checkout-{suffix}",
+            "name": f"Checkout Probe {suffix}",
+            "category": "Notebook",
+            "location": "Testlager",
+            "status": "Verfuegbar",
+            "assignedTo": "-",
+            "nextReturn": "-",
+            "tagNumber": f"TAG-CHK-{suffix}",
+            "serialNumber": f"SN-CHK-{suffix}",
+            "qrCode": "",
+            "maintenanceState": "Neu",
+            "notes": "",
+            "lastCheckout": "-",
+            "nextReservation": "-",
+        }
+        created = client.post("/api/wms/assets", headers=_headers("Admin"), json=payload)
+        assert created.status_code == 200
+        asset = created.json()
+
+    checkout_payload = {
+        **asset,
+        "status": "Verliehen",
+        "assignedTo": "Mitarbeiter Test · Projekt RBAC",
+        "nextReturn": "morgen",
+    }
+    checkout_res = client.post("/api/wms/assets", headers=_headers("Mitarbeiter"), json=checkout_payload)
+    assert checkout_res.status_code == 200
+
+    blocked_payload = {**checkout_payload, "name": f"{asset['name']} (hacked)"}
+    blocked_res = client.post("/api/wms/assets", headers=_headers("Mitarbeiter"), json=blocked_payload)
+    assert blocked_res.status_code == 403
+
+
+def test_only_admin_can_delete_asset() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payload = {
+        "id": f"asset-rbac-{suffix}",
+        "name": f"Delete Probe {suffix}",
+        "category": "Notebook",
+        "location": "Testlager",
+        "status": "Verfuegbar",
+        "assignedTo": "-",
+        "nextReturn": "-",
+        "tagNumber": f"TAG-{suffix}",
+        "serialNumber": f"SN-{suffix}",
+        "qrCode": "",
+        "maintenanceState": "Neu",
+        "notes": "",
+        "lastCheckout": "-",
+        "nextReservation": "-",
+    }
+    create_res = client.post("/api/wms/assets", headers=_headers("Admin"), json=payload)
+    assert create_res.status_code == 200
+
+    denied = client.delete(f"/api/wms/assets/{payload['id']}", headers=_headers("Mitarbeiter"))
+    assert denied.status_code == 403
+
+    allowed = client.delete(f"/api/wms/assets/{payload['id']}", headers=_headers("Admin"))
+    assert allowed.status_code == 200
+
+
+def test_only_admin_can_delete_users_and_delete_is_soft() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payload = {
+        "id": f"usr-delete-{suffix}",
+        "name": f"Delete User {suffix}",
+        "email": f"delete.{suffix}@example.local",
+        "role": "Mitarbeiter",
+        "lastActive": "Neu",
+        "status": "Aktiv",
+        "department": "QA",
+        "location": "Berlin",
+    }
+
+    created = client.post("/api/wms/users", headers=_headers("Admin"), json=payload)
+    assert created.status_code == 200
+
+    denied = client.delete(f"/api/wms/users/{payload['id']}", headers=_headers("Projektmanager", user_id="pm-rbac"))
+    assert denied.status_code == 403
+
+    allowed = client.delete(f"/api/wms/users/{payload['id']}", headers=_headers("Admin", user_id="admin-rbac"))
+    assert allowed.status_code == 200
+    assert allowed.json()["deleted"] is True
+
+    with SessionLocal() as db:
+        record = db.scalar(select(UserRecord).where(UserRecord.external_id == payload["id"]))
+        assert record is not None
+        assert str(record.status).strip().lower() == "inaktiv"
+
+    overview = client.get("/api/wms/overview", headers=_headers("Admin", user_id="admin-rbac"))
+    assert overview.status_code == 200
+    listed = next((item for item in overview.json()["users"] if item["id"] == payload["id"]), None)
+    assert listed is not None
+    assert listed["status"] == "Inaktiv"
+
+    login = client.post(
+        "/api/auth/login",
+        json={"email": payload["email"], "password": "Willkommen123!"},
+    )
+    assert login.status_code == 403
+
+
+def test_admin_cannot_delete_self_user() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payload = {
+        "id": f"usr-self-{suffix}",
+        "name": f"Self Delete {suffix}",
+        "email": f"self.{suffix}@example.local",
+        "role": "Admin",
+        "lastActive": "Neu",
+        "status": "Aktiv",
+        "department": "Ops",
+        "location": "Berlin",
+    }
+
+    created = client.post("/api/wms/users", headers=_headers("Admin"), json=payload)
+    assert created.status_code == 200
+
+    blocked = client.delete(f"/api/wms/users/{payload['id']}", headers=_headers("Admin", user_id=payload["id"]))
+    assert blocked.status_code == 409
+    assert "eigenen Benutzer" in blocked.json().get("detail", "")
+
+
+def test_last_active_admin_cannot_be_deleted() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payload = {
+        "id": f"usr-last-admin-{suffix}",
+        "name": f"Last Admin {suffix}",
+        "email": f"lastadmin.{suffix}@example.local",
+        "role": "Admin",
+        "lastActive": "Neu",
+        "status": "Aktiv",
+        "department": "Ops",
+        "location": "Berlin",
+    }
+
+    created = client.post("/api/wms/users", headers=_headers("Admin"), json=payload)
+    assert created.status_code == 200
+
+    deactivated_admin_ids: list[str] = []
+    try:
+        with SessionLocal() as db:
+            users = db.scalars(select(UserRecord)).all()
+            for user in users:
+                role = str(user.role or "").strip().lower()
+                status = str(user.status or "").strip().lower()
+                if user.external_id == payload["id"]:
+                    continue
+                if role in {"admin", "techniker", "administrator"} and status in {"aktiv", "active"}:
+                    user.status = "Inaktiv"
+                    deactivated_admin_ids.append(user.external_id)
+            db.commit()
+
+        blocked = client.delete(
+            f"/api/wms/users/{payload['id']}",
+            headers=_headers("Admin", user_id=f"auditor-{suffix}"),
+        )
+        assert blocked.status_code == 409
+        assert "letzte aktive Admin" in blocked.json().get("detail", "")
+    finally:
+        _set_users_status(deactivated_admin_ids, "Aktiv")
+        _set_users_status([payload["id"]], "Inaktiv")
+
+
+def test_planning_permissions_and_project_scope() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+    payload = {
+        "customerName": f"Kunde RBAC {suffix}",
+        "projectName": f"Projekt RBAC {suffix}",
+        "eventName": "E2E RBAC",
+        "projectManagerUserId": f"pm-{suffix}",
+        "calendarWeek": today.isocalendar().week,
+        "startDate": today.isoformat(),
+        "endDate": (today + timedelta(days=1)).isoformat(),
+        "notes": "RBAC Testplanung",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": today.isoformat(),
+                "weekday": "Montag",
+                "items": [{"categoryKey": "Laptop", "qty": 1, "notes": None}],
+            }
+        ],
+    }
+
+    denied_create = client.post("/api/wms/planning", headers=_headers("Mitarbeiter"), json=payload)
+    assert denied_create.status_code == 403
+
+    created = client.post(
+        "/api/wms/planning",
+        headers=_headers("Projektmanager", user_id=f"pm-{suffix}"),
+        json=payload,
+    )
+    assert created.status_code == 200
+    planning_id = created.json()["id"]
+
+    no_scope_list = client.get("/api/wms/planning", headers=_headers("Mitarbeiter"))
+    assert no_scope_list.status_code == 403
+
+    scoped_list = client.get("/api/wms/planning", headers=_headers("Mitarbeiter", project_context=f"Projekt RBAC {suffix}"))
+    assert scoped_list.status_code == 200
+    assert any(item["id"] == planning_id for item in scoped_list.json())
+
+    cleanup = client.delete(f"/api/wms/planning/{planning_id}", headers=_headers("Admin"))
+    assert cleanup.status_code == 200

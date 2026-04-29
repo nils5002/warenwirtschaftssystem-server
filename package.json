@@ -1,0 +1,7 @@
+{
+  "name": "cloud_web",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev"
+  }
+}

@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import logging
+import sys
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+
+from .config.settings import get_settings
+from .database.session import SessionLocal, init_db
+from .errors import register_error_handlers
+from .routes import api_router
+from .services.auth_service import ensure_user_passwords
+from .services.auth_service import ensure_initial_admin
+from .services.job_manager import JobManager
+from .services.wms_service import WmsService
+
+logger = logging.getLogger("cloud_web.main")
+
+
+def _ensure_cloud_package_on_path() -> None:
+    current_file = Path(__file__).resolve()
+    cloud_package = None
+    for base in current_file.parents:
+        candidate = base / "cloud"
+        if candidate.exists() and (candidate / "__init__.py").exists():
+            cloud_package = candidate
+            break
+    if cloud_package:
+        package_root = str(cloud_package.parent)
+        if package_root not in sys.path:
+            sys.path.append(package_root)
+
+
+def create_app() -> FastAPI:
+    _ensure_cloud_package_on_path()
+    settings = get_settings()
+
+    app = FastAPI(title=settings.app_name, version=settings.app_version)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.state.job_manager = JobManager()
+    app.include_router(api_router)
+    register_error_handlers(app)
+
+    @app.on_event("startup")
+    def on_startup() -> None:
+        if settings.db_auto_create_schema:
+            init_db()
+        with SessionLocal() as db:
+            # Backward-compatible schema patch for existing SQLite DBs without migration.
+            existing_columns = [
+                row[1]
+                for row in db.execute(text("PRAGMA table_info(users)")).fetchall()
+            ]
+            if "password_hash" not in existing_columns:
+                db.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+                db.commit()
+            if "is_active" not in existing_columns:
+                db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                db.execute(text("UPDATE users SET is_active = CASE WHEN lower(status) = 'inaktiv' THEN 0 ELSE 1 END"))
+                db.commit()
+        if settings.wms_seed_legacy_on_startup:
+            base_dir = Path(__file__).resolve().parents[1]
+            legacy_path = settings.resolve_legacy_json_path(base_dir)
+            with SessionLocal() as db:
+                WmsService.seed_from_legacy_json_if_needed(db, legacy_path)
+            logger.info("Startup complete, DB initialized.")
+        with SessionLocal() as db:
+            try:
+                ensure_initial_admin(db)
+                ensure_user_passwords(db)
+            except Exception:  # noqa: BLE001
+                logger.exception("Passwort-Initialisierung fehlgeschlagen")
+                raise
+
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,0 +1,37 @@
+.venv/
+backend/.venv/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+*.db
+.env
+.env.*
+!.env.example
+!.env*.example
+
+# Logs / runtime artifacts
+*.log
+backend/uvicorn*.log
+deploy_manifest_last.txt
+
+# Local server runtime files (must stay outside git-controlled code)
+deploy/server-local/
+deploy/runtime/
+docker-compose.override.yml
+docker-compose.prod.yml
+docker-compose.production.yml
+
+# Secrets / credentials / certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+secrets/
+cloudflared/
+
+# Real hardware inventory sheets (import-only, never commit)
+Hardwarebestand/*.xlsx
+Hardwarebestand/*.xlsm
+Hardwareplannung/

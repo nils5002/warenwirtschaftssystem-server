@@ -1,0 +1,51 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: warehouse-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - cloud-web-prod
+    timeout-minutes: 45
+    steps:
+      - name: Run deploy script on production server
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo /opt/web/cloud_web/deploy/server/deploy.sh main
+
+      - name: External health check
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://warehouse.nilshome.loan/"
+          ATTEMPTS=12
+          SLEEP_SECONDS=5
+
+          for attempt in $(seq 1 "$ATTEMPTS"); do
+            http_code="$(curl -sS -o /tmp/warehouse_health_body.txt -w '%{http_code}' --max-time 20 "$URL" || true)"
+            if [[ "$http_code" =~ ^[0-9]+$ ]] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 400 ]; then
+              echo "External health check OK ($http_code) on attempt $attempt/$ATTEMPTS"
+              exit 0
+            fi
+
+            echo "External health check not ready (attempt $attempt/$ATTEMPTS, status=${http_code:-n/a})"
+            if [ -s /tmp/warehouse_health_body.txt ]; then
+              echo "Response snippet:"
+              head -c 200 /tmp/warehouse_health_body.txt || true
+              echo
+            fi
+            sleep "$SLEEP_SECONDS"
+          done
+
+          echo "External health check failed after ${ATTEMPTS} attempts."
+          exit 1

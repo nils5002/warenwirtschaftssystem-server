@@ -1,0 +1,33 @@
+{
+  "name": "icloud-sorter-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "set VITE_DEV_API_TARGET=http://127.0.0.1:8010&& vite",
+    "dev:backend": "cd ..\\backend && ..\\backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "jsqr": "^1.4.0",
+    "lucide-react": "^0.577.0",
+    "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.2",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "autoprefixer": "^10.4.27",
+    "concurrently": "^8.2.2",
+    "playwright": "^1.59.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.4.5",
+    "vite": "^7.1.6"
+  }
+}

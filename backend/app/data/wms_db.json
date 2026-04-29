@@ -1,0 +1,331 @@
+{
+  "assets": [
+    {
+      "id": "asset-001",
+      "name": "MacBook Pro 14 M3",
+      "category": "Laptop",
+      "location": "Hauptlager",
+      "status": "Ausgegeben",
+      "assignedTo": "Marketing Team",
+      "nextReturn": "12.03.2026 - 14.03.2026",
+      "tagNumber": "HW-1001",
+      "serialNumber": "C02XJ1A9MD6T",
+      "qrCode": "WMS|asset-001|HW-1001",
+      "maintenanceState": "Geprueft am 03.03.2026",
+      "notes": "Standard-Deployment, 16 GB RAM, 512 GB SSD.",
+      "lastCheckout": "26.3.2026",
+      "nextReservation": "-"
+    },
+    {
+      "id": "asset-002",
+      "name": "Epson WorkForce Pro",
+      "category": "Drucker",
+      "location": "Buero",
+      "status": "Ausgegeben",
+      "assignedTo": "IT-Support",
+      "nextReturn": "10.03.2026",
+      "tagNumber": "HW-1042",
+      "serialNumber": "EP-7XA2-441",
+      "qrCode": "WMS|asset-002|HW-1042",
+      "maintenanceState": "Toner tauschen geplant",
+      "notes": "Nutzt Duplex standardmaessig, WLAN deaktiviert.",
+      "lastCheckout": "05.03.2026",
+      "nextReservation": "11.03.2026 - Finance"
+    },
+    {
+      "id": "asset-003",
+      "name": "Zebra DS2278",
+      "category": "QR-Code-Scanner",
+      "location": "Eventlager",
+      "status": "Ausgegeben",
+      "assignedTo": "Event-Team Nord",
+      "nextReturn": "09.03.2026 - 13.03.2026",
+      "tagNumber": "HW-2104",
+      "serialNumber": "ZB-442-98XA",
+      "qrCode": "WMS|asset-003|HW-2104",
+      "maintenanceState": "Alles OK",
+      "notes": "Wireless Docking Station inklusive.",
+      "lastCheckout": "26.3.2026",
+      "nextReservation": "09.03.2026 - Messe Hamburg"
+    },
+    {
+      "id": "asset-004",
+      "name": "Honeywell CT30 XP",
+      "category": "Handscanner",
+      "location": "Fahrzeug 2",
+      "status": "Unterwegs",
+      "assignedTo": "Roadshow Team",
+      "nextReturn": "09.03.2026",
+      "tagNumber": "HW-3109",
+      "serialNumber": "HWL-CT30-771",
+      "qrCode": "WMS|asset-004|HW-3109",
+      "maintenanceState": "Batterie 84%",
+      "notes": "Transportkoffer mit Ladegeraet beigelegt.",
+      "lastCheckout": "02.03.2026",
+      "nextReservation": "15.03.2026 - Service Team"
+    },
+    {
+      "id": "asset-005",
+      "name": "iPad Air 11",
+      "category": "Tablet",
+      "location": "Ausseneinsatz",
+      "status": "In Wartung",
+      "assignedTo": "Werkstatt",
+      "nextReturn": "Unbekannt",
+      "tagNumber": "HW-1217",
+      "serialNumber": "IPA-4TH-2026",
+      "qrCode": "WMS|asset-005|HW-1217",
+      "maintenanceState": "Displayreparatur laeuft",
+      "notes": "Display gesprungen nach Event-Aufbau.",
+      "lastCheckout": "21.02.2026",
+      "nextReservation": "-"
+    },
+    {
+      "id": "asset-006",
+      "name": "Dell Latitude 7440",
+      "category": "Laptop",
+      "location": "Hauptlager",
+      "status": "Defekt",
+      "assignedTo": "-",
+      "nextReturn": "-",
+      "tagNumber": "HW-1129",
+      "serialNumber": "DL-7440-991",
+      "qrCode": "WMS|asset-006|HW-1129",
+      "maintenanceState": "Mainboard pruefen",
+      "notes": "Startet nicht mehr, Boot-Loop.",
+      "lastCheckout": "11.02.2026",
+      "nextReservation": "-"
+    },
+    {
+      "id": "asset-mn6nwxrn",
+      "name": "test",
+      "category": "Sonstiges",
+      "location": "Hauptlager",
+      "status": "Verfuegbar",
+      "assignedTo": "-",
+      "nextReturn": "-",
+      "tagNumber": "HW-9639",
+      "serialNumber": "SN-689218",
+      "qrCode": "WMS|asset-mn6nwxrn|HW-9639",
+      "maintenanceState": "Neu erfasst",
+      "notes": "",
+      "lastCheckout": "-",
+      "nextReservation": "-"
+    },
+    {
+      "id": "asset-mn6o9y09",
+      "name": "t",
+      "category": "Sonstiges",
+      "location": "Hauptlager",
+      "status": "Ausgegeben",
+      "assignedTo": "Team/Person",
+      "nextReturn": "in 2 Tagen",
+      "tagNumber": "HW-2702",
+      "serialNumber": "SN-204828",
+      "qrCode": "WMS|asset-mn6o9y09|HW-2702",
+      "maintenanceState": "Neu erfasst",
+      "notes": "",
+      "lastCheckout": "26.3.2026",
+      "nextReservation": "-"
+    }
+  ],
+  "activities": [
+    {
+      "id": "act-1",
+      "title": "Check-out abgeschlossen",
+      "detail": "MacBook Pro 14 M3 wurde an Design Team ausgegeben.",
+      "timestamp": "Heute, 08:42",
+      "assetId": "asset-001"
+    },
+    {
+      "id": "act-2",
+      "title": "Rueckgabe erhalten",
+      "detail": "Zebra DS2278 eingelagert und geprueft.",
+      "timestamp": "Heute, 09:16",
+      "assetId": "asset-003"
+    },
+    {
+      "id": "act-3",
+      "title": "Defekt gemeldet",
+      "detail": "Dell Latitude 7440 startet nicht mehr.",
+      "timestamp": "Heute, 10:05",
+      "assetId": "asset-006"
+    },
+    {
+      "id": "act-mn6nwxrn",
+      "title": "Asset angelegt",
+      "detail": "test wurde neu angelegt.",
+      "timestamp": "26.03.26, 00:16",
+      "assetId": "asset-mn6nwxrn"
+    },
+    {
+      "id": "act-mn6nxbbb",
+      "title": "Asset zur\u00fcckgenommen",
+      "detail": "MacBook Pro 14 M3 wurde zur\u00fcckgenommen.",
+      "timestamp": "26.03.26, 00:16",
+      "assetId": "asset-001"
+    },
+    {
+      "id": "act-mn6nxz3z",
+      "title": "Benutzer erstellt",
+      "detail": "nils wurde eingeladen.",
+      "timestamp": "26.03.26, 00:16",
+      "assetId": null
+    },
+    {
+      "id": "act-mn6nynnz",
+      "title": "Asset ausgegeben",
+      "detail": "MacBook Pro 14 M3 wurde an Nicht angegeben ausgegeben.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": "asset-001"
+    },
+    {
+      "id": "act-mn6nys9x",
+      "title": "Asset ausgegeben",
+      "detail": "MacBook Pro 14 M3 wurde an test ausgegeben.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": "asset-001"
+    },
+    {
+      "id": "act-mn6nyxox",
+      "title": "Reservierung storniert",
+      "detail": "res-2001 wurde storniert.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": null
+    },
+    {
+      "id": "act-mn6nyyl8",
+      "title": "Reservierung storniert",
+      "detail": "res-2002 wurde storniert.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": null
+    },
+    {
+      "id": "act-mn6nz0mo",
+      "title": "Asset ausgegeben",
+      "detail": "MacBook Pro 14 M3 wurde an Marketing Team ausgegeben.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": "asset-001"
+    },
+    {
+      "id": "act-mn6nz19p",
+      "title": "Asset ausgegeben",
+      "detail": "Zebra DS2278 wurde an Event-Team Nord ausgegeben.",
+      "timestamp": "26.03.26, 00:17",
+      "assetId": "asset-003"
+    },
+    {
+      "id": "act-mn6o9y09",
+      "title": "Asset angelegt",
+      "detail": "t wurde neu angelegt.",
+      "timestamp": "26.03.26, 00:26",
+      "assetId": "asset-mn6o9y09"
+    },
+    {
+      "id": "act-mn6obzoi",
+      "title": "Asset ausgegeben",
+      "detail": "t wurde an Team/Person ausgegeben.",
+      "timestamp": "26.03.26, 00:27",
+      "assetId": "asset-mn6o9y09"
+    }
+  ],
+  "reservations": [
+    {
+      "id": "res-2001",
+      "requestedBy": "Anna Weiss",
+      "team": "Marketing Team",
+      "period": "12.03.2026 - 14.03.2026",
+      "assets": [
+        "MacBook Pro 14 M3",
+        "Samsung Galaxy Tab S9"
+      ],
+      "status": "Aktiv",
+      "location": "Messe Berlin"
+    },
+    {
+      "id": "res-2002",
+      "requestedBy": "Luca Berger",
+      "team": "Event-Team Nord",
+      "period": "09.03.2026 - 13.03.2026",
+      "assets": [
+        "Zebra DS2278",
+        "Atem Mini Pro ISO"
+      ],
+      "status": "Aktiv",
+      "location": "Hamburg Messehalle A2"
+    }
+  ],
+  "maintenanceItems": [
+    {
+      "id": "mnt-01",
+      "assetName": "iPad Air 11",
+      "issue": "Displaybruch links unten",
+      "reportedAt": "04.03.2026",
+      "dueDate": "11.03.2026",
+      "priority": "Hoch",
+      "status": "In Arbeit",
+      "comment": "Ersatzteil bestellt, Einbau fuer Dienstag geplant.",
+      "location": "Werkstatt"
+    },
+    {
+      "id": "mnt-02",
+      "assetName": "Dell Latitude 7440",
+      "issue": "Boot-Loop / kein POST",
+      "reportedAt": "06.03.2026",
+      "dueDate": "12.03.2026",
+      "priority": "Kritisch",
+      "status": "Offen",
+      "comment": "Diagnose durch externen Service erforderlich.",
+      "location": "Hauptlager"
+    }
+  ],
+  "locations": [
+    {
+      "name": "Hauptlager",
+      "capacity": "220 Slots",
+      "assignedAssets": 128,
+      "availableAssets": 87,
+      "manager": "Nils Kramer"
+    },
+    {
+      "name": "Eventlager",
+      "capacity": "140 Slots",
+      "assignedAssets": 91,
+      "availableAssets": 21,
+      "manager": "Lara Meier"
+    },
+    {
+      "name": "Buero",
+      "capacity": "70 Slots",
+      "assignedAssets": 52,
+      "availableAssets": 9,
+      "manager": "Office IT"
+    }
+  ],
+  "users": [
+    {
+      "id": "usr-01",
+      "name": "Nils Kramer",
+      "email": "nils.kramer@atlasops.io",
+      "role": "Admin",
+      "lastActive": "Heute, 11:25",
+      "status": "Aktiv"
+    },
+    {
+      "id": "usr-02",
+      "name": "Lara Meier",
+      "email": "lara.meier@atlasops.io",
+      "role": "Lager / Logistik",
+      "lastActive": "Heute, 10:58",
+      "status": "Aktiv"
+    },
+    {
+      "id": "usr-mn6nxz3o",
+      "name": "nils",
+      "email": "nilsklemm1996@gmail.com",
+      "role": "Mitarbeiter",
+      "lastActive": "Gerade erstellt",
+      "status": "Aktiv"
+    }
+  ]
+}

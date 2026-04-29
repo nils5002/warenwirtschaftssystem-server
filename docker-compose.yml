@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloud_web_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://cloud_user:cloud_password@postgres:5432/cloud_web}
+      HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
+      DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-false}
+      WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./Hardwarebestand:/app/data/hardware_imports:ro
+    ports:
+      - "8000:8000"
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: cloud_web_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cloud_web
+      POSTGRES_USER: cloud_user
+      POSTGRES_PASSWORD: cloud_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - cloud_web_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloud_user -d cloud_web"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cloud_web_postgres_data:
