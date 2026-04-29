@@ -14,7 +14,7 @@ services:
 
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./app/data/app.db}
       DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-true}
-      WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
+      WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-false}
 
       HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
       BACKUP_PATH: ${BACKUP_PATH:-/app/data/backups}
@@ -41,7 +41,7 @@ services:
       - backend
 
     ports:
-      - "${FRONTEND_PORT:-8080}:80"
+      - "${FRONTEND_PORT:-8080}:4173"
 
 volumes:
   warehouse_app_data:

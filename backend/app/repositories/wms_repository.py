@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -647,11 +648,34 @@ def has_wms_data(db: Session) -> bool:
     return db.scalar(select(AssetRecord.id).limit(1)) is not None
 
 
+def _map_legacy_user_role(value: str | None) -> str:
+    raw = (value or "").strip().lower()
+    if raw in {"admin", "administrator"}:
+        return "Admin"
+    if raw in {"projektmanager", "project manager", "projectmanager"}:
+        return "Projektmanager"
+    if raw in {"lager / logistik", "lager/logistik", "mitarbeiter", "employee"}:
+        return "Mitarbeiter"
+    return "Mitarbeiter"
+
+
 def seed_from_legacy_json(db: Session, legacy_path: Path) -> dict[str, int]:
     if not legacy_path.exists():
         return {"created": 0}
     payload = json.loads(legacy_path.read_text(encoding="utf-8"))
-    overview = WmsOverviewResponse.model_validate(payload)
+    users_payload = payload.get("users")
+    if isinstance(users_payload, list):
+        for user in users_payload:
+            if isinstance(user, dict):
+                user["role"] = _map_legacy_user_role(user.get("role"))
+
+    skipped_users = 0
+    try:
+        overview = WmsOverviewResponse.model_validate(payload)
+    except ValidationError:
+        fallback_payload = dict(payload)
+        fallback_payload["users"] = []
+        overview = WmsOverviewResponse.model_validate(fallback_payload)
 
     created = 0
     for item in overview.assets:
@@ -669,7 +693,18 @@ def seed_from_legacy_json(db: Session, legacy_path: Path) -> dict[str, int]:
     for item in overview.locations:
         upsert_location(db, item)
         created += 1
-    for item in overview.users:
-        upsert_user(db, item)
-        created += 1
+    for raw_user in users_payload or []:
+        if not isinstance(raw_user, dict):
+            skipped_users += 1
+            continue
+        try:
+            item = UserItem.model_validate(raw_user)
+            upsert_user(db, item)
+            created += 1
+        except ValidationError:
+            skipped_users += 1
+            continue
+    if skipped_users > 0:
+        # Seed should stay startup-safe even with malformed legacy user records.
+        pass
     return {"created": created}
