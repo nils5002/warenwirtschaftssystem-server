@@ -10,9 +10,19 @@ import type {
 
 const rawBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
 const API_BASE = rawBase ? rawBase.replace(/\/+$/, '') : '';
-const apiUrl = (path: string): string => (API_BASE ? `${API_BASE}${path}` : path);
-const apiUrls = (path: string): string[] =>
-  API_BASE ? [`${API_BASE}${path}`, path] : [path];
+const normalizeApiPath = (path: string): string => {
+  if (!API_BASE) return path;
+  const base = API_BASE.startsWith('/') ? API_BASE : `/${API_BASE}`;
+  if (path === base || path.startsWith(`${base}/`)) {
+    return path;
+  }
+  return `${base}${path}`;
+};
+const apiUrl = (path: string): string => normalizeApiPath(path);
+const apiUrls = (path: string): string[] => {
+  const primary = normalizeApiPath(path);
+  return primary === path ? [path] : [primary, path];
+};
 const ACCESS_STORAGE_KEY = 'wms.accessContext';
 const AUTH_STORAGE_KEY = 'wms.authSession';
 const LOGIN_TIMEOUT_MS = 10_000;
