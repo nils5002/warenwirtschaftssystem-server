@@ -1,42 +1,79 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-warehouse}
+      POSTGRES_USER: ${POSTGRES_USER:-warehouse}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-warehouse_password}
+    volumes:
+      - warehouse_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-warehouse} -d ${POSTGRES_DB:-warehouse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: cloud_web_backend
     restart: unless-stopped
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://cloud_user:cloud_password@postgres:5432/cloud_web}
-      HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
-      DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-false}
-      WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-      - ./Hardwarebestand:/app/data/hardware_imports:ro
-    ports:
-      - "8000:8000"
-    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
-
-  postgres:
-    image: postgres:17-alpine
-    container_name: cloud_web_postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_DB: cloud_web
-      POSTGRES_USER: cloud_user
-      POSTGRES_PASSWORD: cloud_password
-    ports:
-      - "5432:5432"
+      APP_NAME: ${APP_NAME:-Warehouse-System}
+      APP_ENV: ${APP_ENV:-production}
+      BASE_URL: ${BASE_URL}
+      FRONTEND_URL: ${FRONTEND_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
+
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://warehouse:warehouse_password@postgres:5432/warehouse}
+      DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-true}
+      WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-true}
+
+      HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
+      BACKUP_PATH: ${BACKUP_PATH:-/app/data/backups}
+
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}
+
     volumes:
-      - cloud_web_postgres_data:/var/lib/postgresql/data
+      - warehouse_app_data:/app/data
+
+    ports:
+      - "${BACKEND_PORT:-8001}:8000"
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cloud_user -d cloud_web"]
-      interval: 10s
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_API_BASE: ${VITE_API_BASE:-/api}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
 volumes:
-  cloud_web_postgres_data:
+  warehouse_app_data:
+  warehouse_postgres_data:
