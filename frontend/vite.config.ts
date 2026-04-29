@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 
+const allowedHostsEnv = (process.env.VITE_ALLOWED_HOSTS || '').trim();
+const previewAllowedHosts = allowedHostsEnv
+  ? allowedHostsEnv.split(',').map((host) => host.trim()).filter(Boolean)
+  : true;
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -12,5 +17,10 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+    allowedHosts: previewAllowedHosts,
   },
 });
