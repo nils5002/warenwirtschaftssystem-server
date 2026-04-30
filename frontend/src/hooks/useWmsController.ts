@@ -901,7 +901,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       if (result.deletedCount > 0) {
         await addActivity(
           'Benutzer gelöscht',
-          `${result.deletedCount} Benutzer wurden deaktiviert.`,
+          `${result.deletedCount} Benutzer wurden gelöscht.`,
         );
       }
       if (result.skippedCount > 0) {
@@ -934,7 +934,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       if (!result.deleted) {
         throw new Error('Benutzer wurde nicht gefunden.');
       }
-      await addActivity('Benutzer gelöscht', `${target.name} wurde deaktiviert.`);
+      await addActivity('Benutzer gelöscht', `${target.name} wurde gelöscht.`);
     } catch (error) {
       setWmsError('Benutzer konnte nicht gelöscht werden.');
       await loadWms();

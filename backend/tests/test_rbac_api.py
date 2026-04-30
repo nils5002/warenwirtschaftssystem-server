@@ -130,7 +130,7 @@ def test_only_admin_can_delete_asset() -> None:
     assert allowed.status_code == 200
 
 
-def test_only_admin_can_delete_users_and_delete_is_soft() -> None:
+def test_only_admin_can_delete_users_and_delete_is_hard_persistent() -> None:
     client = TestClient(app)
     suffix = uuid4().hex[:8]
     payload = {
@@ -156,20 +156,63 @@ def test_only_admin_can_delete_users_and_delete_is_soft() -> None:
 
     with SessionLocal() as db:
         record = db.scalar(select(UserRecord).where(UserRecord.external_id == payload["id"]))
-        assert record is not None
-        assert str(record.status).strip().lower() == "inaktiv"
+        assert record is None
 
     overview = client.get("/api/wms/overview", headers=_headers("Admin", user_id="admin-rbac"))
     assert overview.status_code == 200
     listed = next((item for item in overview.json()["users"] if item["id"] == payload["id"]), None)
-    assert listed is not None
-    assert listed["status"] == "Inaktiv"
+    assert listed is None
 
-    login = client.post(
-        "/api/auth/login",
-        json={"email": payload["email"], "password": "Willkommen123!"},
+
+def test_bulk_delete_users_is_hard_persistent() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    payloads = [
+        {
+            "id": f"usr-bulk-{suffix}-1",
+            "name": f"Bulk User A {suffix}",
+            "email": f"bulk.a.{suffix}@example.local",
+            "role": "Mitarbeiter",
+            "lastActive": "Neu",
+            "status": "Aktiv",
+            "department": "QA",
+            "location": "Berlin",
+        },
+        {
+            "id": f"usr-bulk-{suffix}-2",
+            "name": f"Bulk User B {suffix}",
+            "email": f"bulk.b.{suffix}@example.local",
+            "role": "Mitarbeiter",
+            "lastActive": "Neu",
+            "status": "Inaktiv",
+            "department": "QA",
+            "location": "Berlin",
+        },
+    ]
+    for payload in payloads:
+        created = client.post("/api/wms/users", headers=_headers("Admin"), json=payload)
+        assert created.status_code == 200
+
+    bulk = client.post(
+        "/api/wms/users/bulk-delete",
+        headers=_headers("Admin", user_id="admin-rbac"),
+        json={"userIds": [payloads[0]["id"], payloads[1]["id"]]},
     )
-    assert login.status_code == 403
+    assert bulk.status_code == 200
+    assert bulk.json()["deletedCount"] == 2
+    assert bulk.json()["skippedCount"] == 0
+
+    with SessionLocal() as db:
+        remaining = db.scalars(
+            select(UserRecord).where(UserRecord.external_id.in_([payloads[0]["id"], payloads[1]["id"]]))
+        ).all()
+        assert remaining == []
+
+    overview = client.get("/api/wms/overview", headers=_headers("Admin", user_id="admin-rbac"))
+    assert overview.status_code == 200
+    ids = {item["id"] for item in overview.json()["users"]}
+    assert payloads[0]["id"] not in ids
+    assert payloads[1]["id"] not in ids
 
 
 def test_admin_cannot_delete_self_user() -> None:
