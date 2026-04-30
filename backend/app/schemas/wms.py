@@ -147,6 +147,23 @@ class BulkUserDeleteResponse(BaseModel):
     results: list[BulkUserDeleteResultItem] = Field(default_factory=list)
 
 
+class PlanningSummaryCategoryItem(BaseModel):
+    categoryKey: str
+    usableStock: int
+    plannedQtyToday: int
+    remainingAfterPlanning: int
+    shortageQty: int
+
+
+class PlanningSummaryItem(BaseModel):
+    todayPlannedQty: int
+    todayShortageCount: int
+    todayShortageItems: list[PlanningSummaryCategoryItem] = Field(default_factory=list)
+    upcomingPlannedQty: int
+    upcomingShortageCount: int
+    categorySummaries: list[PlanningSummaryCategoryItem] = Field(default_factory=list)
+
+
 class WmsOverviewResponse(BaseModel):
     assets: list[AssetItem] = Field(default_factory=list)
     activities: list[ActivityItem] = Field(default_factory=list)
@@ -155,3 +172,4 @@ class WmsOverviewResponse(BaseModel):
     locations: list[LocationItem] = Field(default_factory=list)
     categories: list[CategoryItem] = Field(default_factory=list)
     users: list[UserItem] = Field(default_factory=list)
+    planningSummary: PlanningSummaryItem | None = None

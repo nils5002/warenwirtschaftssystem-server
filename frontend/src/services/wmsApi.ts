@@ -67,6 +67,26 @@ export type WmsOverview = {
   maintenanceItems: MaintenanceItem[];
   locations: LocationItem[];
   users: UserItem[];
+  planningSummary?: {
+    todayPlannedQty: number;
+    todayShortageCount: number;
+    todayShortageItems: Array<{
+      categoryKey: string;
+      usableStock: number;
+      plannedQtyToday: number;
+      remainingAfterPlanning: number;
+      shortageQty: number;
+    }>;
+    upcomingPlannedQty: number;
+    upcomingShortageCount: number;
+    categorySummaries: Array<{
+      categoryKey: string;
+      usableStock: number;
+      plannedQtyToday: number;
+      remainingAfterPlanning: number;
+      shortageQty: number;
+    }>;
+  } | null;
 };
 
 export type HardwareImportRowError = {

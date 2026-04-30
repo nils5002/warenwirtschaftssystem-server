@@ -245,7 +245,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   const availabilityByDayCategory = useMemo(() => {
     const map = new Map<string, PlanningAvailabilityResponse['items'][number]>();
     for (const item of availability?.items ?? []) {
-      map.set(`${item.planningDate}|${item.categoryKey}`, item);
+      map.set(`${item.planningDate}|${normalizeCategory(item.categoryKey)}`, item);
     }
     return map;
   }, [availability]);
@@ -992,9 +992,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
                         <div className="space-y-2">
                           {day.items.map((item, itemIndex) => {
-                            const availabilityItem = availabilityByDayCategory.get(`${day.planningDate}|${item.categoryKey}`);
+                            const availabilityItem = availabilityByDayCategory.get(
+                              `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
+                            );
                             const shortageWithoutHandover =
-                              availabilityItem?.availabilityState === 'red' &&
                               (availabilityItem.shortageQty ?? 0) > 0 &&
                               !item.handoverEnabled;
                             const activeHandover = item.handoverEnabled;
@@ -1068,6 +1069,20 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                       <p>Verplant {availabilityItem.alreadyPlanned}</p>
                                       <p>Rest {availabilityItem.remainingQty}</p>
                                       <p>{availabilityHint(availabilityItem)}</p>
+                                      <details className="mt-1">
+                                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
+                                          Details anzeigen
+                                        </summary>
+                                        <div className="mt-1 space-y-0.5 text-[10px]">
+                                          <p>Gesamtbestand: {availabilityItem.totalStock}</p>
+                                          <p>Nutzbar: {availabilityItem.usableStock}</p>
+                                          <p>Bereits geplant: {availabilityItem.alreadyPlanned}</p>
+                                          <p>Diese Planung: {availabilityItem.requestedQty}</p>
+                                          <p>Rest: {availabilityItem.remainingQty - availabilityItem.requestedQty}</p>
+                                          <p>Fehlmenge: {availabilityItem.shortageQty}</p>
+                                          <p>Übergabe-Status: {availabilityItem.handoverStatus || 'none'}</p>
+                                        </div>
+                                      </details>
                                     </div>
                                   ) : (
                                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
@@ -1302,6 +1317,19 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                         ) : (
                           <p className="mt-0.5">Mögliche Projektverknüpfung prüfen.</p>
                         )}
+                        <details className="mt-1">
+                          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
+                            Details anzeigen
+                          </summary>
+                          <div className="mt-1 space-y-0.5 text-[10px]">
+                            <p>Nutzbar: {item.usableStock}</p>
+                            <p>Bereits geplant: {item.alreadyPlanned}</p>
+                            <p>Diese Planung: {item.requestedQty}</p>
+                            <p>Rest nach Bedarf: {item.remainingQty - item.requestedQty}</p>
+                            <p>Fehlmenge: {item.shortageQty}</p>
+                            <p>Übergabe-Status: {item.handoverStatus || 'none'}</p>
+                          </div>
+                        </details>
                         <button
                           type="button"
                           className="btn-secondary mt-2 px-2 py-1 text-xs"

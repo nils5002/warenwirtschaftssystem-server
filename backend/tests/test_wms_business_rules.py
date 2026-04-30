@@ -134,8 +134,8 @@ def test_planning_availability_counts_only_available_assets_as_usable() -> None:
     item = availability.json()["items"][0]
     assert item["totalStock"] == baseline_total + 2
     assert item["usableStock"] == baseline_usable + 1
-    assert item["remainingQty"] == baseline_usable + 1
-    assert item["shortageQty"] == max(0, 2 - (baseline_usable + 1))
+    assert item["remainingQty"] == item["usableStock"] - item["alreadyPlanned"]
+    assert item["shortageQty"] == max(0, 2 - item["remainingQty"])
 
 
 def test_asset_and_planning_categories_are_normalized_for_availability() -> None:
@@ -394,6 +394,66 @@ def test_handover_planning_does_not_change_real_asset_status() -> None:
     asset_after = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers(client, "Admin"))
     assert asset_after.status_code == 200
     assert asset_after.json()["status"] in {"Verfuegbar", "Verfügbar"}
+
+
+def test_cross_project_shortage_is_counted_for_draft_plannings() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date.today() + timedelta(days=19)
+    category = "iPad"
+    _, usable = _category_counts(client, category)
+    first_qty = max(1, usable)
+    second_qty = 2
+
+    payload_a = {
+        "customerName": f"Kunde A {suffix}",
+        "projectName": f"Projekt A {suffix}",
+        "eventName": "Cross A",
+        "projectManagerUserId": f"pm-a-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Draft A",
+        "status": "Entwurf",
+        "days": [{"planningDate": planning_date.isoformat(), "weekday": "Freitag", "items": [{"categoryKey": category, "qty": first_qty, "notes": None}]}],
+    }
+    payload_b = {
+        "customerName": f"Kunde B {suffix}",
+        "projectName": f"Projekt B {suffix}",
+        "eventName": "Cross B",
+        "projectManagerUserId": f"pm-b-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Draft B",
+        "status": "Entwurf",
+        "days": [{"planningDate": planning_date.isoformat(), "weekday": "Freitag", "items": [{"categoryKey": category, "qty": second_qty, "notes": None}]}],
+    }
+
+    created_a = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-a-{suffix}"), json=payload_a)
+    created_b = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-b-{suffix}"), json=payload_b)
+    assert created_a.status_code == 200
+    assert created_b.status_code == 200
+
+    availability_b = client.get(
+        f"/api/wms/planning/{created_b.json()['id']}/availability",
+        headers=_headers(client, "Projektmanager", f"pm-b-{suffix}"),
+    )
+    assert availability_b.status_code == 200
+    item = availability_b.json()["items"][0]
+    assert item["alreadyPlanned"] >= first_qty
+    assert item["shortageQty"] >= 0
+
+
+def test_overview_contains_planning_summary_separate_from_inventory_status() -> None:
+    client = TestClient(app)
+    response = client.get("/api/wms/overview", headers=_headers(client, "Admin"))
+    assert response.status_code == 200
+    summary = response.json().get("planningSummary")
+    assert isinstance(summary, dict)
+    assert "todayPlannedQty" in summary
+    assert "todayShortageCount" in summary
+    assert "categorySummaries" in summary
 
 
 def test_categories_are_seeded_and_synonym_duplicates_are_blocked() -> None:
