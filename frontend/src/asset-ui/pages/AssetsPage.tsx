@@ -745,7 +745,7 @@ export function AssetsPage({
 
         <div className="mt-4 hidden lg:block">
           <div className="soft-scrollbar relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-          <table className="w-full min-w-[1180px] border-separate border-spacing-y-1.5 text-sm">
+          <table className="w-full min-w-[1320px] border-separate border-spacing-y-1.5 text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                 {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
@@ -758,8 +758,8 @@ export function AssetsPage({
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th>
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th>
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Status</th>
-                <th className="sticky right-0 top-0 z-30 bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-900">Aktion</th>
+                <th className="sticky top-0 z-20 min-w-[120px] bg-white px-3 py-2 dark:bg-slate-900">Status</th>
+                <th className="sticky right-0 top-0 z-30 min-w-[280px] bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-900">Aktion</th>
               </tr>
             </thead>
             <tbody>
@@ -819,14 +819,14 @@ export function AssetsPage({
                   <td className="px-3 py-3">
                     <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="min-w-[120px] whitespace-nowrap px-3 py-3">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="sticky right-0 z-10 rounded-r-xl bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-800/95">
-                    <div className="flex justify-end gap-1.5">
+                  <td className="sticky right-0 z-10 min-w-[280px] rounded-r-xl bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-800/95">
+                    <div className="flex flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap">
                       <button
                         type="button"
-                        className="btn-danger px-2 py-1 text-xs"
+                        className="btn-danger shrink-0 px-2 py-1 text-xs"
                         onClick={() =>
                           onCreateMaintenance({
                             assetName: asset.name,
@@ -839,18 +839,18 @@ export function AssetsPage({
                       </button>
                       <button
                         type="button"
-                        className="btn-ghost px-2 py-1 text-xs"
+                        className="btn-ghost shrink-0 px-2 py-1 text-xs"
                         onClick={() => setQuickViewId(asset.id)}
                         title="Schnellansicht"
                         aria-label="Schnellansicht"
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
-                      <button type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
+                      <button type="button" className="btn-primary shrink-0 px-2 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
                         Detail
                       </button>
                       {canManageAssets ? (
-                        <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
+                        <button type="button" className="btn-ghost shrink-0 px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
                           <Settings2 className="h-3.5 w-3.5" />
                           Admin
                         </button>

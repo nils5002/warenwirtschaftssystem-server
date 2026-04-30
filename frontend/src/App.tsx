@@ -149,7 +149,7 @@ function App() {
           activeHint={activeItem?.hint}
         />
         <main className="px-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 sm:px-4 md:px-8 md:pt-6">
-          <div className="mx-auto max-w-[1600px]">
+          <div className={`mx-auto w-full ${controller.activePage === 'inventory' ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
             {controller.isLoading ? (
               <div className="mb-4 surface-muted px-3 py-2 text-sm text-slate-600">Lade Daten...</div>
             ) : null}
