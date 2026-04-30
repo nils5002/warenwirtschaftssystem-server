@@ -166,7 +166,7 @@ export function WmsPageView({
   onOpenInventoryWithQuery,
 }: WmsPageViewProps) {
   const isAdmin = activeRole === 'Admin';
-  const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter';
+  const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
   const canEditPlanning = activeRole === 'Admin' || activeRole === 'Projektmanager';
 
   switch (activePage) {
