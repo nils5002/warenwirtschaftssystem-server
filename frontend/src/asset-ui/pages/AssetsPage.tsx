@@ -656,8 +656,8 @@ export function AssetsPage({
       </div>
 
       <article className="surface-card animate-fade-up">
-        <div className="grid gap-3 xl:grid-cols-12">
-          <div className="relative xl:col-span-4">
+        <div className="grid gap-3 md:grid-cols-6 xl:grid-cols-12">
+          <div className="relative md:col-span-3 xl:col-span-4">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
@@ -666,22 +666,22 @@ export function AssetsPage({
               className="field-input w-full pl-9"
             />
           </div>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input xl:col-span-2">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
             {categories.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input xl:col-span-2">
+          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
             {locations.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input xl:col-span-2">
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
             {statuses.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <div className="flex items-center gap-2 xl:col-span-2">
+          <div className="flex items-center gap-2 md:col-span-1 xl:col-span-2">
             <button className="btn-secondary h-10 px-3 text-sm" onClick={resetFilters}>
               <Filter className="h-4 w-4" />
               Reset
@@ -745,7 +745,7 @@ export function AssetsPage({
 
         <div className="mt-4 hidden lg:block">
           <div className="soft-scrollbar relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-          <table className="w-full min-w-[1320px] border-separate border-spacing-y-1.5 text-sm">
+          <table className="w-[max(100%,1600px)] min-w-[1600px] border-separate border-spacing-y-1.5 text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                 {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
@@ -758,8 +758,8 @@ export function AssetsPage({
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th>
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th>
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
-                <th className="sticky top-0 z-20 min-w-[120px] bg-white px-3 py-2 dark:bg-slate-900">Status</th>
-                <th className="sticky right-0 top-0 z-30 min-w-[280px] bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-900">Aktion</th>
+                <th className="sticky top-0 z-20 min-w-[160px] bg-white px-3 py-2 dark:bg-slate-900">Status</th>
+                <th className="sticky right-0 top-0 z-30 min-w-[420px] border-l border-slate-200 bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-900">Aktion</th>
               </tr>
             </thead>
             <tbody>
@@ -819,11 +819,11 @@ export function AssetsPage({
                   <td className="px-3 py-3">
                     <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
                   </td>
-                  <td className="min-w-[120px] whitespace-nowrap px-3 py-3">
+                  <td className="min-w-[160px] whitespace-nowrap px-3 py-3">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="sticky right-0 z-10 min-w-[280px] rounded-r-xl bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-800/95">
-                    <div className="flex flex-nowrap items-center justify-end gap-1.5 whitespace-nowrap">
+                  <td className="sticky right-0 z-10 min-w-[420px] rounded-r-xl border-l border-slate-200 bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-800/95">
+                    <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
                       <button
                         type="button"
                         className="btn-danger shrink-0 px-2 py-1 text-xs"
