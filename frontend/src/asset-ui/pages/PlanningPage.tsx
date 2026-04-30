@@ -65,6 +65,14 @@ type EditablePlanning = {
 type PlanningSummary = PlanningListItem | PlanningResponse;
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
 
+type HandoverNetworkAccent = {
+  card: string;
+  cardActive: string;
+  panel: string;
+  badge: string;
+  hint: string;
+};
+
 type HandoverVisualStatus = 'ok' | 'handover' | 'review' | 'open';
 
 type IncomingHandoverInfo = {
@@ -95,6 +103,60 @@ type AvailabilityVisual = {
   linkedPlanningId: string;
   linkedPlanningLabel: string;
 };
+
+const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
+  {
+    card: 'border-sky-200 bg-sky-50/55 dark:border-sky-800 dark:bg-sky-950/20',
+    cardActive: 'border-sky-300 bg-sky-50/80 ring-1 ring-sky-200 dark:border-sky-700 dark:bg-sky-950/25 dark:ring-sky-800',
+    panel: 'border-sky-200 bg-white/75 text-sky-900 dark:border-sky-800 dark:bg-slate-950/50 dark:text-sky-100',
+    badge: 'border-sky-200 bg-sky-100/80 text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100',
+    hint: 'text-sky-800 dark:text-sky-100',
+  },
+  {
+    card: 'border-teal-200 bg-teal-50/55 dark:border-teal-800 dark:bg-teal-950/20',
+    cardActive: 'border-teal-300 bg-teal-50/80 ring-1 ring-teal-200 dark:border-teal-700 dark:bg-teal-950/25 dark:ring-teal-800',
+    panel: 'border-teal-200 bg-white/75 text-teal-900 dark:border-teal-800 dark:bg-slate-950/50 dark:text-teal-100',
+    badge: 'border-teal-200 bg-teal-100/80 text-teal-700 dark:border-teal-700 dark:bg-teal-900/40 dark:text-teal-100',
+    hint: 'text-teal-800 dark:text-teal-100',
+  },
+  {
+    card: 'border-violet-200 bg-violet-50/55 dark:border-violet-800 dark:bg-violet-950/20',
+    cardActive: 'border-violet-300 bg-violet-50/80 ring-1 ring-violet-200 dark:border-violet-700 dark:bg-violet-950/25 dark:ring-violet-800',
+    panel: 'border-violet-200 bg-white/75 text-violet-900 dark:border-violet-800 dark:bg-slate-950/50 dark:text-violet-100',
+    badge: 'border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-100',
+    hint: 'text-violet-800 dark:text-violet-100',
+  },
+  {
+    card: 'border-amber-200 bg-amber-50/55 dark:border-amber-800 dark:bg-amber-950/20',
+    cardActive: 'border-amber-300 bg-amber-50/80 ring-1 ring-amber-200 dark:border-amber-700 dark:bg-amber-950/25 dark:ring-amber-800',
+    panel: 'border-amber-200 bg-white/75 text-amber-900 dark:border-amber-800 dark:bg-slate-950/50 dark:text-amber-100',
+    badge: 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100',
+    hint: 'text-amber-800 dark:text-amber-100',
+  },
+  {
+    card: 'border-emerald-200 bg-emerald-50/55 dark:border-emerald-800 dark:bg-emerald-950/20',
+    cardActive: 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-950/25 dark:ring-emerald-800',
+    panel: 'border-emerald-200 bg-white/75 text-emerald-900 dark:border-emerald-800 dark:bg-slate-950/50 dark:text-emerald-100',
+    badge: 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100',
+    hint: 'text-emerald-800 dark:text-emerald-100',
+  },
+  {
+    card: 'border-rose-200 bg-rose-50/55 dark:border-rose-800 dark:bg-rose-950/20',
+    cardActive: 'border-rose-300 bg-rose-50/80 ring-1 ring-rose-200 dark:border-rose-700 dark:bg-rose-950/25 dark:ring-rose-800',
+    panel: 'border-rose-200 bg-white/75 text-rose-900 dark:border-rose-800 dark:bg-slate-950/50 dark:text-rose-100',
+    badge: 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-100',
+    hint: 'text-rose-800 dark:text-rose-100',
+  },
+  {
+    card: 'border-indigo-200 bg-indigo-50/55 dark:border-indigo-800 dark:bg-indigo-950/20',
+    cardActive: 'border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200 dark:border-indigo-700 dark:bg-indigo-950/25 dark:ring-indigo-800',
+    panel: 'border-indigo-200 bg-white/75 text-indigo-900 dark:border-indigo-800 dark:bg-slate-950/50 dark:text-indigo-100',
+    badge: 'border-indigo-200 bg-indigo-100/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-100',
+    hint: 'text-indigo-800 dark:text-indigo-100',
+  },
+];
+
+const DEFAULT_HANDOVER_NETWORK_ACCENT = HANDOVER_NETWORK_ACCENTS[0];
 
 const STATUS_OPTIONS: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Abgeschlossen', 'Storniert'];
 
@@ -245,6 +307,14 @@ function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): st
     return `Mit ${detailParts.join(' · ')} abgestimmt`;
   }
   return `Mit ${detailParts.join(' · ')} abgestimmt`;
+}
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
 }
 
 function updatePlanningItemInEditor(
@@ -688,6 +758,63 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
     return map;
   }, [planningListDetails, plannings, visiblePlannings]);
+
+  const planningListHandoverSummaryById = useMemo(() => {
+    const map = new Map<string, PlanningListHandoverSummary>();
+    for (const item of visiblePlannings) {
+      const summary = item.handoverSummary ?? planningListHandoverFallbackMap.get(item.id);
+      if (summary) map.set(item.id, summary);
+    }
+    return map;
+  }, [planningListHandoverFallbackMap, visiblePlannings]);
+
+  const planningListNetworkAccentById = useMemo(() => {
+    const accentByPlanningId = new Map<string, HandoverNetworkAccent>();
+    if (!planningListHandoverSummaryById.size) return accentByPlanningId;
+
+    const adjacency = new Map<string, Set<string>>();
+    const addEdge = (from: string, to: string) => {
+      if (!from || !to) return;
+      const fromSet = adjacency.get(from) ?? new Set<string>();
+      fromSet.add(to);
+      adjacency.set(from, fromSet);
+      const toSet = adjacency.get(to) ?? new Set<string>();
+      toSet.add(from);
+      adjacency.set(to, toSet);
+    };
+
+    for (const [planningId, summary] of planningListHandoverSummaryById.entries()) {
+      if (!adjacency.has(planningId)) adjacency.set(planningId, new Set<string>());
+      if (summary.partnerPlanningId) addEdge(planningId, summary.partnerPlanningId);
+    }
+
+    const visited = new Set<string>();
+    for (const planningId of planningListHandoverSummaryById.keys()) {
+      if (visited.has(planningId)) continue;
+      const queue = [planningId];
+      const component = new Set<string>();
+      visited.add(planningId);
+      while (queue.length) {
+        const current = queue.shift();
+        if (!current) continue;
+        component.add(current);
+        for (const neighbour of adjacency.get(current) ?? []) {
+          if (visited.has(neighbour)) continue;
+          visited.add(neighbour);
+          queue.push(neighbour);
+        }
+      }
+      const signature = Array.from(component).sort().join('|');
+      const accent = HANDOVER_NETWORK_ACCENTS[hashString(signature) % HANDOVER_NETWORK_ACCENTS.length];
+      for (const member of component) {
+        if (planningListHandoverSummaryById.has(member)) {
+          accentByPlanningId.set(member, accent);
+        }
+      }
+    }
+
+    return accentByPlanningId;
+  }, [planningListHandoverSummaryById]);
 
   const handoverProjectOptions = useMemo(() => {
     const activeStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Bestaetigt'];
@@ -1145,8 +1272,9 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
             {visiblePlannings.map((item) => {
               const isActive = selectedId === item.id;
-              const handoverSummary = item.handoverSummary ?? planningListHandoverFallbackMap.get(item.id);
+              const handoverSummary = planningListHandoverSummaryById.get(item.id);
               const hasHandoverNetwork = Boolean(handoverSummary);
+              const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
               return (
                 <div
                   key={item.id}
@@ -1154,10 +1282,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                   className={`rounded-xl border p-3 ${
                     isActive
                       ? hasHandoverNetwork
-                        ? 'border-sky-300 bg-sky-50/80 ring-1 ring-brand-200 dark:border-sky-700 dark:bg-sky-950/25 dark:ring-brand-800'
+                        ? handoverAccent.cardActive
                         : 'border-brand-200 bg-brand-50/60'
                       : hasHandoverNetwork
-                        ? 'border-sky-200 bg-sky-50/55 dark:border-sky-800 dark:bg-sky-950/20'
+                        ? handoverAccent.card
                         : 'border-slate-200 bg-slate-50'
                   }`}
                 >
@@ -1180,14 +1308,14 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                       : '-'}
                   </p>
                   {handoverSummary ? (
-                    <div className="mt-2 rounded-xl border border-sky-200 bg-white/75 px-2.5 py-2 text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-slate-950/50 dark:text-sky-100">
+                    <div className={`mt-2 rounded-xl border px-2.5 py-2 text-xs shadow-sm ${handoverAccent.panel}`}>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
+                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${handoverAccent.badge}`}>
                           <Link2 className="h-3.5 w-3.5" />
                           Übergabe-Verbund
                         </span>
                       </div>
-                      <p className="mt-1.5 text-[11px] leading-relaxed text-sky-800 dark:text-sky-100">
+                      <p className={`mt-1.5 text-[11px] leading-relaxed ${handoverAccent.hint}`}>
                         {buildPlanningListHandoverHint(handoverSummary)}
                       </p>
                     </div>
