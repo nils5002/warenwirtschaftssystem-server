@@ -38,6 +38,10 @@ const ASSET_ACCENT_STYLES = [
   },
 ] as const;
 
+const CHECKOUT_ACTION_STYLES = 'border-emerald-200 bg-emerald-50 text-emerald-800';
+const CHECKIN_ACTION_STYLES = 'border-sky-200 bg-sky-50 text-sky-800';
+const DEFAULT_ACTION_STYLES = 'border-slate-200 bg-slate-100 text-slate-700';
+
 function hashText(value: string): number {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -54,6 +58,64 @@ function trimActivityAssetPrefix(detail: string, assetName?: string): string {
   if (!assetName) return detail;
   const escaped = assetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return detail.replace(new RegExp(`^${escaped}\\s+`, 'i'), '');
+}
+
+function isTechnicalKey(value: string | undefined): boolean {
+  if (!value) return true;
+  const normalized = value.trim();
+  if (!normalized) return true;
+  return /^IMP-/i.test(normalized) || /^asset-/i.test(normalized) || /^usr-/i.test(normalized) || /^WMS\|/i.test(normalized);
+}
+
+function getReadableAssetLabel(asset?: Asset): string {
+  if (!asset) return 'Unbekanntes Gerät';
+  if (asset.name?.trim() && !isTechnicalKey(asset.name)) return asset.name.trim();
+  if (asset.tagNumber?.trim() && !isTechnicalKey(asset.tagNumber)) return asset.tagNumber.trim();
+  if (asset.serialNumber?.trim() && !isTechnicalKey(asset.serialNumber)) return asset.serialNumber.trim();
+  if (asset.category?.trim() && !isTechnicalKey(asset.category)) return asset.category.trim();
+  return 'Unbekanntes Gerät';
+}
+
+function normalizeActivityText(detail: string, asset?: Asset): string {
+  let text = trimActivityAssetPrefix(detail, asset?.name).trim();
+  text = text.replace(/\s+/g, ' ');
+  if (text.endsWith('.')) text = text.slice(0, -1);
+  return text;
+}
+
+function summarizeActivityLine(title: string, detail: string): { main: string; meta?: string; actionLabel: string; actionClass: string } {
+  const isCheckout = title.toLowerCase() === 'checkout gebucht';
+  const isCheckin = title.toLowerCase() === 'checkin gebucht';
+  const actionLabel = isCheckout ? 'Ausgabe' : isCheckin ? 'Rücknahme' : title;
+  const actionClass = isCheckout ? CHECKOUT_ACTION_STYLES : isCheckin ? CHECKIN_ACTION_STYLES : DEFAULT_ACTION_STYLES;
+
+  const byMatch = detail.match(/Ausgeführt durch:\s*([^.]*)/i);
+  const actor = byMatch?.[1]?.trim();
+  const withoutActor = detail.replace(/\.\s*Ausgeführt durch:\s*[^.]*\.?/i, '').trim();
+
+  if (isCheckout) {
+    if (/für allgemeinen einsatz ausgegeben/i.test(withoutActor)) {
+      return { main: `Für Allgemeinen Einsatz ausgegeben${actor ? ` · durch ${actor}` : ''}`, actionLabel, actionClass };
+    }
+    const project = withoutActor.match(/für Projekt\s+([^.]*)\s+ausgegeben/i)?.[1]?.trim();
+    const recipient = withoutActor.match(/an\s+([^.]*)\s+(für Projekt|ausgegeben)/i)?.[1]?.trim();
+    const parts = [];
+    if (project) parts.push(`Für Projekt ${project} ausgegeben`);
+    else parts.push('Ausgegeben');
+    if (actor) parts.push(`durch ${actor}`);
+    return { main: parts.join(' · '), meta: recipient ? `Empfänger: ${recipient}` : undefined, actionLabel, actionClass };
+  }
+
+  if (isCheckin) {
+    const from = withoutActor.match(/von\s+([^.]*)\s+zurückgenommen/i)?.[1]?.trim();
+    return {
+      main: `${from ? `Von ${from} ` : ''}zurückgenommen${actor ? ` · durch ${actor}` : ''}`.replace(/^z/, 'Z'),
+      actionLabel,
+      actionClass,
+    };
+  }
+
+  return { main: detail, actionLabel, actionClass };
 }
 
 export function DashboardPage({
@@ -175,8 +237,9 @@ export function DashboardPage({
                   const relatedAsset = activity.assetId ? assetsById.get(activity.assetId) : undefined;
                   const assetKey = relatedAsset?.id ?? activity.assetId ?? '';
                   const accent = assetKey ? getAssetAccentStyle(assetKey) : null;
-                  const assetBadge = relatedAsset?.tagNumber || relatedAsset?.name || null;
-                  const detailText = trimActivityAssetPrefix(activity.detail, relatedAsset?.name);
+                  const assetBadge = getReadableAssetLabel(relatedAsset);
+                  const detailText = normalizeActivityText(activity.detail, relatedAsset);
+                  const summary = summarizeActivityLine(activity.title, detailText);
                   return (
                     <div
                       className={`surface-muted border-l-4 px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/40 ${
@@ -185,7 +248,9 @@ export function DashboardPage({
                     >
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                         <div className="flex min-w-0 items-center gap-2">
-                          <p className="truncate text-sm font-semibold text-slate-900">{activity.title}</p>
+                          <span className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${summary.actionClass}`}>
+                            {summary.actionLabel}
+                          </span>
                           {assetBadge ? (
                             <span
                               className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
@@ -198,7 +263,8 @@ export function DashboardPage({
                         </div>
                         <span className="text-xs text-slate-500">{activity.timestamp}</span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">{detailText}</p>
+                      <p className="mt-1 text-xs text-slate-700">{summary.main}</p>
+                      {summary.meta ? <p className="mt-0.5 text-[11px] text-slate-500">{summary.meta}</p> : null}
                     </div>
                   );
                 })()}
