@@ -198,6 +198,17 @@ function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: strin
   return aStart <= bEnd && bStart <= aEnd;
 }
 
+function buildPlanningFallbackLabel(
+  planningId: string,
+  plannings: Awaited<ReturnType<typeof listPlannings>>,
+): string {
+  const match = plannings.find((item) => item.id === planningId);
+  if (!match) return planningId;
+  const datePart = match.startDate ? ` - ${match.startDate}` : '';
+  if (match.eventName?.trim()) return `${match.projectName} (${match.eventName})${datePart}`;
+  return `${match.projectName}${datePart}`;
+}
+
 export function PlanningPage({ assets: _assets, categories, users, onOpenInventoryWithQuery, canEdit = true }: PlanningPageProps) {
   const { alert, confirm } = useAppDialog();
   const [plannings, setPlannings] = useState<Awaited<ReturnType<typeof listPlannings>>>([]);
@@ -249,6 +260,33 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     }
     return map;
   }, [availability]);
+
+  const localHandoverByDayCategory = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        handoverEnabled: boolean;
+        linkedPlanningId: string;
+        linkedPlanningLabel?: string;
+        handoverNote: string;
+      }
+    >();
+    if (!editor) return map;
+    for (const day of editor.days) {
+      for (const item of day.items) {
+        const key = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
+        map.set(key, {
+          handoverEnabled: item.handoverEnabled,
+          linkedPlanningId: item.linkedPlanningId,
+          linkedPlanningLabel: item.linkedPlanningId
+            ? buildPlanningFallbackLabel(item.linkedPlanningId, plannings)
+            : undefined,
+          handoverNote: item.handoverNote,
+        });
+      }
+    }
+    return map;
+  }, [editor, plannings]);
 
   const planningStats = useMemo(() => {
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
@@ -995,12 +1033,23 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                             const availabilityItem = availabilityByDayCategory.get(
                               `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
                             );
+                            const localHandover = localHandoverByDayCategory.get(
+                              `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
+                            );
+                            const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? item.handoverEnabled;
+                            const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? item.linkedPlanningId;
+                            const effectiveLinkedPlanningLabel =
+                              availabilityItem?.linkedPlanningLabel ||
+                              localHandover?.linkedPlanningLabel ||
+                              (effectiveLinkedPlanningId
+                                ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings)
+                                : undefined);
                             const hasGlobalShortage =
                               Boolean(availabilityItem?.hasGlobalShortage) ||
                               (availabilityItem?.shortageQty ?? 0) > 0 ||
                               (availabilityItem?.remainingAfterAllPlanning ?? 0) < 0;
-                            const shortageWithoutHandover = hasGlobalShortage && !item.handoverEnabled;
-                            const activeHandover = item.handoverEnabled;
+                            const shortageWithoutHandover = hasGlobalShortage && !effectiveHandoverEnabled;
+                            const activeHandover = effectiveHandoverEnabled;
                             const editorKey = handoverKey(dayIndex, itemIndex);
                             const editorOpen = handoverEditorKey === editorKey;
                             return (
@@ -1143,7 +1192,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                     {item.linkedPlanningId ? (
                                       <>
                                         <p className="font-semibold">Übergabe geplant / prüfen</p>
-                                        <p className="mt-0.5">Verknüpft mit: {availabilityItem?.linkedPlanningLabel || item.linkedPlanningId}</p>
+                                        <p className="mt-0.5">Verknüpft mit: {effectiveLinkedPlanningLabel || effectiveLinkedPlanningId}</p>
                                       </>
                                     ) : (
                                       <p className="font-semibold">Übergabe geplant, aber kein Projekt verknüpft</p>
@@ -1155,7 +1204,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                         className="btn-secondary px-2 py-1 text-xs"
                                         onClick={() => openHandoverEditor(dayIndex, itemIndex)}
                                       >
-                                        {item.linkedPlanningId ? 'Bearbeiten' : 'Projekt auswählen'}
+                                        {effectiveLinkedPlanningId ? 'Bearbeiten' : 'Projekt auswählen'}
                                       </button>
                                       <button
                                         type="button"
@@ -1310,64 +1359,102 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                 <div className="mt-3 space-y-2">
                   {(availability?.items ?? [])
                     .filter((item) => item.shortageQty > 0 || item.hasGlobalShortage)
-                    .map((item) => (
-                      <div
-                        key={`handover-action-${item.planningDate}-${item.categoryKey}`}
-                        className={`rounded-lg border px-2 py-2 text-xs ${
-                          item.handoverStatus === 'planned'
+                    .map((item) => {
+                      const localHandover = localHandoverByDayCategory.get(
+                        `${item.planningDate}|${normalizeCategory(item.categoryKey)}`,
+                      );
+                      const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
+                      const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
+                      const effectiveLinkedPlanningLabel =
+                        item.linkedPlanningLabel ||
+                        localHandover?.linkedPlanningLabel ||
+                        (effectiveLinkedPlanningId
+                          ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings)
+                          : '');
+                      const effectiveHandoverNote = localHandover?.handoverNote ?? (item.handoverNote || '');
+                      const effectiveHandoverStatus =
+                        effectiveHandoverEnabled && effectiveLinkedPlanningId
+                          ? 'planned'
+                          : effectiveHandoverEnabled && !effectiveLinkedPlanningId
+                            ? 'missing_link'
+                            : item.handoverStatus || 'none';
+
+                      return (
+                        <div
+                          key={`handover-action-${item.planningDate}-${item.categoryKey}`}
+                          className={`rounded-lg border px-2 py-2 text-xs ${
+                            effectiveHandoverStatus === 'planned' || effectiveHandoverStatus === 'missing_link'
                             ? 'border-amber-300 bg-amber-50/80 text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
                             : 'border-rose-300 bg-rose-50/80 text-rose-900 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200'
-                        }`}
-                      >
-                        <p className="font-semibold">
-                          {item.categoryKey}: Fehlmenge {item.shortageQty} am {item.planningDate}
-                        </p>
-                        <p className="mt-0.5">
-                          Nutzbar {item.usableStock} · Diese Planung {item.currentPlanningQty} · Andere Planungen {item.otherPlannedQty} · Gesamt {item.totalPlannedQtyForDateCategory}
-                        </p>
-                        {item.handoverStatus === 'planned' ? (
-                          <p className="mt-0.5">
-                            Übergabe geplant
-                            {item.linkedPlanningLabel ? ` mit ${item.linkedPlanningLabel}` : ''}
-                            {item.handoverNote ? ` · ${item.handoverNote}` : ''}
+                          }`}
+                        >
+                          <p className="font-semibold">
+                            {effectiveHandoverStatus === 'planned'
+                              ? `Übergabe geplant: ${item.categoryKey}`
+                              : effectiveHandoverStatus === 'missing_link'
+                                ? `Übergabe unvollständig: ${item.categoryKey}`
+                                : `Ungeklärter Engpass: ${item.categoryKey}`}
                           </p>
-                        ) : (
-                          <p className="mt-0.5">Mögliche Projektverknüpfung prüfen.</p>
-                        )}
-                        <details className="mt-1">
-                          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
-                            Details anzeigen
-                          </summary>
-                          <div className="mt-1 space-y-0.5 text-[10px]">
-                            <p>Nutzbar: {item.usableStock}</p>
-                            <p>Diese Planung: {item.currentPlanningQty}</p>
-                            <p>Andere Planungen: {item.otherPlannedQty}</p>
-                            <p>Gesamt geplant: {item.totalPlannedQtyForDateCategory}</p>
-                            <p>Rest nach Gesamtplanung: {item.remainingAfterAllPlanning}</p>
-                            <p>Fehlmenge: {item.shortageQty}</p>
-                            <p>Status: {item.availabilityState}</p>
-                            <p>Übergabe-Status: {item.handoverStatus || 'none'}</p>
-                            <p>Betroffene Planungen: {(item.affectedPlanningIds || []).join(', ') || '-'}</p>
+                          <p className="mt-0.5">Fehlmenge {item.shortageQty} am {item.planningDate}</p>
+                          <p className="mt-0.5">
+                            Nutzbar {item.usableStock} · Diese Planung {item.currentPlanningQty} · Andere Planungen {item.otherPlannedQty} · Gesamt {item.totalPlannedQtyForDateCategory}
+                          </p>
+                          {effectiveHandoverStatus === 'planned' ? (
+                            <p className="mt-0.5">
+                              Fehlmenge ist durch geplante Projektübergabe markiert.
+                              {effectiveLinkedPlanningLabel ? ` Verknüpftes Projekt: ${effectiveLinkedPlanningLabel}.` : ''}
+                              {effectiveHandoverNote ? ` Hinweis: ${effectiveHandoverNote}` : ''}
+                            </p>
+                          ) : effectiveHandoverStatus === 'missing_link' ? (
+                            <p className="mt-0.5">Übergabe wurde markiert, aber Projektverknüpfung fehlt.</p>
+                          ) : (
+                            <p className="mt-0.5">Mögliche Projektverknüpfung prüfen.</p>
+                          )}
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
+                              Details anzeigen
+                            </summary>
+                            <div className="mt-1 space-y-0.5 text-[10px]">
+                              <p>Nutzbar: {item.usableStock}</p>
+                              <p>Diese Planung: {item.currentPlanningQty}</p>
+                              <p>Andere Planungen: {item.otherPlannedQty}</p>
+                              <p>Gesamt geplant: {item.totalPlannedQtyForDateCategory}</p>
+                              <p>Rest nach Gesamtplanung: {item.remainingAfterAllPlanning}</p>
+                              <p>Fehlmenge: {item.shortageQty}</p>
+                              <p>Status: {item.availabilityState}</p>
+                              <p>Übergabe-Status: {effectiveHandoverStatus}</p>
+                              <p>Betroffene Planungen: {(item.affectedPlanningIds || []).join(', ') || '-'}</p>
+                            </div>
+                          </details>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {effectiveHandoverStatus === 'planned' || effectiveHandoverStatus === 'missing_link' ? (
+                              <button
+                                type="button"
+                                className="btn-secondary px-2 py-1 text-xs"
+                                onClick={() => openHandoverEditorByCategory(item.categoryKey)}
+                              >
+                                Übergabe bearbeiten
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn-primary px-2 py-1 text-xs"
+                                onClick={() => openHandoverEditorByCategory(item.categoryKey)}
+                              >
+                                Übergabe planen
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn-secondary px-2 py-1 text-xs"
+                              onClick={() => onOpenInventoryWithQuery(item.categoryKey)}
+                            >
+                              Bestand öffnen
+                            </button>
                           </div>
-                        </details>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <button
-                            type="button"
-                            className="btn-primary px-2 py-1 text-xs"
-                            onClick={() => openHandoverEditorByCategory(item.categoryKey)}
-                          >
-                            Übergabe planen
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-secondary px-2 py-1 text-xs"
-                            onClick={() => onOpenInventoryWithQuery(item.categoryKey)}
-                          >
-                            Bestand öffnen
-                          </button>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   {(availability?.categorySummary ?? []).map((row) => (
