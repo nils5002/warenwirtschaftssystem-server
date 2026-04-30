@@ -135,6 +135,14 @@ function findAssetForMaintenance(assets: Asset[], assetName: string): Asset | un
   );
 }
 
+function sanitizeActivityDetail(detail: string, knownUsers: UserItem[]): string {
+  const byId = new Map(knownUsers.map((user) => [user.id, user.name]));
+  return detail.replace(/Ausgeführt durch:\s*(usr-[a-z0-9-]+)/gi, (_, rawId: string) => {
+    const name = byId.get(rawId.trim());
+    return `Ausgeführt durch: ${name || 'Unbekannter Benutzer'}`;
+  });
+}
+
 export function useWmsController(options: UseWmsControllerOptions) {
   const accessContext = getApiAccessContext();
   const { activeRole, isAuthenticated } = options;
@@ -175,6 +183,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const loadWms = async () => {
     try {
       const payload = await fetchWmsOverview();
+      const normalizedUsers = payload.users.map((user) => ({
+        ...user,
+        role: normalizeUserRole(user.role),
+        status: normalizeUserStatus(user.status),
+      }));
       setAssets(
         payload.assets.map((asset) => ({
           ...asset,
@@ -182,17 +195,16 @@ export function useWmsController(options: UseWmsControllerOptions) {
           qrCode: getAssetQrCode(asset),
         })),
       );
-      setActivities(payload.activities);
+      setActivities(
+        payload.activities.map((item) => ({
+          ...item,
+          detail: sanitizeActivityDetail(item.detail, normalizedUsers),
+        })),
+      );
       setReservations(payload.reservations);
       setMaintenanceItems(payload.maintenanceItems);
       setLocations(payload.locations);
-      setUsers(
-        payload.users.map((user) => ({
-          ...user,
-          role: normalizeUserRole(user.role),
-          status: normalizeUserStatus(user.status),
-        })),
-      );
+      setUsers(normalizedUsers);
       setSelectedAssetId((current) => {
         if (current && payload.assets.some((item) => item.id === current)) {
           return current;
@@ -508,20 +520,17 @@ export function useWmsController(options: UseWmsControllerOptions) {
       `Ausgabe durch: ${currentOperatorName}`,
       note ? `Notiz: ${note}` : '',
     ].filter(Boolean);
+    const assignedToValue =
+      project && recipient === '-' ? `- · ${project}` : recipient !== '-' && project ? `${recipient} · ${project}` : recipient;
     const updated: Asset = {
       ...asset,
       status: 'Verliehen',
-      assignedTo: recipient !== '-' && project ? `${recipient} · ${project}` : recipient,
+      assignedTo: assignedToValue,
       nextReturn: due,
       lastCheckout: new Date().toLocaleDateString('de-DE'),
       notes: metadataLines.length ? `${asset.notes}\n${metadataLines.join('\n')}`.trim() : asset.notes,
     };
     await saveAsset(updated);
-    await addActivity(
-      'Asset ausgegeben',
-      `${asset.name} wurde an ${assignee.trim()}${project ? ` für ${project}` : ''} ausgegeben.`,
-      asset.id,
-    );
   };
 
   const checkinAsset = async (assetId: string, conditionNote?: string, projectHint?: string) => {
@@ -550,11 +559,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
       notes: `${asset.notes}\n${returnLines.join('\n')}`.trim(),
     };
     await saveAsset(updated);
-    await addActivity(
-      'Asset zurückgenommen',
-      `${asset.name} wurde zurückgenommen von ${currentOperatorName}.`,
-      asset.id,
-    );
   };
 
   const setAssetMaintenance = async (assetId: string) => {

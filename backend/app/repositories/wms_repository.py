@@ -108,6 +108,18 @@ def _normalize_maintenance_status(value: str | None) -> str:
     return "Offen"
 
 
+def _extract_checkout_assignee_and_project(assigned_to: str | None) -> tuple[str | None, str | None]:
+    raw = (assigned_to or "").strip()
+    if not raw or raw == "-":
+        return None, None
+    parts = [part.strip() for part in raw.split("·") if part.strip()]
+    if len(parts) >= 2:
+        assignee = parts[0] if parts[0] != "-" else None
+        return assignee, parts[-1]
+    assignee = parts[0] if parts[0] != "-" else None
+    return assignee, None
+
+
 def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = None) -> AssetItem:
     qr_code = record.qr_code.strip() or _build_qr_code(record.external_id, record.tag_number)
     category = (
@@ -316,14 +328,37 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
             operator_record = db.scalar(select(UserRecord).where(UserRecord.external_id == operator_user_id))
             if operator_record:
                 operator_name = operator_record.name.strip() or None
-        operator_label = (
-            f"{operator_name} ({operator_user_id})"
-            if operator_name and operator_user_id
-            else operator_user_id or "Unbekannt"
-        )
+                operator_email = operator_record.email.strip() or None
+            else:
+                operator_email = None
+        else:
+            operator_email = None
+        if operator_name:
+            operator_label = operator_name
+        elif operator_email:
+            operator_label = operator_email
+        else:
+            operator_label = "Unbekannter Benutzer"
         if previous_status == "Verfuegbar" and next_status == "Verliehen":
             title = "Checkout gebucht"
-            detail = f"{record.name} wurde ausgegeben an {payload['assigned_to']}. Ausgeführt durch: {operator_label}."
+            assignee, project = _extract_checkout_assignee_and_project(payload["assigned_to"])
+            if assignee and project:
+                detail = (
+                    f"{record.name} wurde an {assignee} für Projekt {project} ausgegeben. "
+                    f"Ausgeführt durch: {operator_label}."
+                )
+            elif project:
+                detail = (
+                    f"{record.name} wurde für Projekt {project} ausgegeben. "
+                    f"Ausgeführt durch: {operator_label}."
+                )
+            elif assignee:
+                detail = f"{record.name} wurde an {assignee} ausgegeben. Ausgeführt durch: {operator_label}."
+            else:
+                detail = (
+                    f"{record.name} wurde für Allgemeinen Einsatz ausgegeben. "
+                    f"Ausgeführt durch: {operator_label}."
+                )
         else:
             title = "Checkin gebucht"
             detail = f"{record.name} wurde zurückgenommen. Ausgeführt durch: {operator_label}."
