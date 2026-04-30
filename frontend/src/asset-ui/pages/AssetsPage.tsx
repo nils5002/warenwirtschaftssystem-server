@@ -735,7 +735,7 @@ export function AssetsPage({
             className="btn-secondary px-2.5 py-1.5 text-xs"
             onClick={() => setShowTechnicalColumns((prev) => !prev)}
           >
-            {showTechnicalColumns ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+            {showTechnicalColumns ? 'Technische Daten ausblenden' : 'Technische Daten anzeigen'}
           </button>
           <p className="text-slate-500">{filteredAssets.length} Treffer</p>
         </div>
@@ -764,8 +764,28 @@ export function AssetsPage({
         ) : null}
 
         <div className="mt-4 hidden lg:block">
-          <div className="soft-scrollbar relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-          <table className={`w-full border-separate border-spacing-y-1.5 text-sm ${showTechnicalColumns ? 'min-w-[1600px] w-[max(100%,1600px)]' : 'min-w-[1080px] w-[max(100%,1080px)]'}`}>
+          <div
+            className={`soft-scrollbar relative max-h-[68vh] rounded-xl border border-slate-200 dark:border-slate-700 ${
+              showTechnicalColumns ? 'overflow-auto' : 'overflow-y-auto overflow-x-hidden'
+            }`}
+          >
+          <table
+            className={`border-separate border-spacing-y-1.5 text-sm ${
+              showTechnicalColumns
+                ? 'w-[max(100%,1600px)] min-w-[1600px]'
+                : 'w-full table-fixed'
+            }`}
+          >
+            {!showTechnicalColumns ? (
+              <colgroup>
+                {canManageAssets ? <col style={{ width: '56px' }} /> : null}
+                <col style={{ width: '30%' }} />
+                <col style={{ width: '18%' }} />
+                <col style={{ width: '20%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '20%' }} />
+              </colgroup>
+            ) : null}
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                 {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
@@ -778,8 +798,16 @@ export function AssetsPage({
                 {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th> : null}
                 {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th> : null}
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
-                <th className="sticky top-0 z-20 min-w-[160px] bg-white px-3 py-2 dark:bg-slate-900">Status</th>
-                <th className="sticky right-0 top-0 z-30 min-w-[420px] border-l border-slate-200 bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-900">Aktion</th>
+                <th className={`sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900 ${showTechnicalColumns ? 'min-w-[160px]' : 'min-w-[140px]'}`}>Status</th>
+                <th
+                  className={`top-0 z-30 border-l border-slate-200 bg-white px-3 py-2 text-right dark:border-slate-700 dark:bg-slate-900 ${
+                    showTechnicalColumns
+                      ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)]'
+                      : 'sticky min-w-[240px]'
+                  }`}
+                >
+                  Aktion
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -851,10 +879,16 @@ export function AssetsPage({
                   <td className="px-3 py-3">
                     <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
                   </td>
-                  <td className="min-w-[160px] whitespace-nowrap px-3 py-3">
+                  <td className={`whitespace-nowrap px-3 py-3 ${showTechnicalColumns ? 'min-w-[160px]' : ''}`}>
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="sticky right-0 z-10 min-w-[420px] rounded-r-xl border-l border-slate-200 bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-800/95">
+                  <td
+                    className={`z-10 rounded-r-xl border-l border-slate-200 bg-slate-50 px-3 py-3 text-right dark:border-slate-700 dark:bg-slate-800/95 ${
+                      showTechnicalColumns
+                        ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)]'
+                        : 'min-w-[240px]'
+                    }`}
+                  >
                     <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
                       <button
                         type="button"
