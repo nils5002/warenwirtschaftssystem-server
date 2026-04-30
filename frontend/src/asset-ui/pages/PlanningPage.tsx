@@ -309,14 +309,6 @@ function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): st
   return `Mit ${detailParts.join(' · ')} abgestimmt`;
 }
 
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
 function updatePlanningItemInEditor(
   planning: EditablePlanning,
   dayIndex: number,
@@ -772,28 +764,38 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     const accentByPlanningId = new Map<string, HandoverNetworkAccent>();
     if (!planningListHandoverSummaryById.size) return accentByPlanningId;
 
+    const visiblePlanningById = new Map(visiblePlannings.map((planning) => [planning.id, planning]));
     const adjacency = new Map<string, Set<string>>();
+    const addNode = (planningId: string) => {
+      if (!planningId) return;
+      if (!adjacency.has(planningId)) adjacency.set(planningId, new Set<string>());
+    };
     const addEdge = (from: string, to: string) => {
       if (!from || !to) return;
-      const fromSet = adjacency.get(from) ?? new Set<string>();
-      fromSet.add(to);
-      adjacency.set(from, fromSet);
-      const toSet = adjacency.get(to) ?? new Set<string>();
-      toSet.add(from);
-      adjacency.set(to, toSet);
+      addNode(from);
+      addNode(to);
+      adjacency.get(from)?.add(to);
+      adjacency.get(to)?.add(from);
     };
 
     for (const [planningId, summary] of planningListHandoverSummaryById.entries()) {
-      if (!adjacency.has(planningId)) adjacency.set(planningId, new Set<string>());
+      addNode(planningId);
       if (summary.partnerPlanningId) addEdge(planningId, summary.partnerPlanningId);
     }
 
+    type NetworkComponent = {
+      members: string[];
+      earliestStartDate: string;
+      smallestPlanningId: string;
+    };
+    const components: NetworkComponent[] = [];
     const visited = new Set<string>();
     for (const planningId of planningListHandoverSummaryById.keys()) {
       if (visited.has(planningId)) continue;
       const queue = [planningId];
       const component = new Set<string>();
       visited.add(planningId);
+
       while (queue.length) {
         const current = queue.shift();
         if (!current) continue;
@@ -804,17 +806,40 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
           queue.push(neighbour);
         }
       }
-      const signature = Array.from(component).sort().join('|');
-      const accent = HANDOVER_NETWORK_ACCENTS[hashString(signature) % HANDOVER_NETWORK_ACCENTS.length];
-      for (const member of component) {
-        if (planningListHandoverSummaryById.has(member)) {
-          accentByPlanningId.set(member, accent);
-        }
-      }
+
+      const members = Array.from(component)
+        .filter((member) => planningListHandoverSummaryById.has(member))
+        .sort((a, b) => a.localeCompare(b, 'de'));
+      if (!members.length) continue;
+
+      const earliestStartDate = members.reduce((earliest, member) => {
+        const startDate = visiblePlanningById.get(member)?.startDate ?? '9999-12-31';
+        return startDate < earliest ? startDate : earliest;
+      }, '9999-12-31');
+
+      components.push({
+        members,
+        earliestStartDate,
+        smallestPlanningId: members[0] ?? '',
+      });
     }
 
+    components
+      .sort((a, b) => {
+        if (a.earliestStartDate !== b.earliestStartDate) {
+          return a.earliestStartDate.localeCompare(b.earliestStartDate);
+        }
+        return a.smallestPlanningId.localeCompare(b.smallestPlanningId, 'de');
+      })
+      .forEach((component, index) => {
+        const accent = HANDOVER_NETWORK_ACCENTS[index % HANDOVER_NETWORK_ACCENTS.length];
+        for (const member of component.members) {
+          accentByPlanningId.set(member, accent);
+        }
+      });
+
     return accentByPlanningId;
-  }, [planningListHandoverSummaryById]);
+  }, [planningListHandoverSummaryById, visiblePlannings]);
 
   const handoverProjectOptions = useMemo(() => {
     const activeStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Bestaetigt'];
