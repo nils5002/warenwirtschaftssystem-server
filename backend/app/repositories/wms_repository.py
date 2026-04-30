@@ -555,9 +555,6 @@ def delete_user(db: Session, external_id: str, *, actor_user_id: str | None = No
         if len(active_admins) <= 1 and any(user.external_id == external_id for user in active_admins):
             raise HTTPException(status_code=409, detail="Der letzte aktive Admin kann nicht gelöscht werden.")
 
-    if _normalize_user_status(record.status) == "Inaktiv":
-        return True
-
     db.delete(record)
     db.commit()
     return True
