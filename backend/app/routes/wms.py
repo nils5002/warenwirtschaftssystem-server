@@ -89,15 +89,13 @@ def upsert_asset(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> AssetItem:
-    if context.role == "mitarbeiter":
+    if context.role in {"mitarbeiter", "projektmanager"}:
         existing = WmsService.get_asset(db, asset.id)
         if not _movement_only_allowed(existing, asset):
             raise HTTPException(
                 status_code=403,
-                detail="Mitarbeiter dürfen nur Ausgabe/Rückgabe-Statuswechsel buchen.",
+                detail="Nur Ausgabe/Rückgabe-Statuswechsel sind in dieser Rolle erlaubt.",
             )
-    elif context.role == "projektmanager":
-        raise HTTPException(status_code=403, detail="Projektmanager dürfen keine Assets direkt bearbeiten.")
     return WmsService.upsert_asset(db, asset, actor_user_id=context.user_id)
 
 
