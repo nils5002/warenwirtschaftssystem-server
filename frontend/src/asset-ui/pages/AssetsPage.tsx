@@ -49,6 +49,7 @@ const DEFAULT_CATEGORIES = [
   'Zubehör',
   'Sonstiges',
 ];
+const TECH_COLUMNS_STORAGE_KEY = 'inventory-show-tech-columns';
 
 function defaultNameForCategory(category: string): string {
   const normalized = category.toLowerCase();
@@ -129,6 +130,7 @@ export function AssetsPage({
   const [status, setStatus] = useState('Alle Status');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [onlyBroken, setOnlyBroken] = useState(false);
+  const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
@@ -199,6 +201,17 @@ export function AssetsPage({
   useEffect(() => {
     setSearch(initialSearch ?? '');
   }, [initialSearch]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(TECH_COLUMNS_STORAGE_KEY);
+    if (stored === '1') setShowTechnicalColumns(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(TECH_COLUMNS_STORAGE_KEY, showTechnicalColumns ? '1' : '0');
+  }, [showTechnicalColumns]);
 
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => assets.some((asset) => asset.id === id)));
@@ -717,6 +730,13 @@ export function AssetsPage({
             />
             Nur defekte Assets
           </label>
+          <button
+            type="button"
+            className="btn-secondary px-2.5 py-1.5 text-xs"
+            onClick={() => setShowTechnicalColumns((prev) => !prev)}
+          >
+            {showTechnicalColumns ? 'Weniger anzeigen' : 'Mehr anzeigen'}
+          </button>
           <p className="text-slate-500">{filteredAssets.length} Treffer</p>
         </div>
 
@@ -745,18 +765,18 @@ export function AssetsPage({
 
         <div className="mt-4 hidden lg:block">
           <div className="soft-scrollbar relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-          <table className="w-[max(100%,1600px)] min-w-[1600px] border-separate border-spacing-y-1.5 text-sm">
+          <table className={`w-full border-separate border-spacing-y-1.5 text-sm ${showTechnicalColumns ? 'min-w-[1600px] w-[max(100%,1600px)]' : 'min-w-[1080px] w-[max(100%,1080px)]'}`}>
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
                 {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Name</th>
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Kategorie</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Modell</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Seriennummer</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">IP-Adresse</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC LAN</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th>
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Modell</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Seriennummer</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">IP-Adresse</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC LAN</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th> : null}
                 <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
                 <th className="sticky top-0 z-20 min-w-[160px] bg-white px-3 py-2 dark:bg-slate-900">Status</th>
                 <th className="sticky right-0 top-0 z-30 min-w-[420px] border-l border-slate-200 bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-900">Aktion</th>
@@ -798,24 +818,36 @@ export function AssetsPage({
                       <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[120px] truncate align-bottom" title={asset.model || '-'}>{asset.model || '-'}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.serialNumber}>{asset.serialNumber}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[110px] truncate align-bottom" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
-                  </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
-                  </td>
-                  <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
-                    <span className="inline-block max-w-[150px] truncate align-bottom" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber}</span>
-                  </td>
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3">
+                      <span className="inline-block max-w-[120px] truncate align-bottom" title={asset.model || '-'}>{asset.model || '-'}</span>
+                    </td>
+                  ) : null}
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3">
+                      <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.serialNumber}>{asset.serialNumber}</span>
+                    </td>
+                  ) : null}
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3">
+                      <span className="inline-block max-w-[110px] truncate align-bottom" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
+                    </td>
+                  ) : null}
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3">
+                      <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
+                    </td>
+                  ) : null}
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3">
+                      <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
+                    </td>
+                  ) : null}
+                  {showTechnicalColumns ? (
+                    <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                      <span className="inline-block max-w-[150px] truncate align-bottom" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber}</span>
+                    </td>
+                  ) : null}
                   <td className="px-3 py-3">
                     <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
                   </td>
