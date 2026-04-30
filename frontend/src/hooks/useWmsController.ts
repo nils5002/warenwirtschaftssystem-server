@@ -143,6 +143,11 @@ function sanitizeActivityDetail(detail: string, knownUsers: UserItem[]): string 
   });
 }
 
+function isHiddenLegacyCheckoutCheckinActivity(title: string): boolean {
+  const normalized = title.trim().toLowerCase();
+  return normalized === 'asset ausgegeben' || normalized === 'asset zurückgenommen';
+}
+
 export function useWmsController(options: UseWmsControllerOptions) {
   const accessContext = getApiAccessContext();
   const { activeRole, isAuthenticated } = options;
@@ -196,10 +201,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
         })),
       );
       setActivities(
-        payload.activities.map((item) => ({
-          ...item,
-          detail: sanitizeActivityDetail(item.detail, normalizedUsers),
-        })),
+        payload.activities
+          .filter((item) => !isHiddenLegacyCheckoutCheckinActivity(item.title))
+          .map((item) => ({
+            ...item,
+            detail: sanitizeActivityDetail(item.detail, normalizedUsers),
+          })),
       );
       setReservations(payload.reservations);
       setMaintenanceItems(payload.maintenanceItems);
