@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..database.models import (
@@ -218,7 +218,11 @@ def _user_to_schema(record: UserRecord) -> UserItem:
 
 
 def list_assets(db: Session) -> list[AssetItem]:
-    stmt = select(AssetRecord).order_by(AssetRecord.created_at.desc())
+    stmt = select(AssetRecord).order_by(
+        func.lower(AssetRecord.category).asc(),
+        func.lower(AssetRecord.name).asc(),
+        AssetRecord.external_id.asc(),
+    )
     known_categories = category_repository.active_category_names(db)
     return [_asset_to_schema(item, known_categories) for item in db.scalars(stmt).all()]
 

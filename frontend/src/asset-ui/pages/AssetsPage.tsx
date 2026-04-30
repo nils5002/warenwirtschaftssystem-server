@@ -121,6 +121,7 @@ export function AssetsPage({
   onNavigate,
 }: AssetsPageProps) {
   const { prompt, alert, confirm } = useAppDialog();
+  const naturalSort = useMemo(() => new Intl.Collator('de', { numeric: true, sensitivity: 'base' }), []);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const serialRef = useRef<HTMLInputElement | null>(null);
 
@@ -170,7 +171,8 @@ export function AssetsPage({
 
   const filteredAssets = useMemo(
     () =>
-      assets.filter((asset) => {
+      assets
+      .filter((asset) => {
         const matchesSearch = [asset.name, asset.tagNumber, asset.serialNumber, asset.assignedTo]
           .join(' ')
           .toLowerCase()
@@ -188,8 +190,15 @@ export function AssetsPage({
           matchesAvailable &&
           matchesBroken
         );
+      })
+      .sort((left, right) => {
+        const categoryCompare = naturalSort.compare(left.category || '', right.category || '');
+        if (categoryCompare !== 0) return categoryCompare;
+        const nameCompare = naturalSort.compare(left.name || '', right.name || '');
+        if (nameCompare !== 0) return nameCompare;
+        return naturalSort.compare(left.id, right.id);
       }),
-    [assets, category, location, onlyAvailable, onlyBroken, search, status],
+    [assets, category, location, naturalSort, onlyAvailable, onlyBroken, search, status],
   );
 
   const quickViewAsset = assets.find((asset) => asset.id === quickViewId) ?? null;
