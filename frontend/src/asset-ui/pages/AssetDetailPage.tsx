@@ -4,6 +4,11 @@ import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
 import type { ActivityItem, AppRole, Asset, MaintenanceItem } from '../types';
 
+function trimActivityAssetPrefix(detail: string, assetName: string): string {
+  const escaped = assetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return detail.replace(new RegExp(`^${escaped}\\s+`, 'i'), '');
+}
+
 type AssetDetailPageProps = {
   activeRole: AppRole;
   asset: Asset | null;
@@ -364,10 +369,15 @@ export function AssetDetailPage({
             timeline.map((item) => (
               <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">{item.title}</p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-sm font-medium text-slate-900">{item.title}</p>
+                    <span className="inline-flex shrink-0 items-center rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-800">
+                      {asset.tagNumber}
+                    </span>
+                  </div>
                   <span className="text-xs text-slate-500">{item.timestamp}</span>
                 </div>
-                <p className="mt-1 text-xs text-slate-600">{item.detail}</p>
+                <p className="mt-1 text-xs text-slate-600">{trimActivityAssetPrefix(item.detail, asset.name)}</p>
               </div>
             ))
           ) : (
