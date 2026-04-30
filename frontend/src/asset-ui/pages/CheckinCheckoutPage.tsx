@@ -76,7 +76,7 @@ export function CheckinCheckoutPage({
   const [checkoutNote, setCheckoutNote] = useState('');
   const [checkoutScan, setCheckoutScan] = useState('');
 
-  const [checkinAssetId, setCheckinAssetId] = useState<string>(assets[0]?.id ?? '');
+  const [checkinAssetId, setCheckinAssetId] = useState<string>('');
   const [checkinCondition, setCheckinCondition] = useState('');
   const [checkinProject, setCheckinProject] = useState('');
   const [checkinScan, setCheckinScan] = useState('');
@@ -95,7 +95,6 @@ export function CheckinCheckoutPage({
   const checkoutProjectRef = useRef<HTMLInputElement | null>(null);
   const checkoutSubmitRef = useRef<HTMLButtonElement | null>(null);
   const checkinScanRef = useRef<HTMLInputElement | null>(null);
-  const checkinProjectRef = useRef<HTMLInputElement | null>(null);
   const checkinSubmitRef = useRef<HTMLButtonElement | null>(null);
 
   const focusElement = (element: HTMLElement | null) => {
@@ -128,8 +127,8 @@ export function CheckinCheckoutPage({
     if (!assets.some((asset) => asset.id === checkoutAssetId)) {
       setCheckoutAssetId(assets[0].id);
     }
-    if (!assets.some((asset) => asset.id === checkinAssetId)) {
-      setCheckinAssetId(assets[0].id);
+    if (checkinAssetId && !assets.some((asset) => asset.id === checkinAssetId)) {
+      setCheckinAssetId('');
     }
   }, [assets, checkoutAssetId, checkinAssetId]);
 
@@ -194,6 +193,14 @@ export function CheckinCheckoutPage({
       setCheckoutAssignee(lastAssignee.trim());
     }
   }, [checkoutAssignee, lastAssignee]);
+
+  const resetCheckinState = () => {
+    setCheckinAssetId('');
+    setCheckinProject('');
+    setCheckinCondition('');
+    setCheckinScan('');
+    setShowCheckinOptions(false);
+  };
 
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
     const scanValue = (rawScan ?? checkoutScan).trim();
@@ -387,7 +394,7 @@ export function CheckinCheckoutPage({
         kind: 'error',
         text: `Projekt passt nicht. Gerät ist aktuell für "${checkinContextProject}" verbucht.`,
       });
-      focusElement(checkinProjectRef.current);
+      setShowCheckinOptions(true);
       return;
     }
 
@@ -399,9 +406,7 @@ export function CheckinCheckoutPage({
       projectName: resolvedProject,
     });
 
-    setCheckinProject('');
-    setCheckinCondition('');
-    setCheckinScan('');
+    resetCheckinState();
     setMessage({ kind: 'success', text: `${checkinAsset.name} wurde zurückgenommen.` });
     focusElement(checkinScanRef.current);
   };
@@ -447,6 +452,7 @@ export function CheckinCheckoutPage({
             }`}
             onClick={() => {
               setMode('checkin');
+              resetCheckinState();
               setMessage(null);
             }}
           >
@@ -631,7 +637,7 @@ export function CheckinCheckoutPage({
           <div className="flex items-center justify-between">
             <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
               <Undo2 className="h-4 w-4 text-slate-700" />
-              Rücknahme in 3 Schritten
+              Rücknahme in 2 Schritten
             </h3>
             <span className="status-chip border-slate-200 bg-slate-50 text-slate-700">
               <span className="status-dot bg-slate-600" />
@@ -674,22 +680,19 @@ export function CheckinCheckoutPage({
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Schritt 2</p>
             {checkinAsset ? (
               <>
-                <p className="mt-1 font-semibold text-slate-900">{checkinAsset.name}</p>
-                <p className="mt-1 text-slate-700">Aktuell zugeordnet: {checkinAsset.assignedTo}</p>
-                <p className="text-slate-700">Projekt: {checkinContextProject || checkinProject || '-'}</p>
-                <div className="mt-2 inline-flex items-center gap-2">
-                  <span className="text-xs text-slate-500">Status</span>
-                  <StatusBadge value={checkinAsset.status} />
-                </div>
+                <p className="mt-1 font-semibold text-slate-900">
+                  Erkannt: {checkinAsset.tagNumber} · {checkinAsset.name}
+                </p>
               </>
             ) : (
               <p className="mt-1 text-slate-600">Noch kein Gerät gescannt.</p>
             )}
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 3</p>
-            <button ref={checkinSubmitRef} className="btn-dark mt-2 hidden w-full sm:inline-flex" onClick={() => void checkinNow()}>
+            <button
+              ref={checkinSubmitRef}
+              className="btn-dark mt-2 hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+              onClick={() => void checkinNow()}
+              disabled={!checkinAsset}
+            >
               <ClipboardCheck className="h-4 w-4" />
               Rücknahme bestätigen
             </button>
@@ -724,7 +727,6 @@ export function CheckinCheckoutPage({
               <label className="field">
                 Projekt (optional)
                 <input
-                  ref={checkinProjectRef}
                   list="checkin-project-options"
                   className="field-input"
                   placeholder="Projekt bestätigen"
@@ -762,7 +764,11 @@ export function CheckinCheckoutPage({
             Jetzt ausgeben
           </button>
         ) : (
-          <button className="btn-dark w-full py-3 text-base" onClick={() => void checkinNow()}>
+          <button
+            className="btn-dark w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void checkinNow()}
+            disabled={!checkinAsset}
+          >
             <ClipboardCheck className="h-5 w-5" />
             Rücknahme bestätigen
           </button>
