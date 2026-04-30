@@ -453,6 +453,89 @@ def test_handover_update_is_persisted_across_get_and_availability_reload() -> No
     assert availability_item["linkedPlanningLabel"] == created_partner.json()["projectName"]
 
 
+def test_planning_list_marks_outgoing_and_incoming_handover_networks() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date(2026, 4, 30)
+    owner_user_id = f"pm-list-owner-{suffix}"
+    partner_user_id = f"pm-list-partner-{suffix}"
+
+    partner_payload = {
+        "customerName": f"Kunde Listen Partner {suffix}",
+        "projectName": f"Projekt Listen Partner {suffix}",
+        "eventName": "Partnerliste",
+        "projectManagerUserId": partner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Partnerprojekt für Listenansicht",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Donnerstag",
+                "items": [{"categoryKey": "iPad", "qty": 8, "notes": None}],
+            }
+        ],
+    }
+    owner_payload = {
+        "customerName": f"Kunde Listen Owner {suffix}",
+        "projectName": f"Projekt Listen Owner {suffix}",
+        "eventName": "Ownerliste",
+        "projectManagerUserId": owner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Ownerprojekt für Listenansicht",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Donnerstag",
+                "items": [{"categoryKey": "iPad", "qty": 30, "notes": None}],
+            }
+        ],
+    }
+
+    created_partner = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", partner_user_id), json=partner_payload)
+    created_owner = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", owner_user_id), json=owner_payload)
+    assert created_partner.status_code == 200
+    assert created_owner.status_code == 200
+
+    owner_id = created_owner.json()["id"]
+    partner_id = created_partner.json()["id"]
+
+    existing_owner = client.get(f"/api/wms/planning/{owner_id}", headers=_headers(client, "Projektmanager", owner_user_id))
+    assert existing_owner.status_code == 200
+    update_payload = existing_owner.json()
+    update_payload["days"][0]["items"][0]["handoverEnabled"] = True
+    update_payload["days"][0]["items"][0]["linkedPlanningId"] = partner_id
+    update_payload["days"][0]["items"][0]["handoverNote"] = "Verbund für Listenansicht"
+
+    updated = client.put(
+        f"/api/wms/planning/{owner_id}",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+        json=update_payload,
+    )
+    assert updated.status_code == 200
+
+    planning_list = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
+    assert planning_list.status_code == 200
+    items_by_id = {item["id"]: item for item in planning_list.json()}
+
+    owner_summary = items_by_id[owner_id]["handoverSummary"]
+    assert owner_summary["direction"] == "outgoing"
+    assert owner_summary["partnerPlanningId"] == partner_id
+    assert owner_summary["partnerPlanningLabel"].startswith("Projekt Listen Partner")
+    assert "iPad" in owner_summary["categoryKeys"]
+
+    partner_summary = items_by_id[partner_id]["handoverSummary"]
+    assert partner_summary["direction"] == "incoming"
+    assert partner_summary["partnerPlanningId"] == owner_id
+    assert partner_summary["partnerPlanningLabel"].startswith("Projekt Listen Owner")
+    assert "iPad" in partner_summary["categoryKeys"]
+
+
 def test_handover_planning_does_not_change_real_asset_status() -> None:
     client = TestClient(app)
     suffix = uuid4().hex[:8]

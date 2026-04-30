@@ -228,6 +228,26 @@ function buildPlanningFallbackLabel(
   return buildPlanningLabel(match);
 }
 
+function buildPlanningListHandoverHint(item: PlanningListItem): string {
+  const summary = item.handoverSummary;
+  if (!summary) return '';
+  const partnerLabel =
+    summary.partnerPlanningLabel?.trim() ||
+    (summary.partnerPlanningId ? `Projektverknüpfung (${summary.partnerPlanningId.slice(-6)})` : 'Partnerprojekt');
+  const categoryLabel = summary.categoryKeys[0] ?? '';
+  const partnerSuffix = summary.partnerPlanningCount > 1 ? ` +${summary.partnerPlanningCount - 1}` : '';
+  const categorySuffix = summary.categoryKeys.length > 1 ? ` +${summary.categoryKeys.length - 1}` : '';
+  const detailParts = [partnerLabel + partnerSuffix, categoryLabel ? `${categoryLabel}${categorySuffix}` : ''].filter(Boolean);
+
+  if (summary.direction === 'incoming') {
+    return `Teil des Verbunds mit ${detailParts.join(' · ')}`;
+  }
+  if (summary.direction === 'mixed') {
+    return `Mit ${detailParts.join(' · ')} abgestimmt`;
+  }
+  return `Mit ${detailParts.join(' · ')} abgestimmt`;
+}
+
 function updatePlanningItemInEditor(
   planning: EditablePlanning,
   dayIndex: number,
@@ -1009,12 +1029,17 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
             {visiblePlannings.map((item) => {
               const isActive = selectedId === item.id;
+              const hasHandoverNetwork = Boolean(item.handoverSummary);
               return (
                 <div
                   key={item.id}
                   data-testid={`planning-row-${item.id}`}
                   className={`rounded-xl border p-3 ${
-                    isActive ? 'border-brand-200 bg-brand-50/60' : 'border-slate-200 bg-slate-50'
+                    isActive
+                      ? 'border-brand-200 bg-brand-50/60'
+                      : hasHandoverNetwork
+                        ? 'border-sky-200 bg-sky-50/55 dark:border-sky-800 dark:bg-sky-950/20'
+                        : 'border-slate-200 bg-slate-50'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -1035,6 +1060,19 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                       ? managerLabelById.get(item.projectManagerUserId) ?? '-'
                       : '-'}
                   </p>
+                  {item.handoverSummary ? (
+                    <div className="mt-2 rounded-xl border border-sky-200 bg-white/75 px-2.5 py-2 text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-slate-950/50 dark:text-sky-100">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
+                          <Link2 className="h-3.5 w-3.5" />
+                          Übergabe-Verbund
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-sky-800 dark:text-sky-100">
+                        {buildPlanningListHandoverHint(item)}
+                      </p>
+                    </div>
+                  ) : null}
 
                   <div className="mt-2 grid gap-2">
                     <select
