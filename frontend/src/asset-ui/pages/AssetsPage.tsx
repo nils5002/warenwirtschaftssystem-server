@@ -1,4 +1,4 @@
-import { Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import { Eye, Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { AssetQuickView } from '../components/AssetQuickView';
@@ -743,27 +743,28 @@ export function AssetsPage({
           </div>
         ) : null}
 
-        <div className="soft-scrollbar mt-4 hidden overflow-x-auto lg:block">
-          <table className="w-full min-w-[1280px] border-separate border-spacing-y-2 text-sm">
+        <div className="mt-4 hidden lg:block">
+          <div className="soft-scrollbar relative max-h-[68vh] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+          <table className="w-full min-w-[1180px] border-separate border-spacing-y-1.5 text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                {canManageAssets ? <th className="px-3 py-2">Auswahl</th> : null}
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Kategorie</th>
-                <th className="px-3 py-2">Modell</th>
-                <th className="px-3 py-2">Seriennummer</th>
-                <th className="px-3 py-2">IP-Adresse</th>
-                <th className="px-3 py-2">MAC LAN</th>
-                <th className="px-3 py-2">MAC WLAN</th>
-                <th className="px-3 py-2">QR / Asset-ID</th>
-                <th className="px-3 py-2">Zugewiesen an</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2 text-right">Aktion</th>
+                {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Name</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Kategorie</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Modell</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Seriennummer</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">IP-Adresse</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC LAN</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
+                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Status</th>
+                <th className="sticky right-0 top-0 z-30 bg-white px-3 py-2 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-900">Aktion</th>
               </tr>
             </thead>
             <tbody>
               {filteredAssets.map((asset, rowIndex) => (
-                <tr key={asset.id} className="rounded-xl bg-slate-50 text-slate-700">
+                <tr key={asset.id} className="rounded-xl bg-slate-50 text-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
                   {canManageAssets ? (
                     <td className="rounded-l-xl px-3 py-3">
                       <input
@@ -777,7 +778,7 @@ export function AssetsPage({
                     </td>
                   ) : null}
                   <td className="rounded-l-xl px-3 py-3">
-                    <p className="font-semibold text-slate-900">{asset.name}</p>
+                    <p className="max-w-[220px] truncate font-semibold text-slate-900 dark:text-slate-100" title={asset.name}>{asset.name}</p>
                   </td>
                   <td className="px-3 py-3">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
@@ -794,20 +795,34 @@ export function AssetsPage({
                         ))}
                       </select>
                     ) : (
-                      asset.category
+                      <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  <td className="px-3 py-3">{asset.model || '-'}</td>
-                  <td className="px-3 py-3">{asset.serialNumber}</td>
-                  <td className="px-3 py-3">{asset.ipAddress || '-'}</td>
-                  <td className="px-3 py-3">{asset.macLan || '-'}</td>
-                  <td className="px-3 py-3">{asset.macWlan || '-'}</td>
-                  <td className="px-3 py-3 text-xs text-slate-500">{asset.qrCode || asset.tagNumber}</td>
-                  <td className="px-3 py-3">{asset.assignedTo}</td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[120px] truncate align-bottom" title={asset.model || '-'}>{asset.model || '-'}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.serialNumber}>{asset.serialNumber}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[110px] truncate align-bottom" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="inline-block max-w-[150px] truncate align-bottom" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
+                  </td>
                   <td className="px-3 py-3">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="rounded-r-xl px-3 py-3 text-right">
+                  <td className="sticky right-0 z-10 rounded-r-xl bg-slate-50 px-3 py-3 text-right shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)] dark:bg-slate-800/95">
                     <div className="flex justify-end gap-1.5">
                       <button
                         type="button"
@@ -826,8 +841,10 @@ export function AssetsPage({
                         type="button"
                         className="btn-ghost px-2 py-1 text-xs"
                         onClick={() => setQuickViewId(asset.id)}
+                        title="Schnellansicht"
+                        aria-label="Schnellansicht"
                       >
-                        Schnellansicht
+                        <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button type="button" className="btn-primary px-2 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
                         Detail
@@ -844,6 +861,7 @@ export function AssetsPage({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 lg:hidden">
