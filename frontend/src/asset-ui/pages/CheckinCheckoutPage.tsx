@@ -11,17 +11,17 @@ type CheckinCheckoutPageProps = {
   assets: Asset[];
   users: UserItem[];
   activeRole: AppRole;
+  operatorName: string;
   projectContext: string;
   onProjectContextChange: (value: string) => void;
   onCheckout: (payload: {
     assetId: string;
     assignee: string;
     projectName?: string;
-    bookedBy?: string;
     dueDate: string;
     note: string;
   }) => void;
-  onCheckin: (payload: { assetId: string; condition: string; returnedBy?: string; projectName?: string }) => void;
+  onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => void;
 };
 
 type Mode = 'checkout' | 'checkin';
@@ -56,6 +56,7 @@ export function CheckinCheckoutPage({
   assets,
   users,
   activeRole,
+  operatorName,
   projectContext,
   onProjectContextChange,
   onCheckout,
@@ -71,14 +72,12 @@ export function CheckinCheckoutPage({
   const [checkoutAssetId, setCheckoutAssetId] = useState<string>(assets[0]?.id ?? '');
   const [checkoutAssignee, setCheckoutAssignee] = useState('');
   const [checkoutProject, setCheckoutProject] = useState('');
-  const [checkoutBookedBy, setCheckoutBookedBy] = useState('Lager');
   const [checkoutDueDate, setCheckoutDueDate] = useState(plusTwoDays);
   const [checkoutNote, setCheckoutNote] = useState('');
   const [checkoutScan, setCheckoutScan] = useState('');
 
   const [checkinAssetId, setCheckinAssetId] = useState<string>(assets[0]?.id ?? '');
   const [checkinCondition, setCheckinCondition] = useState('');
-  const [checkinReturnedBy, setCheckinReturnedBy] = useState('Lager');
   const [checkinProject, setCheckinProject] = useState('');
   const [checkinScan, setCheckinScan] = useState('');
 
@@ -242,7 +241,7 @@ export function CheckinCheckoutPage({
       return true;
     }
 
-    setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Person wählen.` });
+    setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Empfänger eingeben.` });
     focusElement(checkoutPersonRef.current);
     return true;
   };
@@ -348,7 +347,6 @@ export function CheckinCheckoutPage({
       assetId: checkoutAsset.id,
       assignee: checkoutAssignee.trim(),
       projectName: normalizedProject,
-      bookedBy: checkoutBookedBy.trim() || 'Lager',
       dueDate: checkoutDueDate,
       note: checkoutNote.trim(),
     });
@@ -401,7 +399,6 @@ export function CheckinCheckoutPage({
     onCheckin({
       assetId: checkinAsset.id,
       condition: checkinCondition.trim() || 'Zustand geprüft.',
-      returnedBy: checkinReturnedBy.trim() || 'Lager',
       projectName: resolvedProject,
     });
 
@@ -492,6 +489,7 @@ export function CheckinCheckoutPage({
               Scan zuerst
             </span>
           </div>
+          <p className="text-sm text-slate-600">Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span></p>
 
           <div className="rounded-xl border border-brand-100 bg-brand-50/70 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Schritt 1</p>
@@ -624,14 +622,10 @@ export function CheckinCheckoutPage({
                     onChange={(event) => setCheckoutDueDate(event.target.value)}
                   />
                 </label>
-                <label className="field">
-                  Ausgabe durch
-                  <input
-                    className="field-input"
-                    value={checkoutBookedBy}
-                    onChange={(event) => setCheckoutBookedBy(event.target.value)}
-                  />
-                </label>
+              <label className="field">
+                Ausgeführt durch
+                <input className="field-input bg-slate-100 text-slate-700" value={operatorName} readOnly />
+              </label>
               </div>
               <label className="field">
                 Notiz
@@ -657,6 +651,7 @@ export function CheckinCheckoutPage({
               Schnellmodus
             </span>
           </div>
+          <p className="text-sm text-slate-600">Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span></p>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 1</p>
@@ -756,12 +751,8 @@ export function CheckinCheckoutPage({
                 </datalist>
               </label>
               <label className="field">
-                Rücknahme durch
-                <input
-                  className="field-input"
-                  value={checkinReturnedBy}
-                  onChange={(event) => setCheckinReturnedBy(event.target.value)}
-                />
+                Ausgeführt durch
+                <input className="field-input bg-slate-100 text-slate-700" value={operatorName} readOnly />
               </label>
               <label className="field">
                 Notiz

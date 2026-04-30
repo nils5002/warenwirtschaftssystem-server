@@ -25,6 +25,7 @@ type WmsPageViewProps = {
   activePage: AppPage;
   activeRole: AppRole;
   currentUserId: string;
+  currentUserName: string;
   projectContext: string;
   onProjectContextChange: (value: string) => void;
   assets: Asset[];
@@ -106,14 +107,12 @@ type WmsPageViewProps = {
     assetId: string;
     assignee: string;
     projectName?: string;
-    bookedBy?: string;
     dueDate: string;
     note: string;
   }) => Promise<void>;
   onCheckinFromForm: (payload: {
     assetId: string;
     condition: string;
-    returnedBy?: string;
     projectName?: string;
   }) => Promise<void>;
   onNavigate: (page: AppPage) => void;
@@ -124,6 +123,7 @@ export function WmsPageView({
   activePage,
   activeRole,
   currentUserId,
+  currentUserName,
   projectContext,
   onProjectContextChange,
   assets,
@@ -271,6 +271,7 @@ export function WmsPageView({
           assets={assets}
           users={users}
           activeRole={activeRole}
+          operatorName={currentUserName}
           projectContext={projectContext}
           onProjectContextChange={onProjectContextChange}
           onCheckout={(payload) => {

@@ -42,8 +42,8 @@ class WmsService:
         return wms_repository.get_asset(db, asset_id)
 
     @staticmethod
-    def upsert_asset(db: Session, asset: AssetItem) -> AssetItem:
-        return wms_repository.upsert_asset(db, asset)
+    def upsert_asset(db: Session, asset: AssetItem, *, actor_user_id: str | None = None) -> AssetItem:
+        return wms_repository.upsert_asset(db, asset, actor_user_id=actor_user_id)
 
     @staticmethod
     def delete_asset(db: Session, asset_id: str) -> bool:

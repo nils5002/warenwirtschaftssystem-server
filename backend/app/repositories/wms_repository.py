@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -276,9 +277,10 @@ def _sync_asset_maintenance_status(db: Session, maintenance: MaintenanceRecord) 
         asset.maintenance_state = "Wartung erledigt"
 
 
-def upsert_asset(db: Session, item: AssetItem) -> AssetItem:
+def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = None) -> AssetItem:
     stmt = select(AssetRecord).where(AssetRecord.external_id == item.id)
     record = db.scalar(stmt)
+    previous_status = _normalize_asset_status(record.status) if record else None
     payload = {
         "name": item.name,
         "category": category_repository.normalize_category_for_db(db, item.category),
@@ -305,6 +307,35 @@ def upsert_asset(db: Session, item: AssetItem) -> AssetItem:
     else:
         record = AssetRecord(external_id=item.id, **payload)
         db.add(record)
+    next_status = _normalize_asset_status(payload["status"])
+    if record and previous_status != next_status and previous_status in {"Verfuegbar", "Verliehen"} and next_status in {"Verfuegbar", "Verliehen"}:
+        operator_user_id = None
+        operator_name = None
+        if isinstance(actor_user_id, str) and actor_user_id.strip():
+            operator_user_id = actor_user_id.strip()
+            operator_record = db.scalar(select(UserRecord).where(UserRecord.external_id == operator_user_id))
+            if operator_record:
+                operator_name = operator_record.name.strip() or None
+        operator_label = (
+            f"{operator_name} ({operator_user_id})"
+            if operator_name and operator_user_id
+            else operator_user_id or "Unbekannt"
+        )
+        if previous_status == "Verfuegbar" and next_status == "Verliehen":
+            title = "Checkout gebucht"
+            detail = f"{record.name} wurde ausgegeben an {payload['assigned_to']}. Ausgeführt durch: {operator_label}."
+        else:
+            title = "Checkin gebucht"
+            detail = f"{record.name} wurde zurückgenommen. Ausgeführt durch: {operator_label}."
+        db.add(
+            ActivityRecord(
+                external_id=f"act-srv-{secrets.token_hex(8)}",
+                title=title,
+                detail=detail,
+                timestamp_text=datetime.now(UTC).strftime("%d.%m.%Y %H:%M"),
+                asset_external_id=record.external_id,
+            )
+        )
     db.commit()
     db.refresh(record)
     return _asset_to_schema(record, category_repository.active_category_names(db))

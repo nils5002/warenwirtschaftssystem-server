@@ -98,7 +98,7 @@ def upsert_asset(
             )
     elif context.role == "projektmanager":
         raise HTTPException(status_code=403, detail="Projektmanager dürfen keine Assets direkt bearbeiten.")
-    return WmsService.upsert_asset(db, asset)
+    return WmsService.upsert_asset(db, asset, actor_user_id=context.user_id)
 
 
 @router.delete("/assets/{asset_id}")
