@@ -22,7 +22,8 @@ from ..schemas.planning import (
     PlanningUpsertPayload,
 )
 
-ACTIVE_PLANNING_STATUSES = {"Geplant", "Bestaetigt"}
+# Include "Entwurf" so planning conflicts are visible early during project preparation.
+ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt"}
 
 
 def _normalize_status(value: str | PlanningStatus) -> PlanningStatus:

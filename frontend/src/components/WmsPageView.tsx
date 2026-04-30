@@ -21,6 +21,7 @@ import type {
   UserItem,
 } from '../asset-ui/types';
 import type { Theme } from '../hooks/useTheme';
+import type { WmsOverview } from '../services/wmsApi';
 
 type WmsPageViewProps = {
   activePage: AppPage;
@@ -36,6 +37,7 @@ type WmsPageViewProps = {
   maintenanceItems: MaintenanceItem[];
   locations: LocationItem[];
   users: UserItem[];
+  planningSummary: WmsOverview['planningSummary'];
   categories: CategoryItem[];
   selectedAsset: Asset | null;
   search: string;
@@ -135,6 +137,7 @@ export function WmsPageView({
   maintenanceItems,
   locations,
   users,
+  planningSummary,
   categories,
   selectedAsset,
   search,
@@ -180,6 +183,7 @@ export function WmsPageView({
           activities={activities}
           reservations={reservations}
           maintenanceItems={maintenanceItems}
+          planningSummary={planningSummary}
           theme={theme}
           onNavigate={onNavigate}
         />

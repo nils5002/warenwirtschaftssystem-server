@@ -28,6 +28,7 @@ import {
   upsertReservation,
   upsertUser,
   type BulkUserDeleteResponse,
+  type WmsOverview,
 } from '../services/wmsApi';
 import { useAppDialog } from '../components/dialogs/AppDialogProvider';
 import { canonicalPathForPage, normalizePathname, resolvePageFromPath } from '../routing/appRoutes';
@@ -166,6 +167,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [maintenanceItems, setMaintenanceItems] = useState<MaintenanceItem[]>([]);
   const [locations, setLocations] = useState<LocationItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
+  const [planningSummary, setPlanningSummary] = useState<WmsOverview['planningSummary']>(null);
   const [extraCategories, setExtraCategories] = useState<CategoryItem[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [wmsError, setWmsError] = useState<string | null>(null);
@@ -212,6 +214,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       setMaintenanceItems(payload.maintenanceItems);
       setLocations(payload.locations);
       setUsers(normalizedUsers);
+      setPlanningSummary(payload.planningSummary ?? null);
       setSelectedAssetId((current) => {
         if (current && payload.assets.some((item) => item.id === current)) {
           return current;
@@ -1071,6 +1074,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     maintenanceItems,
     locations,
     users,
+    planningSummary,
     categories,
     createCategory,
     openAssetDetail,

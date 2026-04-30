@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import secrets
-from datetime import UTC, datetime
+from collections import defaultdict
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -17,6 +18,9 @@ from ..database.models import (
     MaintenanceRecord,
     ReservationRecord,
     UserRecord,
+    PlanningRecord,
+    PlanningDayRecord,
+    PlanningItemRecord,
 )
 from ..domain.categories import normalize_category
 from . import category_repository
@@ -28,6 +32,8 @@ from ..schemas.wms import (
     ReservationItem,
     UserItem,
     WmsOverviewResponse,
+    PlanningSummaryItem,
+    PlanningSummaryCategoryItem,
 )
 from ..services.auth_service import (
     generate_temporary_password,
@@ -708,6 +714,99 @@ def get_overview(db: Session) -> WmsOverviewResponse:
         locations=list_locations(db),
         categories=category_repository.list_categories(db),
         users=list_users(db),
+        planningSummary=_build_planning_summary(db),
+    )
+
+
+def _build_planning_summary(db: Session) -> PlanningSummaryItem:
+    planning_statuses = ("Entwurf", "Geplant", "Bestaetigt")
+    today = date.today()
+    upcoming_end = today + timedelta(days=7)
+
+    planning_rows = db.scalars(
+        select(PlanningRecord)
+        .where(PlanningRecord.status.in_(planning_statuses))
+        .where(PlanningRecord.end_date >= today)
+    ).all()
+    if not planning_rows:
+        return PlanningSummaryItem(
+            todayPlannedQty=0,
+            todayShortageCount=0,
+            todayShortageItems=[],
+            upcomingPlannedQty=0,
+            upcomingShortageCount=0,
+            categorySummaries=[],
+        )
+
+    planning_ids = [row.id for row in planning_rows]
+    day_rows = db.scalars(
+        select(PlanningDayRecord).where(PlanningDayRecord.planning_id.in_(planning_ids))
+    ).all()
+    if not day_rows:
+        return PlanningSummaryItem(
+            todayPlannedQty=0,
+            todayShortageCount=0,
+            todayShortageItems=[],
+            upcomingPlannedQty=0,
+            upcomingShortageCount=0,
+            categorySummaries=[],
+        )
+    day_by_id = {row.id: row for row in day_rows}
+    item_rows = db.scalars(
+        select(PlanningItemRecord).where(PlanningItemRecord.planning_day_id.in_(tuple(day_by_id.keys())))
+    ).all()
+
+    usable_by_category: dict[str, int] = defaultdict(int)
+    for asset in db.scalars(select(AssetRecord)).all():
+        category = category_repository.normalize_category_for_db(db, asset.category)
+        if _normalize_asset_status(asset.status) == "Verfuegbar":
+            usable_by_category[category] += 1
+
+    demand_today: dict[str, int] = defaultdict(int)
+    demand_upcoming: dict[str, int] = defaultdict(int)
+    for item in item_rows:
+        day = day_by_id.get(item.planning_day_id)
+        if day is None:
+            continue
+        category = category_repository.normalize_category_for_db(db, item.category_key)
+        qty = int(item.qty or 0)
+        if day.planning_date == today:
+            demand_today[category] += qty
+        if today <= day.planning_date <= upcoming_end:
+            demand_upcoming[category] += qty
+
+    category_keys = sorted(set(demand_today) | set(demand_upcoming))
+    category_summaries: list[PlanningSummaryCategoryItem] = []
+    today_shortage_items: list[PlanningSummaryCategoryItem] = []
+    for category in category_keys:
+        usable = usable_by_category.get(category, 0)
+        planned_today = demand_today.get(category, 0)
+        remaining_today = usable - planned_today
+        shortage_today = max(0, planned_today - usable)
+        item = PlanningSummaryCategoryItem(
+            categoryKey=category,
+            usableStock=usable,
+            plannedQtyToday=planned_today,
+            remainingAfterPlanning=remaining_today,
+            shortageQty=shortage_today,
+        )
+        category_summaries.append(item)
+        if shortage_today > 0:
+            today_shortage_items.append(item)
+
+    upcoming_shortage_count = 0
+    for category, planned_qty in demand_upcoming.items():
+        usable = usable_by_category.get(category, 0)
+        if planned_qty > usable:
+            upcoming_shortage_count += 1
+
+    return PlanningSummaryItem(
+        todayPlannedQty=sum(demand_today.values()),
+        todayShortageCount=len(today_shortage_items),
+        todayShortageItems=today_shortage_items,
+        upcomingPlannedQty=sum(demand_upcoming.values()),
+        upcomingShortageCount=upcoming_shortage_count,
+        categorySummaries=category_summaries,
     )
 
 

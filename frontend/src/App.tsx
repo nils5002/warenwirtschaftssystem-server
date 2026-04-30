@@ -172,6 +172,7 @@ function App() {
               locations={controller.locations}
               categories={controller.categories}
               users={controller.users}
+              planningSummary={controller.planningSummary}
               selectedAsset={controller.selectedAsset}
               search={controller.search}
               onOpenAssetDetail={controller.openAssetDetail}

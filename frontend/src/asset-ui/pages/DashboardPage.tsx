@@ -3,12 +3,14 @@ import { KpiCard } from '../components/KpiCard';
 import { normalizeCategory } from '../categories';
 import type { ActivityItem, AppPage, Asset, MaintenanceItem, ReservationItem } from '../types';
 import type { Theme } from '../../hooks/useTheme';
+import type { WmsOverview } from '../../services/wmsApi';
 
 type DashboardPageProps = {
   assets: Asset[];
   activities: ActivityItem[];
   reservations: ReservationItem[];
   maintenanceItems: MaintenanceItem[];
+  planningSummary: WmsOverview['planningSummary'];
   theme: Theme;
   onNavigate: (page: AppPage) => void;
 };
@@ -121,6 +123,7 @@ export function DashboardPage({
   activities,
   reservations,
   maintenanceItems,
+  planningSummary,
   theme,
   onNavigate,
 }: DashboardPageProps) {
@@ -143,6 +146,10 @@ export function DashboardPage({
   );
   const bottleneckCount = categorySummary.filter(([, entry]) => entry.total > 0 && entry.available <= 1).length;
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+  const todayPlannedQty = planningSummary?.todayPlannedQty ?? 0;
+  const todayShortageCount = planningSummary?.todayShortageCount ?? 0;
+  const upcomingPlannedQty = planningSummary?.upcomingPlannedQty ?? 0;
+  const upcomingShortageCount = planningSummary?.upcomingShortageCount ?? 0;
 
   return (
     <section className="space-y-6">
@@ -220,6 +227,52 @@ export function DashboardPage({
           icon={TriangleAlert}
         />
       </div>
+
+      <article className="surface-card animate-fade-up">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-base font-semibold text-slate-900">Planung heute / kommende Einsätze</h3>
+          <button type="button" onClick={() => onNavigate('planning')} className="btn-secondary px-2.5 py-1.5 text-xs">
+            Einsatzplanung öffnen
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="surface-muted px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Heute geplant</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">{todayPlannedQty}</p>
+          </div>
+          <div className="surface-muted px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wide text-rose-700">Heute Engpässe</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">{todayShortageCount}</p>
+          </div>
+          <div className="surface-muted px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Kommende 7 Tage geplant</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">{upcomingPlannedQty}</p>
+          </div>
+          <div className="surface-muted px-3 py-2.5">
+            <p className="text-xs uppercase tracking-wide text-amber-700">Kommende Engpass-Kategorien</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">{upcomingShortageCount}</p>
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Physisch verfügbar basiert auf Inventarstatus. Nach Planung frei ist eine rechnerische Vorschau und ändert keinen echten Asset-Status.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {(planningSummary?.categorySummaries ?? []).slice(0, 9).map((item) => (
+            <div key={`planning-summary-${item.categoryKey}`} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
+              <p className="font-semibold text-slate-900">{item.categoryKey}</p>
+              <p>Physisch verfügbar: {item.usableStock}</p>
+              <p>Heute geplant: {item.plannedQtyToday}</p>
+              <p>Nach Planung frei: {item.remainingAfterPlanning}</p>
+              <p className={item.shortageQty > 0 ? 'font-semibold text-rose-700' : 'text-emerald-700'}>
+                Fehlmenge: {item.shortageQty}
+              </p>
+            </div>
+          ))}
+          {!(planningSummary?.categorySummaries?.length) ? (
+            <p className="text-xs text-slate-500">Keine Planungsdaten verfügbar.</p>
+          ) : null}
+        </div>
+      </article>
 
       <div className="grid gap-4 xl:grid-cols-12">
         <article className="surface-card animate-fade-up xl:col-span-8">
