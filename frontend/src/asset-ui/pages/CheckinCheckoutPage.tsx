@@ -91,7 +91,7 @@ export function CheckinCheckoutPage({
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
 
   const checkoutScanRef = useRef<HTMLInputElement | null>(null);
-  const checkoutPersonRef = useRef<HTMLInputElement | null>(null);
+  const checkoutRecipientRef = useRef<HTMLInputElement | null>(null);
   const checkoutProjectRef = useRef<HTMLInputElement | null>(null);
   const checkoutSubmitRef = useRef<HTMLButtonElement | null>(null);
   const checkinScanRef = useRef<HTMLInputElement | null>(null);
@@ -241,8 +241,8 @@ export function CheckinCheckoutPage({
       return true;
     }
 
-    setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Empfänger eingeben.` });
-    focusElement(checkoutPersonRef.current);
+    setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Projekt wählen.` });
+    focusElement(checkoutProjectRef.current);
     return true;
   };
 
@@ -311,12 +311,6 @@ export function CheckinCheckoutPage({
       return;
     }
 
-    if (!checkoutAssignee.trim()) {
-      setMessage({ kind: 'error', text: 'Bitte eine Person für die Ausgabe angeben.' });
-      focusElement(checkoutPersonRef.current);
-      return;
-    }
-
     if (checkoutAsset.status === 'Verliehen') {
       setMessage({
         kind: 'error',
@@ -343,15 +337,18 @@ export function CheckinCheckoutPage({
       checkoutProjectOptions[0] ||
       'Allgemeiner Einsatz';
 
+    const normalizedAssignee = checkoutAssignee.trim() || '-';
     onCheckout({
       assetId: checkoutAsset.id,
-      assignee: checkoutAssignee.trim(),
+      assignee: normalizedAssignee,
       projectName: normalizedProject,
       dueDate: checkoutDueDate,
       note: checkoutNote.trim(),
     });
 
-    setLastAssignee(checkoutAssignee.trim());
+    if (checkoutAssignee.trim()) {
+      setLastAssignee(checkoutAssignee.trim());
+    }
     setLastProject(normalizedProject);
     setCheckoutProject(normalizedProject);
     setCheckoutNote('');
@@ -482,7 +479,7 @@ export function CheckinCheckoutPage({
           <div className="flex items-center justify-between">
             <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
               <Handshake className="h-4 w-4 text-brand-700" />
-              Ausgabe in 4 Schritten
+              Ausgabe in 3 Schritten
             </h3>
             <span className="status-chip border-brand-200 bg-brand-50 text-brand-700">
               <span className="status-dot bg-brand-600" />
@@ -524,31 +521,6 @@ export function CheckinCheckoutPage({
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 2</p>
             <label className="field mt-1">
-              Person
-              <input
-                ref={checkoutPersonRef}
-                list="checkout-person-options"
-                className="field-input"
-                placeholder="z. B. Max Mustermann"
-                value={checkoutAssignee}
-                onChange={(event) => setCheckoutAssignee(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return;
-                  event.preventDefault();
-                  focusElement(checkoutProjectRef.current);
-                }}
-              />
-              <datalist id="checkout-person-options">
-                {userOptions.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-            </label>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 3</p>
-            <label className="field mt-1">
               Projekt
               <input
                 ref={checkoutProjectRef}
@@ -572,7 +544,7 @@ export function CheckinCheckoutPage({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 4</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 3</p>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
               <p className="font-semibold text-slate-900">{checkoutAsset?.name ?? 'Kein Gerät ausgewählt'}</p>
               {checkoutAsset ? <StatusBadge value={checkoutAsset.status} /> : null}
@@ -622,10 +594,25 @@ export function CheckinCheckoutPage({
                     onChange={(event) => setCheckoutDueDate(event.target.value)}
                   />
                 </label>
-              <label className="field">
-                Ausgeführt durch
-                <input className="field-input bg-slate-100 text-slate-700" value={operatorName} readOnly />
-              </label>
+                <label className="field">
+                  Empfänger (optional)
+                  <input
+                    ref={checkoutRecipientRef}
+                    list="checkout-person-options"
+                    className="field-input"
+                    placeholder="z. B. Max Mustermann"
+                    value={checkoutAssignee}
+                    onChange={(event) => setCheckoutAssignee(event.target.value)}
+                  />
+                  <datalist id="checkout-person-options">
+                    {userOptions.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  <span className="text-xs text-slate-500">
+                    Nur ausfüllen, wenn das Gerät direkt einer Person zugeordnet werden soll.
+                  </span>
+                </label>
               </div>
               <label className="field">
                 Notiz

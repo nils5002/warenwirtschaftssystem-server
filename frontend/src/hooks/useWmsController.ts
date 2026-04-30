@@ -502,6 +502,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       asset.nextReturn;
     const note = noteHint || '';
     const project = projectHint?.trim() || '';
+    const recipient = assignee.trim() || '-';
     const metadataLines = [
       project ? `Projekt: ${project}` : '',
       `Ausgabe durch: ${currentOperatorName}`,
@@ -510,7 +511,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     const updated: Asset = {
       ...asset,
       status: 'Verliehen',
-      assignedTo: project ? `${assignee.trim()} · ${project}` : assignee.trim(),
+      assignedTo: recipient !== '-' && project ? `${recipient} · ${project}` : recipient,
       nextReturn: due,
       lastCheckout: new Date().toLocaleDateString('de-DE'),
       notes: metadataLines.length ? `${asset.notes}\n${metadataLines.join('\n')}`.trim() : asset.notes,
