@@ -163,6 +163,7 @@ function App() {
               currentUserId={authUser.userId}
               currentUserName={authUser.name}
               projectContext={controller.projectContext}
+              theme={controller.theme}
               onProjectContextChange={controller.setProjectContext}
               assets={controller.assets}
               activities={controller.activities}
