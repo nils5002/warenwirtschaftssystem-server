@@ -4,8 +4,9 @@ import logging
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from sqlalchemy import text
 
 from .config.settings import get_settings
@@ -49,6 +50,32 @@ def create_app() -> FastAPI:
     app.state.job_manager = JobManager()
     app.include_router(api_router)
     register_error_handlers(app)
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):  # type: ignore[override]
+        response: Response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        )
+        # Keep CSP pragmatic to avoid breaking API docs and existing frontend delivery.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "base-uri 'self'; "
+            "frame-ancestors 'none'; "
+            "img-src 'self' data: blob: https:; "
+            "style-src 'self' 'unsafe-inline' https:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
+            "connect-src 'self' https: http: ws: wss:; "
+            "form-action 'self'",
+        )
+        if request.url.scheme == "https":
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     @app.on_event("startup")
     def on_startup() -> None:

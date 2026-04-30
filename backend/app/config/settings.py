@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     auth_token_secret: str = "change-me-in-production"
-    allow_legacy_header_auth: bool = True
+    allow_legacy_header_auth: bool = False
     initial_admin_email: str | None = None
     initial_admin_password: str | None = None
     initial_admin_name: str | None = None
