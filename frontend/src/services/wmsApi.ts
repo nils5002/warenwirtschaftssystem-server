@@ -116,6 +116,9 @@ export type PlanningItemPayload = {
   categoryKey: string;
   qty: number;
   notes?: string | null;
+  handoverEnabled?: boolean;
+  linkedPlanningId?: string | null;
+  handoverNote?: string | null;
 };
 
 export type PlanningDayPayload = {
@@ -156,6 +159,10 @@ export type PlanningItemResponse = {
   categoryKey: string;
   qty: number;
   notes?: string | null;
+  handoverEnabled?: boolean;
+  linkedPlanningId?: string | null;
+  linkedPlanningLabel?: string | null;
+  handoverNote?: string | null;
 };
 
 export type PlanningDayResponse = {
@@ -195,6 +202,11 @@ export type PlanningAvailabilityItem = {
   remainingQty: number;
   availabilityState: PlanningAvailabilityState;
   shortageQty: number;
+  handoverEnabled?: boolean;
+  linkedPlanningId?: string | null;
+  linkedPlanningLabel?: string | null;
+  handoverNote?: string | null;
+  handoverStatus?: "none" | "planned" | "missing_link";
 };
 
 export type PlanningAvailabilityCategorySummary = {

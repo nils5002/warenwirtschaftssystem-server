@@ -54,6 +54,9 @@ type EditablePlanning = {
       categoryKey: string;
       qty: number;
       notes: string;
+      handoverEnabled: boolean;
+      linkedPlanningId: string;
+      handoverNote: string;
     }>;
   }>;
 };
@@ -120,6 +123,9 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
           categoryKey: normalizeCategory(entry.categoryKey),
           qty: entry.qty,
           notes: entry.notes ?? '',
+          handoverEnabled: Boolean(entry.handoverEnabled),
+          linkedPlanningId: entry.linkedPlanningId ?? '',
+          handoverNote: entry.handoverNote ?? '',
         })),
       })),
   };
@@ -146,6 +152,9 @@ function toUpsertPayload(item: EditablePlanning): PlanningUpsertPayload {
           categoryKey: normalizeCategory(entry.categoryKey),
           qty: Number.isFinite(entry.qty) ? Math.max(0, entry.qty) : 0,
           notes: entry.notes.trim() || null,
+          handoverEnabled: Boolean(entry.handoverEnabled),
+          linkedPlanningId: entry.linkedPlanningId.trim() || null,
+          handoverNote: entry.handoverNote.trim() || null,
         })),
     })),
   };
@@ -161,6 +170,20 @@ function availabilityLabel(state: string): string {
   if (state === 'red') return 'Engpass';
   if (state === 'yellow') return 'Knapp';
   return 'Ausreichend';
+}
+
+function availabilityHint(item: PlanningAvailabilityResponse['items'][number]): string {
+  if (item.shortageQty <= 0) {
+    return 'Bestand ausreichend';
+  }
+  if (item.handoverStatus === 'planned') {
+    const linked = item.linkedPlanningLabel || item.linkedPlanningId || 'anderes Projekt';
+    return `Übergabe geplant · ${item.shortageQty} fehlen rechnerisch (${linked})`;
+  }
+  if (item.handoverStatus === 'missing_link') {
+    return `Übergabe geplant · ${item.shortageQty} fehlen (Verknüpfung prüfen)`;
+  }
+  return `${item.shortageQty} fehlen`;
 }
 
 export function PlanningPage({ assets: _assets, categories, users, onOpenInventoryWithQuery, canEdit = true }: PlanningPageProps) {
@@ -243,6 +266,11 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
       return matchesStatus && matchesSearch;
     });
   }, [listSearch, listStatus, plannings]);
+
+  const handoverProjectOptions = useMemo(() => {
+    const activeStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Bestaetigt'];
+    return plannings.filter((planning) => activeStatuses.includes(planning.status));
+  }, [plannings]);
 
   const editorStats = useMemo(() => {
     if (!editor) {
@@ -925,6 +953,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                       <p>Nutzbar {availabilityItem.usableStock}</p>
                                       <p>Verplant {availabilityItem.alreadyPlanned}</p>
                                       <p>Rest {availabilityItem.remainingQty}</p>
+                                      <p>{availabilityHint(availabilityItem)}</p>
                                     </div>
                                   ) : (
                                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
@@ -953,6 +982,78 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                             );
                           })}
 
+                          {day.items.map((item, itemIndex) => (
+                            <div
+                              key={`handover-${day.planningDate}-${itemIndex}`}
+                              className="rounded-lg border border-amber-200 bg-amber-50/40 p-2"
+                            >
+                              <div className="grid gap-2 lg:grid-cols-12">
+                                <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 lg:col-span-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.handoverEnabled}
+                                    onChange={(event) =>
+                                      patchEditor((current) => {
+                                        const nextDays = [...current.days];
+                                        const nextItems = [...nextDays[dayIndex].items];
+                                        nextItems[itemIndex] = {
+                                          ...nextItems[itemIndex],
+                                          handoverEnabled: event.target.checked,
+                                        };
+                                        nextDays[dayIndex] = { ...nextDays[dayIndex], items: nextItems };
+                                        return { ...current, days: nextDays };
+                                      })
+                                    }
+                                  />
+                                  Übergabe geplant
+                                </label>
+                                <select
+                                  className="field-input lg:col-span-4"
+                                  value={item.linkedPlanningId}
+                                  disabled={!item.handoverEnabled}
+                                  onChange={(event) =>
+                                    patchEditor((current) => {
+                                      const nextDays = [...current.days];
+                                      const nextItems = [...nextDays[dayIndex].items];
+                                      nextItems[itemIndex] = { ...nextItems[itemIndex], linkedPlanningId: event.target.value };
+                                      nextDays[dayIndex] = { ...nextDays[dayIndex], items: nextItems };
+                                      return { ...current, days: nextDays };
+                                    })
+                                  }
+                                >
+                                  <option value="">Übergabe-Projekt auswählen</option>
+                                  {handoverProjectOptions
+                                    .filter((planning) => planning.id !== editor.id)
+                                    .map((planning) => (
+                                      <option key={planning.id} value={planning.id}>
+                                        {planning.projectName} ({planning.customerName})
+                                      </option>
+                                    ))}
+                                </select>
+                                <input
+                                  className="field-input lg:col-span-5"
+                                  value={item.handoverNote}
+                                  disabled={!item.handoverEnabled}
+                                  placeholder="Übergabe-Hinweis (empfohlen)"
+                                  onChange={(event) =>
+                                    patchEditor((current) => {
+                                      const nextDays = [...current.days];
+                                      const nextItems = [...nextDays[dayIndex].items];
+                                      nextItems[itemIndex] = { ...nextItems[itemIndex], handoverNote: event.target.value };
+                                      nextDays[dayIndex] = { ...nextDays[dayIndex], items: nextItems };
+                                      return { ...current, days: nextDays };
+                                    })
+                                  }
+                                />
+                              </div>
+                              {item.handoverEnabled && !item.linkedPlanningId ? (
+                                <p className="mt-1 text-[11px] text-amber-700">
+                                  Hinweis: Verknüpftes Projekt auswählen, damit die Übergabeplanung nachvollziehbar ist.
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+
                           <button
                             type="button"
                             data-testid={`planning-add-item-${dayIndex}`}
@@ -962,7 +1063,17 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 const nextDays = [...current.days];
                                 nextDays[dayIndex] = {
                                   ...nextDays[dayIndex],
-                                  items: [...nextDays[dayIndex].items, { categoryKey: categoryOptions[0] ?? '', qty: 0, notes: '' }],
+                                  items: [
+                                    ...nextDays[dayIndex].items,
+                                    {
+                                      categoryKey: categoryOptions[0] ?? '',
+                                      qty: 0,
+                                      notes: '',
+                                      handoverEnabled: false,
+                                      linkedPlanningId: '',
+                                      handoverNote: '',
+                                    },
+                                  ],
                                 };
                                 return { ...current, days: nextDays };
                               })

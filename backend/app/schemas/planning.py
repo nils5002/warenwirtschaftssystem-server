@@ -14,6 +14,9 @@ class PlanningItemPayload(BaseModel):
     categoryKey: str = Field(min_length=1, max_length=120)
     qty: int = Field(ge=0)
     notes: str | None = None
+    handoverEnabled: bool = False
+    linkedPlanningId: str | None = Field(default=None, max_length=64)
+    handoverNote: str | None = Field(default=None, max_length=400)
 
 
 class PlanningDayPayload(BaseModel):
@@ -51,6 +54,10 @@ class PlanningItemResponse(BaseModel):
     categoryKey: str
     qty: int
     notes: str | None = None
+    handoverEnabled: bool = False
+    linkedPlanningId: str | None = None
+    linkedPlanningLabel: str | None = None
+    handoverNote: str | None = None
 
 
 class PlanningDayResponse(BaseModel):
@@ -101,6 +108,11 @@ class PlanningAvailabilityItem(BaseModel):
     remainingQty: int
     availabilityState: AvailabilityState
     shortageQty: int
+    handoverEnabled: bool = False
+    linkedPlanningId: str | None = None
+    linkedPlanningLabel: str | None = None
+    handoverNote: str | None = None
+    handoverStatus: Literal["none", "planned", "missing_link"] = "none"
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):
@@ -117,4 +129,3 @@ class PlanningAvailabilityResponse(BaseModel):
     periodEnd: date
     items: list[PlanningAvailabilityItem] = Field(default_factory=list)
     categorySummary: list[PlanningAvailabilityCategorySummary] = Field(default_factory=list)
-

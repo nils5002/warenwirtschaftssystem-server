@@ -142,7 +142,14 @@ def duplicate_planning(
                     "planningDate": day.planningDate,
                     "weekday": day.weekday,
                     "items": [
-                        {"categoryKey": item.categoryKey, "qty": item.qty, "notes": item.notes}
+                        {
+                            "categoryKey": item.categoryKey,
+                            "qty": item.qty,
+                            "notes": item.notes,
+                            "handoverEnabled": item.handoverEnabled,
+                            "linkedPlanningId": item.linkedPlanningId,
+                            "handoverNote": item.handoverNote,
+                        }
                         for item in day.items
                     ],
                 }

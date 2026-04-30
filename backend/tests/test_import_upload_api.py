@@ -6,10 +6,11 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
+from .auth_helpers import auth_headers
 
 
 def _headers() -> dict[str, str]:
-    return {"X-User-Role": "Admin"}
+    return auth_headers(TestClient(app), "Admin")
 
 
 def _build_workbook_bytes() -> bytes:

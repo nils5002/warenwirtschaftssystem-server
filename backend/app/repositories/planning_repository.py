@@ -67,21 +67,50 @@ def _planning_to_list_item(record: PlanningRecord) -> PlanningListItem:
 
 
 def _planning_to_response(
+    db: Session,
     record: PlanningRecord,
     day_map: dict[int, list[PlanningItemRecord]],
     days: list[PlanningDayRecord],
 ) -> PlanningResponse:
+    linked_ids = {
+        str(item.linked_planning_external_id).strip()
+        for entries in day_map.values()
+        for item in entries
+        if item.linked_planning_external_id
+    }
+    linked_labels: dict[str, str] = {}
+    if linked_ids:
+        linked_rows = db.scalars(select(PlanningRecord).where(PlanningRecord.external_id.in_(tuple(linked_ids)))).all()
+        linked_labels = {row.external_id: row.project_name for row in linked_rows}
     day_responses: list[PlanningDayResponse] = []
     for day in sorted(days, key=lambda item: item.planning_date):
         grouped_items: dict[str, dict[str, object]] = {}
         for item in day_map.get(day.id, []):
             category = normalize_category_or_self(item.category_key)
-            current = grouped_items.setdefault(category, {"qty": 0, "notes": [], "id": item.id})
+            current = grouped_items.setdefault(
+                category,
+                {
+                    "qty": 0,
+                    "notes": [],
+                    "id": item.id,
+                    "handover_enabled": False,
+                    "linked_planning_id": None,
+                    "handover_note": None,
+                },
+            )
             current["qty"] = int(current["qty"]) + item.qty
             if item.notes:
                 notes = current["notes"]
                 if isinstance(notes, list):
                     notes.append(item.notes)
+            if bool(item.handover_enabled):
+                current["handover_enabled"] = True
+            linked_planning_id = str(item.linked_planning_external_id or "").strip()
+            if linked_planning_id:
+                current["linked_planning_id"] = linked_planning_id
+            handover_note = str(item.handover_note or "").strip()
+            if handover_note:
+                current["handover_note"] = handover_note
         day_responses.append(
             PlanningDayResponse(
                 id=day.id,
@@ -93,6 +122,10 @@ def _planning_to_response(
                         categoryKey=category,
                         qty=int(values["qty"]),
                         notes="; ".join(values["notes"]) if isinstance(values["notes"], list) else None,
+                        handoverEnabled=bool(values["handover_enabled"]),
+                        linkedPlanningId=str(values["linked_planning_id"] or "") or None,
+                        linkedPlanningLabel=linked_labels.get(str(values["linked_planning_id"] or "")),
+                        handoverNote=str(values["handover_note"] or "") or None,
                     )
                     for category, values in sorted(grouped_items.items(), key=lambda row: row[0].lower())
                 ],
@@ -114,8 +147,6 @@ def _planning_to_response(
         updatedAt=record.updated_at,
         days=day_responses,
     )
-
-
 def list_plannings(
     db: Session,
     status: str | None = None,
@@ -150,7 +181,7 @@ def get_planning(db: Session, planning_id: str) -> PlanningResponse | None:
     for item in items:
         day_map[item.planning_day_id].append(item)
 
-    return _planning_to_response(planning, day_map, days)
+    return _planning_to_response(db, planning, day_map, days)
 
 
 def _upsert_days_and_items(db: Session, planning_pk: int, payload: PlanningUpsertPayload) -> None:
@@ -172,20 +203,43 @@ def _upsert_days_and_items(db: Session, planning_pk: int, payload: PlanningUpser
         grouped_items: dict[str, dict[str, object]] = {}
         for item in day.items:
             category = category_repository.normalize_category_for_db(db, item.categoryKey)
-            current = grouped_items.setdefault(category, {"qty": 0, "notes": []})
+            current = grouped_items.setdefault(
+                category,
+                {
+                    "qty": 0,
+                    "notes": [],
+                    "handover_enabled": False,
+                    "linked_planning_external_id": None,
+                    "handover_notes": [],
+                },
+            )
             current["qty"] = int(current["qty"]) + item.qty
             if item.notes:
                 notes = current["notes"]
                 if isinstance(notes, list):
                     notes.append(item.notes)
+            if item.handoverEnabled:
+                current["handover_enabled"] = True
+            linked_planning_id = str(item.linkedPlanningId or "").strip()
+            if linked_planning_id:
+                current["linked_planning_external_id"] = linked_planning_id
+            handover_note = str(item.handoverNote or "").strip()
+            if handover_note:
+                handover_notes = current["handover_notes"]
+                if isinstance(handover_notes, list):
+                    handover_notes.append(handover_note)
         for category, values in grouped_items.items():
             notes = values["notes"]
+            handover_notes = values["handover_notes"]
             db.add(
                 PlanningItemRecord(
                     planning_day_id=day_record.id,
                     category_key=category,
                     qty=int(values["qty"]),
                     notes="; ".join(notes) if isinstance(notes, list) and notes else None,
+                    handover_enabled=bool(values["handover_enabled"]),
+                    linked_planning_external_id=str(values["linked_planning_external_id"] or "") or None,
+                    handover_note="; ".join(handover_notes) if isinstance(handover_notes, list) and handover_notes else None,
                 )
             )
 
@@ -259,7 +313,14 @@ def duplicate_planning(db: Session, planning_id: str) -> PlanningResponse | None
                 "planningDate": day.planningDate,
                 "weekday": day.weekday,
                 "items": [
-                    {"categoryKey": item.categoryKey, "qty": item.qty, "notes": item.notes}
+                    {
+                        "categoryKey": item.categoryKey,
+                        "qty": item.qty,
+                        "notes": item.notes,
+                        "handoverEnabled": item.handoverEnabled,
+                        "linkedPlanningId": item.linkedPlanningId,
+                        "handoverNote": item.handoverNote,
+                    }
                     for item in day.items
                 ],
             }
@@ -295,6 +356,17 @@ def _availability_state(requested_qty: int, remaining_qty: int) -> str:
     if after_request <= 2:
         return "yellow"
     return "green"
+
+
+def _availability_state_with_handover(
+    requested_qty: int,
+    remaining_qty: int,
+    handover_enabled: bool,
+) -> str:
+    state = _availability_state(requested_qty, remaining_qty)
+    if state == "red" and handover_enabled:
+        return "yellow"
+    return state
 
 
 def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabilityResponse | None:
@@ -358,6 +430,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     summary_requested: dict[str, int] = defaultdict(int)
     summary_max_per_day: dict[str, int] = defaultdict(int)
     requested_by_day_category: dict[tuple[date, str], dict[str, object]] = {}
+    linked_ids: set[str] = set()
 
     for item in item_rows:
         day = days_by_id[item.planning_day_id]
@@ -365,9 +438,30 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         key = (day.planning_date, category)
         current = requested_by_day_category.setdefault(
             key,
-            {"weekday": day.weekday, "category": category, "qty": 0},
+            {
+                "weekday": day.weekday,
+                "category": category,
+                "qty": 0,
+                "handoverEnabled": False,
+                "linkedPlanningId": None,
+                "handoverNote": None,
+            },
         )
         current["qty"] = int(current["qty"]) + item.qty
+        if bool(item.handover_enabled):
+            current["handoverEnabled"] = True
+        linked_planning_id = str(item.linked_planning_external_id or "").strip()
+        if linked_planning_id:
+            current["linkedPlanningId"] = linked_planning_id
+            linked_ids.add(linked_planning_id)
+        handover_note = str(item.handover_note or "").strip()
+        if handover_note:
+            current["handoverNote"] = handover_note
+
+    linked_labels: dict[str, str] = {}
+    if linked_ids:
+        linked_rows = db.scalars(select(PlanningRecord).where(PlanningRecord.external_id.in_(tuple(linked_ids)))).all()
+        linked_labels = {row.external_id: row.project_name for row in linked_rows}
 
     for (planning_date, category), requested in sorted(requested_by_day_category.items(), key=lambda row: (row[0][0], row[0][1])):
         requested_qty = int(requested["qty"])
@@ -375,6 +469,11 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         already_planned = overlap_map.get((planning_date, category), 0)
         remaining_qty = usable_stock - already_planned
         shortage_qty = max(0, requested_qty - remaining_qty)
+        handover_enabled = bool(requested["handoverEnabled"])
+        linked_planning_id = str(requested["linkedPlanningId"] or "") or None
+        handover_status: "none" | "planned" | "missing_link" = "none"
+        if shortage_qty > 0 and handover_enabled:
+            handover_status = "planned" if linked_planning_id else "missing_link"
         availability_items.append(
             PlanningAvailabilityItem(
                 planningDate=planning_date,
@@ -385,8 +484,13 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 usableStock=usable_stock,
                 alreadyPlanned=already_planned,
                 remainingQty=remaining_qty,
-                availabilityState=_availability_state(requested_qty, remaining_qty),
+                availabilityState=_availability_state_with_handover(requested_qty, remaining_qty, handover_enabled),
                 shortageQty=shortage_qty,
+                handoverEnabled=handover_enabled,
+                linkedPlanningId=linked_planning_id,
+                linkedPlanningLabel=linked_labels.get(linked_planning_id or ""),
+                handoverNote=str(requested["handoverNote"] or "") or None,
+                handoverStatus=handover_status,
             )
         )
         summary_requested[category] += requested_qty

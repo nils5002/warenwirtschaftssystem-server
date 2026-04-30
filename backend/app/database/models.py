@@ -160,6 +160,9 @@ class PlanningItemRecord(TimestampMixin, Base):
     category_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    handover_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    linked_planning_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    handover_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareImportRunRecord(Base):
