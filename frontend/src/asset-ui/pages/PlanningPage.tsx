@@ -81,6 +81,13 @@ function formatPeriod(start: string, end: string): string {
   return `${start || '-'} bis ${end || '-'}`;
 }
 
+function formatGermanDate(isoDate: string): string {
+  if (!isoDate) return '';
+  const [year, month, day] = isoDate.split('-');
+  if (!year || !month || !day) return isoDate;
+  return `${day}.${month}.${year}`;
+}
+
 function buildDaysInRange(startDate: string, endDate: string): EditablePlanning['days'] {
   if (!startDate || !endDate) return [];
   const start = new Date(`${startDate}T00:00:00`);
@@ -178,7 +185,7 @@ function availabilityHint(item: PlanningAvailabilityResponse['items'][number]): 
   }
   if (item.handoverStatus === 'planned') {
     const linked = item.linkedPlanningLabel || item.linkedPlanningId || 'anderes Projekt';
-    return `Übergabe geplant / prüfen · Fehlmenge ${item.shortageQty} (${linked})`;
+    return `Übergabe geplant · Fehlmenge ${item.shortageQty} (${linked})`;
   }
   if (item.handoverStatus === 'missing_link') {
     return `Übergabe geplant · Fehlmenge ${item.shortageQty} (Verknüpfung prüfen)`;
@@ -203,8 +210,8 @@ function buildPlanningFallbackLabel(
   plannings: Awaited<ReturnType<typeof listPlannings>>,
 ): string {
   const match = plannings.find((item) => item.id === planningId);
-  if (!match) return planningId;
-  const datePart = match.startDate ? ` - ${match.startDate}` : '';
+  if (!match) return `Projektverknüpfung (${planningId.slice(-6)})`;
+  const datePart = match.startDate ? ` – ${formatGermanDate(match.startDate)}` : '';
   if (match.eventName?.trim()) return `${match.projectName} (${match.eventName})${datePart}`;
   return `${match.projectName}${datePart}`;
 }
@@ -302,12 +309,28 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   }, [availability, plannings]);
 
   const constrainedCategories = useMemo(() => {
-    const redOrYellow = (availability?.items ?? []).filter(
-      (item) => (item.availabilityState === 'red' || item.availabilityState === 'yellow') && item.requestedQty > 0,
-    );
-    const unique = [...new Set(redOrYellow.map((item) => item.categoryKey))];
-    return unique.slice(0, 6);
-  }, [availability]);
+    return (availability?.items ?? [])
+      .filter((item) => item.shortageQty > 0 || item.hasGlobalShortage)
+      .map((item) => {
+        const localHandover = localHandoverByDayCategory.get(
+          `${item.planningDate}|${normalizeCategory(item.categoryKey)}`,
+        );
+        const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
+        const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
+        const state =
+          effectiveHandoverEnabled && effectiveLinkedPlanningId
+            ? 'planned'
+            : effectiveHandoverEnabled
+              ? 'missing_link'
+              : 'shortage';
+        return {
+          key: `${item.categoryKey}|${item.planningDate}`,
+          category: item.categoryKey,
+          state,
+        };
+      })
+      .slice(0, 8);
+  }, [availability, localHandoverByDayCategory]);
 
   const visiblePlannings = useMemo(() => {
     return plannings.filter((item) => {
@@ -604,6 +627,19 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
       );
       if (itemIndex >= 0) {
         openHandoverEditor(dayIndex, itemIndex);
+        return;
+      }
+    }
+  };
+
+  const removeHandoverByCategory = (categoryKey: string) => {
+    if (!editor) return;
+    for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
+      const itemIndex = editor.days[dayIndex].items.findIndex(
+        (item) => normalizeCategory(item.categoryKey) === normalizeCategory(categoryKey),
+      );
+      if (itemIndex >= 0) {
+        removeHandover(dayIndex, itemIndex);
         return;
       }
     }
@@ -1044,6 +1080,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                               (effectiveLinkedPlanningId
                                 ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings)
                                 : undefined);
+                            const effectiveHandoverNote = localHandover?.handoverNote ?? item.handoverNote;
                             const hasGlobalShortage =
                               Boolean(availabilityItem?.hasGlobalShortage) ||
                               (availabilityItem?.shortageQty ?? 0) > 0 ||
@@ -1189,22 +1226,29 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
                                 {activeHandover ? (
                                   <div className="rounded-lg border border-amber-300 bg-amber-50/85 px-2 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                                    {item.linkedPlanningId ? (
+                                    {effectiveLinkedPlanningId ? (
                                       <>
-                                        <p className="font-semibold">Übergabe geplant / prüfen</p>
-                                        <p className="mt-0.5">Verknüpft mit: {effectiveLinkedPlanningLabel || effectiveLinkedPlanningId}</p>
+                                        <p className="font-semibold">Übergabe geplant</p>
+                                        <p className="mt-0.5">
+                                          Dieser Engpass ist bekannt und mit einem anderen Projekt verknüpft.
+                                        </p>
+                                        <p className="mt-0.5">Fehlmenge: {availabilityItem?.shortageQty ?? 0}</p>
+                                        <p className="mt-0.5">Verknüpftes Projekt: {effectiveLinkedPlanningLabel || effectiveLinkedPlanningId}</p>
                                       </>
                                     ) : (
-                                      <p className="font-semibold">Übergabe geplant, aber kein Projekt verknüpft</p>
+                                      <>
+                                        <p className="font-semibold">Übergabe unvollständig</p>
+                                        <p className="mt-0.5">Bitte noch ein Projekt auswählen.</p>
+                                      </>
                                     )}
-                                    {item.handoverNote ? <p className="mt-0.5">Hinweis: {item.handoverNote}</p> : null}
+                                    {effectiveHandoverNote ? <p className="mt-0.5">Hinweis: {effectiveHandoverNote}</p> : null}
                                     <div className="mt-2 flex flex-wrap gap-1.5">
                                       <button
                                         type="button"
                                         className="btn-secondary px-2 py-1 text-xs"
                                         onClick={() => openHandoverEditor(dayIndex, itemIndex)}
                                       >
-                                        {effectiveLinkedPlanningId ? 'Bearbeiten' : 'Projekt auswählen'}
+                                        {effectiveLinkedPlanningId ? 'Übergabe bearbeiten' : 'Projekt auswählen'}
                                       </button>
                                       <button
                                         type="button"
@@ -1330,14 +1374,24 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                 <h4 className="font-semibold text-slate-900">Availability Übersicht</h4>
                 {constrainedCategories.length ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {constrainedCategories.map((category) => (
+                    {constrainedCategories.map((entry) => (
                       <button
                         type="button"
-                        key={`constraint-${category}`}
-                        className="btn-danger px-2 py-1 text-xs"
-                        onClick={() => onOpenInventoryWithQuery(category)}
+                        key={`constraint-${entry.key}`}
+                        className={`px-2 py-1 text-xs rounded-md border ${
+                          entry.state === 'planned'
+                            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
+                            : entry.state === 'missing_link'
+                              ? 'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-200'
+                              : 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200'
+                        }`}
+                        onClick={() => onOpenInventoryWithQuery(entry.category)}
                       >
-                        Engpass: {category}
+                        {entry.state === 'planned'
+                          ? `Übergabe geplant: ${entry.category}`
+                          : entry.state === 'missing_link'
+                            ? `Übergabe unvollständig: ${entry.category}`
+                            : `Ungeklärter Engpass: ${entry.category}`}
                       </button>
                     ))}
                   </div>
@@ -1428,13 +1482,22 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                           </details>
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {effectiveHandoverStatus === 'planned' || effectiveHandoverStatus === 'missing_link' ? (
-                              <button
-                                type="button"
-                                className="btn-secondary px-2 py-1 text-xs"
-                                onClick={() => openHandoverEditorByCategory(item.categoryKey)}
-                              >
-                                Übergabe bearbeiten
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn-secondary px-2 py-1 text-xs"
+                                  onClick={() => openHandoverEditorByCategory(item.categoryKey)}
+                                >
+                                  Übergabe bearbeiten
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-danger px-2 py-1 text-xs"
+                                  onClick={() => removeHandoverByCategory(item.categoryKey)}
+                                >
+                                  Übergabe entfernen
+                                </button>
+                              </>
                             ) : (
                               <button
                                 type="button"
