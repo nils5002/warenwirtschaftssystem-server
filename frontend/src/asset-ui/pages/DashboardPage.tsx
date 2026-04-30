@@ -11,31 +11,15 @@ type DashboardPageProps = {
   onNavigate: (page: AppPage) => void;
 };
 
-const ASSET_ACCENT_STYLES = [
-  {
-    border: 'border-l-cyan-500',
-    badge: 'bg-cyan-50 text-cyan-800 border-cyan-200',
-  },
-  {
-    border: 'border-l-emerald-500',
-    badge: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  },
-  {
-    border: 'border-l-amber-500',
-    badge: 'bg-amber-50 text-amber-800 border-amber-200',
-  },
-  {
-    border: 'border-l-violet-500',
-    badge: 'bg-violet-50 text-violet-800 border-violet-200',
-  },
-  {
-    border: 'border-l-rose-500',
-    badge: 'bg-rose-50 text-rose-800 border-rose-200',
-  },
-  {
-    border: 'border-l-sky-500',
-    badge: 'bg-sky-50 text-sky-800 border-sky-200',
-  },
+const ASSET_ACCENTS = [
+  { border: 'rgba(56, 189, 248, 0.72)', bg: 'rgba(56, 189, 248, 0.10)', text: 'rgb(186, 230, 253)' },
+  { border: 'rgba(45, 212, 191, 0.70)', bg: 'rgba(45, 212, 191, 0.10)', text: 'rgb(153, 246, 228)' },
+  { border: 'rgba(129, 140, 248, 0.72)', bg: 'rgba(129, 140, 248, 0.10)', text: 'rgb(199, 210, 254)' },
+  { border: 'rgba(168, 85, 247, 0.68)', bg: 'rgba(168, 85, 247, 0.09)', text: 'rgb(221, 214, 254)' },
+  { border: 'rgba(251, 191, 36, 0.64)', bg: 'rgba(251, 191, 36, 0.08)', text: 'rgb(254, 240, 138)' },
+  { border: 'rgba(52, 211, 153, 0.66)', bg: 'rgba(52, 211, 153, 0.08)', text: 'rgb(167, 243, 208)' },
+  { border: 'rgba(244, 114, 182, 0.60)', bg: 'rgba(244, 114, 182, 0.07)', text: 'rgb(251, 207, 232)' },
+  { border: 'rgba(96, 165, 250, 0.70)', bg: 'rgba(96, 165, 250, 0.09)', text: 'rgb(191, 219, 254)' },
 ] as const;
 
 const CHECKOUT_ACTION_STYLES = 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -51,7 +35,7 @@ function hashText(value: string): number {
 }
 
 function getAssetAccentStyle(key: string) {
-  return ASSET_ACCENT_STYLES[hashText(key) % ASSET_ACCENT_STYLES.length];
+  return ASSET_ACCENTS[hashText(key) % ASSET_ACCENTS.length];
 }
 
 function trimActivityAssetPrefix(detail: string, assetName?: string): string {
@@ -243,8 +227,9 @@ export function DashboardPage({
                   return (
                     <div
                       className={`surface-muted border-l-4 px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/40 ${
-                        accent ? accent.border : 'border-l-slate-200'
+                        accent ? '' : 'border-l-slate-200'
                       }`}
+                      style={accent ? { borderLeftColor: accent.border } : undefined}
                     >
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                         <div className="flex min-w-0 items-center gap-2">
@@ -254,8 +239,9 @@ export function DashboardPage({
                           {assetBadge ? (
                             <span
                               className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
-                                accent ? accent.badge : 'border-slate-200 bg-slate-50 text-slate-700'
+                                accent ? '' : 'border-slate-200 bg-slate-50 text-slate-700'
                               }`}
+                              style={accent ? { borderColor: accent.border, backgroundColor: accent.bg, color: accent.text } : undefined}
                             >
                               {assetBadge}
                             </span>
