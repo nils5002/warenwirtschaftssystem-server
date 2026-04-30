@@ -51,6 +51,57 @@ def test_admin_can_manage_users_but_projectmanager_cannot() -> None:
     assert denied_res.status_code == 403
 
 
+def test_checkout_and_checkin_activity_contains_server_side_actor() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    actor_id = f"usr-actor-{suffix}"
+    actor_payload = {
+        "id": actor_id,
+        "name": f"Audit Actor {suffix}",
+        "email": f"audit.actor.{suffix}@example.local",
+        "role": "Admin",
+        "lastActive": "Neu",
+        "status": "Aktiv",
+        "department": "Ops",
+        "location": "Berlin",
+    }
+    actor_created = client.post("/api/wms/users", headers=_headers("Admin"), json=actor_payload)
+    assert actor_created.status_code == 200
+
+    asset_payload = {
+        "id": f"asset-audit-{suffix}",
+        "name": f"Audit Asset {suffix}",
+        "category": "Notebook",
+        "location": "Testlager",
+        "status": "Verfuegbar",
+        "assignedTo": "-",
+        "nextReturn": "-",
+        "tagNumber": f"TAG-AUD-{suffix}",
+        "serialNumber": f"SN-AUD-{suffix}",
+        "qrCode": "",
+        "maintenanceState": "Neu",
+        "notes": "",
+        "lastCheckout": "-",
+        "nextReservation": "-",
+    }
+    created_asset = client.post("/api/wms/assets", headers=_headers("Admin", user_id=actor_id), json=asset_payload)
+    assert created_asset.status_code == 200
+
+    checkout_payload = {**created_asset.json(), "status": "Verliehen", "assignedTo": "Team Audit · Projekt A"}
+    checkout = client.post("/api/wms/assets", headers=_headers("Admin", user_id=actor_id), json=checkout_payload)
+    assert checkout.status_code == 200
+
+    checkin_payload = {**checkout.json(), "status": "Verfuegbar", "assignedTo": "-", "nextReturn": "-", "nextReservation": "-"}
+    checkin = client.post("/api/wms/assets", headers=_headers("Admin", user_id=actor_id), json=checkin_payload)
+    assert checkin.status_code == 200
+
+    activities = client.get("/api/wms/activities", headers=_headers("Admin", user_id=actor_id))
+    assert activities.status_code == 200
+    relevant = [item for item in activities.json() if item.get("assetId") == asset_payload["id"]]
+    assert any(item.get("title") == "Checkout gebucht" and actor_id in item.get("detail", "") for item in relevant)
+    assert any(item.get("title") == "Checkin gebucht" and actor_id in item.get("detail", "") for item in relevant)
+
+
 def test_mitarbeiter_can_checkout_but_not_modify_asset_masterdata() -> None:
     client = TestClient(app)
     overview = client.get("/api/wms/overview", headers=_headers("Admin"))

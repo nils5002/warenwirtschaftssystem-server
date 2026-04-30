@@ -161,6 +161,7 @@ function App() {
             <WmsPageView
               activePage={controller.activePage}
               currentUserId={authUser.userId}
+              currentUserName={authUser.name}
               projectContext={controller.projectContext}
               onProjectContextChange={controller.setProjectContext}
               assets={controller.assets}

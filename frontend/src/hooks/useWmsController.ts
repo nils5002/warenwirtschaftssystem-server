@@ -45,14 +45,12 @@ type CheckoutPayload = {
   assetId: string;
   assignee: string;
   projectName?: string;
-  bookedBy?: string;
   dueDate: string;
   note: string;
 };
 type CheckinPayload = {
   assetId: string;
   condition: string;
-  returnedBy?: string;
   projectName?: string;
 };
 type CreateAssetInput = {
@@ -159,6 +157,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [wmsError, setWmsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const currentOperatorName = getAuthSession()?.user.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
     setActivePageState(page);
@@ -480,7 +479,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
     dueHint?: string,
     noteHint?: string,
     projectHint?: string,
-    bookedByHint?: string,
   ) => {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
@@ -504,10 +502,9 @@ export function useWmsController(options: UseWmsControllerOptions) {
       asset.nextReturn;
     const note = noteHint || '';
     const project = projectHint?.trim() || '';
-    const bookedBy = bookedByHint?.trim() || '';
     const metadataLines = [
       project ? `Projekt: ${project}` : '',
-      bookedBy ? `Ausgabe durch: ${bookedBy}` : '',
+      `Ausgabe durch: ${currentOperatorName}`,
       note ? `Notiz: ${note}` : '',
     ].filter(Boolean);
     const updated: Asset = {
@@ -526,7 +523,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     );
   };
 
-  const checkinAsset = async (assetId: string, conditionNote?: string, returnedByHint?: string, projectHint?: string) => {
+  const checkinAsset = async (assetId: string, conditionNote?: string, projectHint?: string) => {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
     const note =
@@ -537,11 +534,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
         defaultValue: '',
       })) ||
       '';
-    const returnedBy = returnedByHint?.trim() || '';
     const project = projectHint?.trim() || '';
     const returnLines = [
       `Rücknahme: ${note}`,
-      returnedBy ? `Rücknahme durch: ${returnedBy}` : '',
+      `Rücknahme durch: ${currentOperatorName}`,
       project ? `Projektkontext: ${project}` : '',
     ].filter(Boolean);
     const updated: Asset = {
@@ -555,7 +551,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     await saveAsset(updated);
     await addActivity(
       'Asset zurückgenommen',
-      `${asset.name} wurde zurückgenommen${returnedBy ? ` von ${returnedBy}` : ''}.`,
+      `${asset.name} wurde zurückgenommen von ${currentOperatorName}.`,
       asset.id,
     );
   };
@@ -1034,12 +1030,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
       payload.dueDate,
       payload.note,
       payload.projectName,
-      payload.bookedBy,
     );
   };
 
   const checkinFromForm = async (payload: CheckinPayload) => {
-    await checkinAsset(payload.assetId, payload.condition, payload.returnedBy, payload.projectName);
+    await checkinAsset(payload.assetId, payload.condition, payload.projectName);
   };
 
   return {
