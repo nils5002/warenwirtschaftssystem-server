@@ -20,6 +20,7 @@ import type {
   ReservationItem,
   UserItem,
 } from '../asset-ui/types';
+import type { Theme } from '../hooks/useTheme';
 
 type WmsPageViewProps = {
   activePage: AppPage;
@@ -27,6 +28,7 @@ type WmsPageViewProps = {
   currentUserId: string;
   currentUserName: string;
   projectContext: string;
+  theme: Theme;
   onProjectContextChange: (value: string) => void;
   assets: Asset[];
   activities: ActivityItem[];
@@ -125,6 +127,7 @@ export function WmsPageView({
   currentUserId,
   currentUserName,
   projectContext,
+  theme,
   onProjectContextChange,
   assets,
   activities,
@@ -177,6 +180,7 @@ export function WmsPageView({
           activities={activities}
           reservations={reservations}
           maintenanceItems={maintenanceItems}
+          theme={theme}
           onNavigate={onNavigate}
         />
       );

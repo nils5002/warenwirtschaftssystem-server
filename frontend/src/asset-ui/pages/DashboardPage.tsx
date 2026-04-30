@@ -2,16 +2,29 @@ import { Boxes, CalendarRange, CheckCircle2, Handshake, TriangleAlert, Users, Wr
 import { KpiCard } from '../components/KpiCard';
 import { normalizeCategory } from '../categories';
 import type { ActivityItem, AppPage, Asset, MaintenanceItem, ReservationItem } from '../types';
+import type { Theme } from '../../hooks/useTheme';
 
 type DashboardPageProps = {
   assets: Asset[];
   activities: ActivityItem[];
   reservations: ReservationItem[];
   maintenanceItems: MaintenanceItem[];
+  theme: Theme;
   onNavigate: (page: AppPage) => void;
 };
 
-const ASSET_ACCENTS = [
+const ASSET_ACCENTS_LIGHT = [
+  { border: 'rgba(14, 116, 144, 0.90)', bg: 'rgba(14, 116, 144, 0.14)', text: 'rgb(12, 74, 110)' },
+  { border: 'rgba(15, 118, 110, 0.90)', bg: 'rgba(15, 118, 110, 0.14)', text: 'rgb(17, 94, 89)' },
+  { border: 'rgba(79, 70, 229, 0.90)', bg: 'rgba(79, 70, 229, 0.13)', text: 'rgb(55, 48, 163)' },
+  { border: 'rgba(126, 34, 206, 0.86)', bg: 'rgba(126, 34, 206, 0.12)', text: 'rgb(88, 28, 135)' },
+  { border: 'rgba(180, 83, 9, 0.86)', bg: 'rgba(180, 83, 9, 0.12)', text: 'rgb(146, 64, 14)' },
+  { border: 'rgba(5, 150, 105, 0.86)', bg: 'rgba(5, 150, 105, 0.12)', text: 'rgb(6, 95, 70)' },
+  { border: 'rgba(190, 24, 93, 0.82)', bg: 'rgba(190, 24, 93, 0.11)', text: 'rgb(157, 23, 77)' },
+  { border: 'rgba(37, 99, 235, 0.88)', bg: 'rgba(37, 99, 235, 0.13)', text: 'rgb(30, 64, 175)' },
+] as const;
+
+const ASSET_ACCENTS_DARK = [
   { border: 'rgba(56, 189, 248, 0.72)', bg: 'rgba(56, 189, 248, 0.10)', text: 'rgb(186, 230, 253)' },
   { border: 'rgba(45, 212, 191, 0.70)', bg: 'rgba(45, 212, 191, 0.10)', text: 'rgb(153, 246, 228)' },
   { border: 'rgba(129, 140, 248, 0.72)', bg: 'rgba(129, 140, 248, 0.10)', text: 'rgb(199, 210, 254)' },
@@ -34,8 +47,9 @@ function hashText(value: string): number {
   return hash;
 }
 
-function getAssetAccentStyle(key: string) {
-  return ASSET_ACCENTS[hashText(key) % ASSET_ACCENTS.length];
+function getAssetAccentStyle(key: string, theme: Theme) {
+  const palette = theme === 'dark' ? ASSET_ACCENTS_DARK : ASSET_ACCENTS_LIGHT;
+  return palette[hashText(key) % palette.length];
 }
 
 function trimActivityAssetPrefix(detail: string, assetName?: string): string {
@@ -107,6 +121,7 @@ export function DashboardPage({
   activities,
   reservations,
   maintenanceItems,
+  theme,
   onNavigate,
 }: DashboardPageProps) {
   const totalAssets = assets.length;
@@ -220,13 +235,15 @@ export function DashboardPage({
                 {(() => {
                   const relatedAsset = activity.assetId ? assetsById.get(activity.assetId) : undefined;
                   const assetKey = relatedAsset?.id ?? activity.assetId ?? '';
-                  const accent = assetKey ? getAssetAccentStyle(assetKey) : null;
+                  const accent = assetKey ? getAssetAccentStyle(assetKey, theme) : null;
                   const assetBadge = getReadableAssetLabel(relatedAsset);
                   const detailText = normalizeActivityText(activity.detail, relatedAsset);
                   const summary = summarizeActivityLine(activity.title, detailText);
                   return (
                     <div
-                      className={`surface-muted border-l-4 px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/40 ${
+                      className={`surface-muted border-l-4 px-3 py-2.5 transition ${
+                        theme === 'dark' ? 'hover:bg-white/5' : 'hover:border-brand-200 hover:bg-brand-50/40'
+                      } ${
                         accent ? '' : 'border-l-slate-200'
                       }`}
                       style={accent ? { borderLeftColor: accent.border } : undefined}
