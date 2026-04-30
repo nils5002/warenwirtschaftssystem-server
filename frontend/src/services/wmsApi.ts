@@ -220,8 +220,14 @@ export type PlanningAvailabilityItem = {
   usableStock: number;
   alreadyPlanned: number;
   remainingQty: number;
+  currentPlanningQty: number;
+  otherPlannedQty: number;
+  totalPlannedQtyForDateCategory: number;
+  remainingAfterAllPlanning: number;
   availabilityState: PlanningAvailabilityState;
   shortageQty: number;
+  hasGlobalShortage: boolean;
+  affectedPlanningIds: string[];
   handoverEnabled?: boolean;
   linkedPlanningId?: string | null;
   linkedPlanningLabel?: string | null;

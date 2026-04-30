@@ -173,17 +173,17 @@ function availabilityLabel(state: string): string {
 }
 
 function availabilityHint(item: PlanningAvailabilityResponse['items'][number]): string {
-  if (item.shortageQty <= 0) {
+  if (!item.hasGlobalShortage && item.shortageQty <= 0) {
     return 'Bestand ausreichend';
   }
   if (item.handoverStatus === 'planned') {
     const linked = item.linkedPlanningLabel || item.linkedPlanningId || 'anderes Projekt';
-    return `Übergabe geplant · ${item.shortageQty} fehlen rechnerisch (${linked})`;
+    return `Übergabe geplant / prüfen · Fehlmenge ${item.shortageQty} (${linked})`;
   }
   if (item.handoverStatus === 'missing_link') {
-    return `Übergabe geplant · ${item.shortageQty} fehlen (Verknüpfung prüfen)`;
+    return `Übergabe geplant · Fehlmenge ${item.shortageQty} (Verknüpfung prüfen)`;
   }
-  return `${item.shortageQty} fehlen`;
+  return `Gemeinsamer Engpass: ${item.shortageQty}`;
 }
 
 function handoverKey(dayIndex: number, itemIndex: number): string {
@@ -995,9 +995,11 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                             const availabilityItem = availabilityByDayCategory.get(
                               `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
                             );
-                            const shortageWithoutHandover =
-                              (availabilityItem.shortageQty ?? 0) > 0 &&
-                              !item.handoverEnabled;
+                            const hasGlobalShortage =
+                              Boolean(availabilityItem?.hasGlobalShortage) ||
+                              (availabilityItem?.shortageQty ?? 0) > 0 ||
+                              (availabilityItem?.remainingAfterAllPlanning ?? 0) < 0;
+                            const shortageWithoutHandover = hasGlobalShortage && !item.handoverEnabled;
                             const activeHandover = item.handoverEnabled;
                             const editorKey = handoverKey(dayIndex, itemIndex);
                             const editorOpen = handoverEditorKey === editorKey;
@@ -1066,8 +1068,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                     <div className={`rounded-lg border px-2 py-1 text-[11px] ${availabilityTone(availabilityItem.availabilityState)}`}>
                                       <p className="font-semibold">{availabilityLabel(availabilityItem.availabilityState)}</p>
                                       <p>Nutzbar {availabilityItem.usableStock}</p>
-                                      <p>Verplant {availabilityItem.alreadyPlanned}</p>
-                                      <p>Rest {availabilityItem.remainingQty}</p>
+                                      <p>Diese Planung {availabilityItem.currentPlanningQty}</p>
+                                      <p>Andere Planungen {availabilityItem.otherPlannedQty}</p>
+                                      <p>Gesamt geplant {availabilityItem.totalPlannedQtyForDateCategory}</p>
+                                      <p>Rest nach Gesamtplanung {availabilityItem.remainingAfterAllPlanning}</p>
                                       <p>{availabilityHint(availabilityItem)}</p>
                                       <details className="mt-1">
                                         <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
@@ -1076,11 +1080,15 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                         <div className="mt-1 space-y-0.5 text-[10px]">
                                           <p>Gesamtbestand: {availabilityItem.totalStock}</p>
                                           <p>Nutzbar: {availabilityItem.usableStock}</p>
-                                          <p>Bereits geplant: {availabilityItem.alreadyPlanned}</p>
-                                          <p>Diese Planung: {availabilityItem.requestedQty}</p>
-                                          <p>Rest: {availabilityItem.remainingQty - availabilityItem.requestedQty}</p>
+                                          <p>Bereits geplant (andere): {availabilityItem.otherPlannedQty}</p>
+                                          <p>Diese Planung: {availabilityItem.currentPlanningQty}</p>
+                                          <p>Gesamt geplant: {availabilityItem.totalPlannedQtyForDateCategory}</p>
+                                          <p>Rest nach Gesamtplanung: {availabilityItem.remainingAfterAllPlanning}</p>
                                           <p>Fehlmenge: {availabilityItem.shortageQty}</p>
+                                          <p>Status: {availabilityItem.availabilityState}</p>
+                                          <p>Globaler Engpass: {availabilityItem.hasGlobalShortage ? 'ja' : 'nein'}</p>
                                           <p>Übergabe-Status: {availabilityItem.handoverStatus || 'none'}</p>
+                                          <p>Betroffene Planungen: {(availabilityItem.affectedPlanningIds || []).join(', ') || '-'}</p>
                                         </div>
                                       </details>
                                     </div>
@@ -1111,10 +1119,15 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
                                 {shortageWithoutHandover ? (
                                   <div className="rounded-lg border border-rose-300 bg-rose-50/85 px-2 py-2 text-xs text-rose-800 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-200">
-                                    <p className="font-semibold">Engpass erkannt</p>
+                                    <p className="font-semibold">Gemeinsamer Engpass erkannt</p>
                                     <p className="mt-0.5">
-                                      Dieser Engpass kann eventuell durch eine geplante Übergabe mit einem anderen Projekt entschärft werden.
+                                      Diese Kategorie ist am ausgewählten Tag über mehrere Planungen hinweg überbucht.
                                     </p>
+                                    <p className="mt-1">Nutzbar: {availabilityItem?.usableStock ?? 0}</p>
+                                    <p>Diese Planung: {availabilityItem?.currentPlanningQty ?? item.qty}</p>
+                                    <p>Andere Planungen: {availabilityItem?.otherPlannedQty ?? 0}</p>
+                                    <p>Gesamt geplant: {availabilityItem?.totalPlannedQtyForDateCategory ?? item.qty}</p>
+                                    <p>Fehlmenge: {availabilityItem?.shortageQty ?? 0}</p>
                                     <button
                                       type="button"
                                       className="btn-danger mt-2 px-2 py-1 text-xs"
@@ -1128,9 +1141,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 {activeHandover ? (
                                   <div className="rounded-lg border border-amber-300 bg-amber-50/85 px-2 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
                                     {item.linkedPlanningId ? (
-                                      <p className="font-semibold">
-                                        Übergabe geplant mit {availabilityItem?.linkedPlanningLabel || item.linkedPlanningId}
-                                      </p>
+                                      <>
+                                        <p className="font-semibold">Übergabe geplant / prüfen</p>
+                                        <p className="mt-0.5">Verknüpft mit: {availabilityItem?.linkedPlanningLabel || item.linkedPlanningId}</p>
+                                      </>
                                     ) : (
                                       <p className="font-semibold">Übergabe geplant, aber kein Projekt verknüpft</p>
                                     )}
@@ -1295,7 +1309,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                 </div>
                 <div className="mt-3 space-y-2">
                   {(availability?.items ?? [])
-                    .filter((item) => item.shortageQty > 0)
+                    .filter((item) => item.shortageQty > 0 || item.hasGlobalShortage)
                     .map((item) => (
                       <div
                         key={`handover-action-${item.planningDate}-${item.categoryKey}`}
@@ -1307,6 +1321,9 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                       >
                         <p className="font-semibold">
                           {item.categoryKey}: Fehlmenge {item.shortageQty} am {item.planningDate}
+                        </p>
+                        <p className="mt-0.5">
+                          Nutzbar {item.usableStock} · Diese Planung {item.currentPlanningQty} · Andere Planungen {item.otherPlannedQty} · Gesamt {item.totalPlannedQtyForDateCategory}
                         </p>
                         {item.handoverStatus === 'planned' ? (
                           <p className="mt-0.5">
@@ -1323,20 +1340,32 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                           </summary>
                           <div className="mt-1 space-y-0.5 text-[10px]">
                             <p>Nutzbar: {item.usableStock}</p>
-                            <p>Bereits geplant: {item.alreadyPlanned}</p>
-                            <p>Diese Planung: {item.requestedQty}</p>
-                            <p>Rest nach Bedarf: {item.remainingQty - item.requestedQty}</p>
+                            <p>Diese Planung: {item.currentPlanningQty}</p>
+                            <p>Andere Planungen: {item.otherPlannedQty}</p>
+                            <p>Gesamt geplant: {item.totalPlannedQtyForDateCategory}</p>
+                            <p>Rest nach Gesamtplanung: {item.remainingAfterAllPlanning}</p>
                             <p>Fehlmenge: {item.shortageQty}</p>
+                            <p>Status: {item.availabilityState}</p>
                             <p>Übergabe-Status: {item.handoverStatus || 'none'}</p>
+                            <p>Betroffene Planungen: {(item.affectedPlanningIds || []).join(', ') || '-'}</p>
                           </div>
                         </details>
-                        <button
-                          type="button"
-                          className="btn-secondary mt-2 px-2 py-1 text-xs"
-                          onClick={() => openHandoverEditorByCategory(item.categoryKey)}
-                        >
-                          Übergabe planen
-                        </button>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            className="btn-primary px-2 py-1 text-xs"
+                            onClick={() => openHandoverEditorByCategory(item.categoryKey)}
+                          >
+                            Übergabe planen
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary px-2 py-1 text-xs"
+                            onClick={() => onOpenInventoryWithQuery(item.categoryKey)}
+                          >
+                            Bestand öffnen
+                          </button>
+                        </div>
                       </div>
                     ))}
                 </div>

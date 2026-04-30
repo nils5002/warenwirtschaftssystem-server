@@ -412,8 +412,14 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     stock_map = {category: (stock_totals[category], stock_usable[category]) for category in categories}
 
     overlap_map: dict[tuple[date, str], int] = defaultdict(int)
+    overlap_planning_ids_map: dict[tuple[date, str], set[str]] = defaultdict(set)
     overlap_items = db.execute(
-        select(PlanningDayRecord.planning_date, PlanningItemRecord.category_key, PlanningItemRecord.qty)
+        select(
+            PlanningDayRecord.planning_date,
+            PlanningItemRecord.category_key,
+            PlanningItemRecord.qty,
+            PlanningRecord.external_id,
+        )
         .join(PlanningItemRecord, PlanningItemRecord.planning_day_id == PlanningDayRecord.id)
         .join(PlanningRecord, PlanningRecord.id == PlanningDayRecord.planning_id)
         .where(PlanningRecord.external_id != planning_id)
@@ -426,6 +432,9 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         category = category_repository.normalize_category_for_db(db, str(row.category_key))
         if category in categories:
             overlap_map[(row.planning_date, category)] += int(row.qty or 0)
+            other_id = str(row.external_id or "").strip()
+            if other_id:
+                overlap_planning_ids_map[(row.planning_date, category)].add(other_id)
 
     availability_items: list[PlanningAvailabilityItem] = []
     summary_requested: dict[str, int] = defaultdict(int)
@@ -469,11 +478,16 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         total_stock, usable_stock = stock_map.get(category, (0, 0))
         already_planned = overlap_map.get((planning_date, category), 0)
         remaining_qty = usable_stock - already_planned
-        shortage_qty = max(0, requested_qty - remaining_qty)
+        current_planning_qty = requested_qty
+        other_planned_qty = already_planned
+        total_planned_qty_for_date_category = current_planning_qty + other_planned_qty
+        remaining_after_all_planning = usable_stock - total_planned_qty_for_date_category
+        shortage_qty = max(0, -remaining_after_all_planning)
+        has_global_shortage = shortage_qty > 0
         handover_enabled = bool(requested["handoverEnabled"])
         linked_planning_id = str(requested["linkedPlanningId"] or "") or None
         handover_status: "none" | "planned" | "missing_link" = "none"
-        if shortage_qty > 0 and handover_enabled:
+        if has_global_shortage and handover_enabled:
             handover_status = "planned" if linked_planning_id else "missing_link"
         availability_items.append(
             PlanningAvailabilityItem(
@@ -485,8 +499,14 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 usableStock=usable_stock,
                 alreadyPlanned=already_planned,
                 remainingQty=remaining_qty,
-                availabilityState=_availability_state_with_handover(requested_qty, remaining_qty, handover_enabled),
+                currentPlanningQty=current_planning_qty,
+                otherPlannedQty=other_planned_qty,
+                totalPlannedQtyForDateCategory=total_planned_qty_for_date_category,
+                remainingAfterAllPlanning=remaining_after_all_planning,
+                availabilityState=_availability_state_with_handover(total_planned_qty_for_date_category, usable_stock, handover_enabled),
                 shortageQty=shortage_qty,
+                hasGlobalShortage=has_global_shortage,
+                affectedPlanningIds=sorted(overlap_planning_ids_map.get((planning_date, category), set())),
                 handoverEnabled=handover_enabled,
                 linkedPlanningId=linked_planning_id,
                 linkedPlanningLabel=linked_labels.get(linked_planning_id or ""),
