@@ -1,9 +1,9 @@
 import {
   AlertTriangle,
   CalendarPlus,
-  CheckCircle2,
   Clock3,
   Copy,
+  Link2,
   Plus,
   Save,
   Trash2,
@@ -21,6 +21,7 @@ import {
   updatePlanning,
   updatePlanningStatus,
   type PlanningAvailabilityResponse,
+  type PlanningListItem,
   type PlanningStatus,
   type PlanningResponse,
   type PlanningUpsertPayload,
@@ -61,6 +62,39 @@ type EditablePlanning = {
   }>;
 };
 
+type PlanningSummary = PlanningListItem | PlanningResponse;
+
+type HandoverVisualStatus = 'ok' | 'network' | 'incomplete' | 'shortage';
+
+type IncomingHandoverInfo = {
+  partnerPlanningId: string;
+  partnerLabel: string;
+  note: string;
+};
+
+type AvailabilityVisual = {
+  key: string;
+  planningDate: string;
+  weekday: string;
+  categoryKey: string;
+  status: HandoverVisualStatus;
+  source: 'outgoing' | 'incoming' | 'none';
+  partnerPlanningId: string;
+  partnerLabel: string;
+  note: string;
+  totalStock: number;
+  usableStock: number;
+  currentPlanningQty: number;
+  otherPlannedQty: number;
+  totalPlannedQtyForDateCategory: number;
+  remainingAfterAllPlanning: number;
+  shortageQty: number;
+  hasGlobalShortage: boolean;
+  affectedPlanningIds: string[];
+  linkedPlanningId: string;
+  linkedPlanningLabel: string;
+};
+
 const STATUS_OPTIONS: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Abgeschlossen', 'Storniert'];
 
 function toIsoDate(value: Date): string {
@@ -86,6 +120,12 @@ function formatGermanDate(isoDate: string): string {
   const [year, month, day] = isoDate.split('-');
   if (!year || !month || !day) return isoDate;
   return `${day}.${month}.${year}`;
+}
+
+function buildPlanningLabel(planning: Pick<PlanningSummary, 'projectName' | 'eventName' | 'startDate'>): string {
+  const datePart = planning.startDate ? ` – ${formatGermanDate(planning.startDate)}` : '';
+  if (planning.eventName?.trim()) return `${planning.projectName} (${planning.eventName})${datePart}`;
+  return `${planning.projectName}${datePart}`;
 }
 
 function buildDaysInRange(startDate: string, endDate: string): EditablePlanning['days'] {
@@ -167,32 +207,6 @@ function toUpsertPayload(item: EditablePlanning): PlanningUpsertPayload {
   };
 }
 
-function availabilityTone(state: string): string {
-  if (state === 'red') return 'border-rose-300 bg-rose-50 text-rose-700';
-  if (state === 'yellow') return 'border-amber-300 bg-amber-50 text-amber-700';
-  return 'border-emerald-300 bg-emerald-50 text-emerald-700';
-}
-
-function availabilityLabel(state: string): string {
-  if (state === 'red') return 'Engpass';
-  if (state === 'yellow') return 'Knapp';
-  return 'Ausreichend';
-}
-
-function availabilityHint(item: PlanningAvailabilityResponse['items'][number]): string {
-  if (!item.hasGlobalShortage && item.shortageQty <= 0) {
-    return 'Bestand ausreichend';
-  }
-  if (item.handoverStatus === 'planned') {
-    const linked = item.linkedPlanningLabel || item.linkedPlanningId || 'anderes Projekt';
-    return `Übergabe geplant · Fehlmenge ${item.shortageQty} (${linked})`;
-  }
-  if (item.handoverStatus === 'missing_link') {
-    return `Übergabe geplant · Fehlmenge ${item.shortageQty} (Verknüpfung prüfen)`;
-  }
-  return `Gemeinsamer Engpass: ${item.shortageQty}`;
-}
-
 function handoverKey(dayIndex: number, itemIndex: number): string {
   return `${dayIndex}:${itemIndex}`;
 }
@@ -211,9 +225,7 @@ function buildPlanningFallbackLabel(
 ): string {
   const match = plannings.find((item) => item.id === planningId);
   if (!match) return `Projektverknüpfung (${planningId.slice(-6)})`;
-  const datePart = match.startDate ? ` – ${formatGermanDate(match.startDate)}` : '';
-  if (match.eventName?.trim()) return `${match.projectName} (${match.eventName})${datePart}`;
-  return `${match.projectName}${datePart}`;
+  return buildPlanningLabel(match);
 }
 
 export function PlanningPage({ assets: _assets, categories, users, onOpenInventoryWithQuery, canEdit = true }: PlanningPageProps) {
@@ -231,6 +243,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   const [createOpen, setCreateOpen] = useState(false);
   const [handoverEditorKey, setHandoverEditorKey] = useState<string | null>(null);
   const [handoverSnapshot, setHandoverSnapshot] = useState<Record<string, EditablePlanning['days'][number]['items'][number]>>({});
+  const [relatedPlannings, setRelatedPlannings] = useState<Record<string, PlanningResponse>>({});
   const [createForm, setCreateForm] = useState({
     customerName: '',
     projectName: '',
@@ -259,6 +272,8 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
       new Map(users.map((user) => [user.id, user.department ? `${user.name} (${user.department})` : user.name])),
     [users],
   );
+
+  const planningListItemById = useMemo(() => new Map(plannings.map((item) => [item.id, item])), [plannings]);
 
   const availabilityByDayCategory = useMemo(() => {
     const map = new Map<string, PlanningAvailabilityResponse['items'][number]>();
@@ -295,42 +310,214 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     return map;
   }, [editor, plannings]);
 
+  useEffect(() => {
+    if (!editor || !availability) {
+      setRelatedPlannings({});
+      return;
+    }
+    const relatedIds = new Set<string>();
+    for (const item of availability.items) {
+      for (const affectedId of item.affectedPlanningIds ?? []) {
+        if (affectedId && affectedId !== editor.id) relatedIds.add(affectedId);
+      }
+      if (item.linkedPlanningId && item.linkedPlanningId !== editor.id) {
+        relatedIds.add(item.linkedPlanningId);
+      }
+    }
+    for (const localEntry of localHandoverByDayCategory.values()) {
+      if (localEntry.linkedPlanningId && localEntry.linkedPlanningId !== editor.id) {
+        relatedIds.add(localEntry.linkedPlanningId);
+      }
+    }
+    const candidateIds = Array.from(relatedIds);
+    if (!candidateIds.length) {
+      setRelatedPlannings({});
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all(
+      candidateIds.map(async (planningId) => {
+        try {
+          return await getPlanning(planningId);
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      const next: Record<string, PlanningResponse> = {};
+      for (const planning of results) {
+        if (planning) next[planning.id] = planning;
+      }
+      setRelatedPlannings(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [availability, editor?.id, localHandoverByDayCategory]);
+
+  const incomingHandoverByDayCategory = useMemo(() => {
+    const map = new Map<string, IncomingHandoverInfo>();
+    if (!editor) return map;
+
+    for (const planning of Object.values(relatedPlannings)) {
+      const planningLabel = buildPlanningLabel(planning);
+      for (const day of planning.days) {
+        for (const item of day.items) {
+          if (!item.handoverEnabled || item.linkedPlanningId !== editor.id) continue;
+          const key = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
+          if (!map.has(key)) {
+            map.set(key, {
+              partnerPlanningId: planning.id,
+              partnerLabel: planningLabel,
+              note: item.handoverNote ?? '',
+            });
+          }
+        }
+      }
+    }
+
+    return map;
+  }, [editor, relatedPlannings]);
+
+  const availabilityVisualMap = useMemo(() => {
+    const map = new Map<string, AvailabilityVisual>();
+
+    for (const item of availability?.items ?? []) {
+      const key = `${item.planningDate}|${normalizeCategory(item.categoryKey)}`;
+      const localHandover = localHandoverByDayCategory.get(key);
+      const incomingHandover = incomingHandoverByDayCategory.get(key);
+      const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
+      const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
+      const linkedPlanning =
+        (effectiveLinkedPlanningId ? relatedPlannings[effectiveLinkedPlanningId] : undefined) ??
+        (effectiveLinkedPlanningId ? planningListItemById.get(effectiveLinkedPlanningId) : undefined);
+      const effectiveLinkedPlanningLabel =
+        localHandover?.linkedPlanningLabel ||
+        item.linkedPlanningLabel ||
+        (linkedPlanning ? buildPlanningLabel(linkedPlanning) : '') ||
+        (effectiveLinkedPlanningId ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings) : '');
+      const effectiveHandoverNote = localHandover?.handoverNote ?? (item.handoverNote || '');
+      const hasGlobalShortage =
+        Boolean(item.hasGlobalShortage) ||
+        item.shortageQty > 0 ||
+        item.remainingAfterAllPlanning < 0;
+
+      let status: HandoverVisualStatus = hasGlobalShortage ? 'shortage' : 'ok';
+      let source: AvailabilityVisual['source'] = 'none';
+      let partnerPlanningId = '';
+      let partnerLabel = '';
+      let note = '';
+
+      if (effectiveHandoverEnabled && effectiveLinkedPlanningId) {
+        status = 'network';
+        source = 'outgoing';
+        partnerPlanningId = effectiveLinkedPlanningId;
+        partnerLabel = effectiveLinkedPlanningLabel;
+        note = effectiveHandoverNote;
+      } else if (incomingHandover) {
+        status = 'network';
+        source = 'incoming';
+        partnerPlanningId = incomingHandover.partnerPlanningId;
+        partnerLabel = incomingHandover.partnerLabel;
+        note = incomingHandover.note;
+      } else if (effectiveHandoverEnabled) {
+        status = 'incomplete';
+        note = effectiveHandoverNote;
+      }
+
+      map.set(key, {
+        key,
+        planningDate: item.planningDate,
+        weekday: item.weekday,
+        categoryKey: item.categoryKey,
+        status,
+        source,
+        partnerPlanningId,
+        partnerLabel,
+        note,
+        totalStock: item.totalStock,
+        usableStock: item.usableStock,
+        currentPlanningQty: item.currentPlanningQty,
+        otherPlannedQty: item.otherPlannedQty,
+        totalPlannedQtyForDateCategory: item.totalPlannedQtyForDateCategory,
+        remainingAfterAllPlanning: item.remainingAfterAllPlanning,
+        shortageQty: item.shortageQty,
+        hasGlobalShortage,
+        affectedPlanningIds: item.affectedPlanningIds,
+        linkedPlanningId: effectiveLinkedPlanningId,
+        linkedPlanningLabel: effectiveLinkedPlanningLabel,
+      });
+    }
+
+    return map;
+  }, [
+    availability,
+    incomingHandoverByDayCategory,
+    localHandoverByDayCategory,
+    planningListItemById,
+    plannings,
+    relatedPlannings,
+  ]);
+
+  const availabilityVisuals = useMemo(
+    () =>
+      Array.from(availabilityVisualMap.values()).sort((a, b) => {
+        if (a.planningDate !== b.planningDate) return a.planningDate.localeCompare(b.planningDate);
+        return a.categoryKey.localeCompare(b.categoryKey, 'de');
+      }),
+    [availabilityVisualMap],
+  );
+
   const planningStats = useMemo(() => {
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
     const openCount = plannings.filter((item) => openStatuses.includes(item.status)).length;
     const doneCount = plannings.filter((item) => item.status === 'Abgeschlossen').length;
-    const redCount = availability?.items.filter((item) => item.availabilityState === 'red' && item.requestedQty > 0).length ?? 0;
+    const redCount = availabilityVisuals.filter((item) => item.status === 'shortage').length;
     return {
       total: plannings.length,
       openCount,
       doneCount,
       redCount,
     };
-  }, [availability, plannings]);
+  }, [availabilityVisuals, plannings]);
 
-  const constrainedCategories = useMemo(() => {
-    return (availability?.items ?? [])
-      .filter((item) => item.shortageQty > 0 || item.hasGlobalShortage)
-      .map((item) => {
-        const localHandover = localHandoverByDayCategory.get(
-          `${item.planningDate}|${normalizeCategory(item.categoryKey)}`,
-        );
-        const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
-        const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
-        const state =
-          effectiveHandoverEnabled && effectiveLinkedPlanningId
-            ? 'planned'
-            : effectiveHandoverEnabled
-              ? 'missing_link'
-              : 'shortage';
-        return {
-          key: `${item.categoryKey}|${item.planningDate}`,
-          category: item.categoryKey,
-          state,
-        };
-      })
-      .slice(0, 8);
-  }, [availability, localHandoverByDayCategory]);
+  const networkVisuals = useMemo(
+    () => availabilityVisuals.filter((item) => item.status === 'network'),
+    [availabilityVisuals],
+  );
+
+  const incompleteVisuals = useMemo(
+    () => availabilityVisuals.filter((item) => item.status === 'incomplete'),
+    [availabilityVisuals],
+  );
+
+  const shortageVisuals = useMemo(
+    () => availabilityVisuals.filter((item) => item.status === 'shortage'),
+    [availabilityVisuals],
+  );
+
+  const healthyCategoryCount = useMemo(() => {
+    const blockedCategories = new Set(
+      availabilityVisuals
+        .filter((item) => item.status !== 'ok')
+        .map((item) => normalizeCategory(item.categoryKey)),
+    );
+    return (availability?.categorySummary ?? []).filter(
+      (item) => !blockedCategories.has(normalizeCategory(item.categoryKey)),
+    ).length;
+  }, [availability, availabilityVisuals]);
+
+  const currentPlanningLabel = useMemo(() => {
+    if (!editor) return '';
+    return buildPlanningLabel({
+      projectName: editor.projectName,
+      eventName: editor.eventName,
+      startDate: editor.startDate,
+    });
+  }, [editor]);
 
   const visiblePlannings = useMemo(() => {
     return plannings.filter((item) => {
@@ -593,10 +780,32 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     });
   };
 
-  const openHandoverEditor = (dayIndex: number, itemIndex: number) => {
+  const findPlanningItemPosition = (planningDate: string, categoryKey: string) => {
+    if (!editor) return null;
+    for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
+      if (editor.days[dayIndex].planningDate !== planningDate) continue;
+      const itemIndex = editor.days[dayIndex].items.findIndex(
+        (item) => normalizeCategory(item.categoryKey) === normalizeCategory(categoryKey),
+      );
+      if (itemIndex >= 0) return { dayIndex, itemIndex };
+    }
+    return null;
+  };
+
+  const openHandoverEditor = (
+    dayIndex: number,
+    itemIndex: number,
+    preset?: Partial<EditablePlanning['days'][number]['items'][number]>,
+  ) => {
     if (!editor) return;
     const key = handoverKey(dayIndex, itemIndex);
     setHandoverSnapshot((current) => ({ ...current, [key]: { ...editor.days[dayIndex].items[itemIndex] } }));
+    if (preset) {
+      patchPlanningItem(dayIndex, itemIndex, (item) => ({
+        ...item,
+        ...preset,
+      }));
+    }
     setHandoverEditorKey(key);
   };
 
@@ -619,30 +828,20 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     setHandoverEditorKey((current) => (current === handoverKey(dayIndex, itemIndex) ? null : current));
   };
 
-  const openHandoverEditorByCategory = (categoryKey: string) => {
-    if (!editor) return;
-    for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
-      const itemIndex = editor.days[dayIndex].items.findIndex(
-        (item) => normalizeCategory(item.categoryKey) === normalizeCategory(categoryKey),
-      );
-      if (itemIndex >= 0) {
-        openHandoverEditor(dayIndex, itemIndex);
-        return;
-      }
-    }
+  const openHandoverEditorByKey = (
+    planningDate: string,
+    categoryKey: string,
+    preset?: Partial<EditablePlanning['days'][number]['items'][number]>,
+  ) => {
+    const position = findPlanningItemPosition(planningDate, categoryKey);
+    if (!position) return;
+    openHandoverEditor(position.dayIndex, position.itemIndex, preset);
   };
 
-  const removeHandoverByCategory = (categoryKey: string) => {
-    if (!editor) return;
-    for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
-      const itemIndex = editor.days[dayIndex].items.findIndex(
-        (item) => normalizeCategory(item.categoryKey) === normalizeCategory(categoryKey),
-      );
-      if (itemIndex >= 0) {
-        removeHandover(dayIndex, itemIndex);
-        return;
-      }
-    }
+  const removeHandoverByKey = (planningDate: string, categoryKey: string) => {
+    const position = findPlanningItemPosition(planningDate, categoryKey);
+    if (!position) return;
+    removeHandover(position.dayIndex, position.itemIndex);
   };
 
   const addDay = () => {
@@ -1066,27 +1265,9 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
                         <div className="space-y-2">
                           {day.items.map((item, itemIndex) => {
-                            const availabilityItem = availabilityByDayCategory.get(
-                              `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
-                            );
-                            const localHandover = localHandoverByDayCategory.get(
-                              `${day.planningDate}|${normalizeCategory(item.categoryKey)}`,
-                            );
-                            const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? item.handoverEnabled;
-                            const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? item.linkedPlanningId;
-                            const effectiveLinkedPlanningLabel =
-                              availabilityItem?.linkedPlanningLabel ||
-                              localHandover?.linkedPlanningLabel ||
-                              (effectiveLinkedPlanningId
-                                ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings)
-                                : undefined);
-                            const effectiveHandoverNote = localHandover?.handoverNote ?? item.handoverNote;
-                            const hasGlobalShortage =
-                              Boolean(availabilityItem?.hasGlobalShortage) ||
-                              (availabilityItem?.shortageQty ?? 0) > 0 ||
-                              (availabilityItem?.remainingAfterAllPlanning ?? 0) < 0;
-                            const shortageWithoutHandover = hasGlobalShortage && !effectiveHandoverEnabled;
-                            const activeHandover = effectiveHandoverEnabled;
+                            const availabilityKey = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
+                            const availabilityItem = availabilityByDayCategory.get(availabilityKey);
+                            const visual = availabilityVisualMap.get(availabilityKey);
                             const editorKey = handoverKey(dayIndex, itemIndex);
                             const editorOpen = handoverEditorKey === editorKey;
                             return (
@@ -1150,31 +1331,65 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 />
 
                                 <div className="lg:col-span-2">
-                                  {availabilityItem ? (
-                                    <div className={`rounded-lg border px-2 py-1 text-[11px] ${availabilityTone(availabilityItem.availabilityState)}`}>
-                                      <p className="font-semibold">{availabilityLabel(availabilityItem.availabilityState)}</p>
-                                      <p>Nutzbar {availabilityItem.usableStock}</p>
-                                      <p>Diese Planung {availabilityItem.currentPlanningQty}</p>
-                                      <p>Andere Planungen {availabilityItem.otherPlannedQty}</p>
-                                      <p>Gesamt geplant {availabilityItem.totalPlannedQtyForDateCategory}</p>
-                                      <p>Rest nach Gesamtplanung {availabilityItem.remainingAfterAllPlanning}</p>
-                                      <p>{availabilityHint(availabilityItem)}</p>
+                                  {availabilityItem && visual ? (
+                                    <div
+                                      className={`rounded-2xl border px-2.5 py-2 text-[11px] ${
+                                        visual.status === 'network'
+                                          ? 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 text-slate-700 dark:border-amber-700 dark:from-amber-950/30 dark:via-slate-950 dark:to-sky-950/20 dark:text-slate-100'
+                                          : visual.status === 'incomplete'
+                                            ? 'border-orange-200 bg-orange-50/85 text-orange-900 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-100'
+                                            : visual.status === 'shortage'
+                                              ? 'border-rose-200 bg-rose-50/90 text-rose-900 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-100'
+                                              : 'border-emerald-200 bg-emerald-50/90 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-100'
+                                      }`}
+                                    >
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                                            visual.status === 'network'
+                                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-100'
+                                              : visual.status === 'incomplete'
+                                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-100'
+                                                : visual.status === 'shortage'
+                                                  ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-100'
+                                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-100'
+                                          }`}
+                                        >
+                                          {visual.status === 'network'
+                                            ? 'Übergabe geplant'
+                                            : visual.status === 'incomplete'
+                                              ? 'Übergabe offen'
+                                              : visual.status === 'shortage'
+                                                ? 'Engpass'
+                                                : 'Ausreichend'}
+                                        </span>
+                                        <span className="text-[10px] font-medium text-slate-500 dark:text-slate-300">
+                                          {visual.categoryKey}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 leading-relaxed">
+                                        {visual.status === 'network'
+                                          ? `Fehlmenge ${visual.shortageQty} · Partner ${visual.partnerLabel || 'Projektverknüpfung'}`
+                                          : visual.status === 'incomplete'
+                                            ? `Fehlmenge ${visual.shortageQty} · Projektverknüpfung fehlt noch`
+                                            : visual.status === 'shortage'
+                                              ? `Fehlmenge ${visual.shortageQty} · Übergabe noch nicht geplant`
+                                              : 'Bestand ist für diesen Slot ausreichend'}
+                                      </p>
                                       <details className="mt-1">
-                                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
+                                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                                           Details anzeigen
                                         </summary>
                                         <div className="mt-1 space-y-0.5 text-[10px]">
-                                          <p>Gesamtbestand: {availabilityItem.totalStock}</p>
-                                          <p>Nutzbar: {availabilityItem.usableStock}</p>
-                                          <p>Bereits geplant (andere): {availabilityItem.otherPlannedQty}</p>
-                                          <p>Diese Planung: {availabilityItem.currentPlanningQty}</p>
-                                          <p>Gesamt geplant: {availabilityItem.totalPlannedQtyForDateCategory}</p>
-                                          <p>Rest nach Gesamtplanung: {availabilityItem.remainingAfterAllPlanning}</p>
-                                          <p>Fehlmenge: {availabilityItem.shortageQty}</p>
-                                          <p>Status: {availabilityItem.availabilityState}</p>
-                                          <p>Globaler Engpass: {availabilityItem.hasGlobalShortage ? 'ja' : 'nein'}</p>
-                                          <p>Übergabe-Status: {availabilityItem.handoverStatus || 'none'}</p>
-                                          <p>Betroffene Planungen: {(availabilityItem.affectedPlanningIds || []).join(', ') || '-'}</p>
+                                          <p>Gesamtbestand: {visual.totalStock}</p>
+                                          <p>Nutzbar: {visual.usableStock}</p>
+                                          <p>Diese Planung: {visual.currentPlanningQty}</p>
+                                          <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                                          <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                                          <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                                          <p>Fehlmenge: {visual.shortageQty}</p>
+                                          <p>Betroffene Planungen: {visual.affectedPlanningIds.join(', ') || '-'}</p>
+                                          <p>linkedPlanningId: {visual.linkedPlanningId || '-'}</p>
                                         </div>
                                       </details>
                                     </div>
@@ -1203,60 +1418,155 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 </button>
                                 </div>
 
-                                {shortageWithoutHandover ? (
-                                  <div className="rounded-lg border border-rose-300 bg-rose-50/85 px-2 py-2 text-xs text-rose-800 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-200">
-                                    <p className="font-semibold">Gemeinsamer Engpass erkannt</p>
-                                    <p className="mt-0.5">
-                                      Diese Kategorie ist am ausgewählten Tag über mehrere Planungen hinweg überbucht.
-                                    </p>
-                                    <p className="mt-1">Nutzbar: {availabilityItem?.usableStock ?? 0}</p>
-                                    <p>Diese Planung: {availabilityItem?.currentPlanningQty ?? item.qty}</p>
-                                    <p>Andere Planungen: {availabilityItem?.otherPlannedQty ?? 0}</p>
-                                    <p>Gesamt geplant: {availabilityItem?.totalPlannedQtyForDateCategory ?? item.qty}</p>
-                                    <p>Fehlmenge: {availabilityItem?.shortageQty ?? 0}</p>
-                                    <button
-                                      type="button"
-                                      className="btn-danger mt-2 px-2 py-1 text-xs"
-                                      onClick={() => openHandoverEditor(dayIndex, itemIndex)}
-                                    >
-                                      Übergabe planen
-                                    </button>
+                                {visual?.status === 'shortage' ? (
+                                  <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-3 py-3 text-xs text-rose-900 shadow-sm dark:border-rose-700 dark:from-rose-950/40 dark:via-slate-950 dark:to-orange-950/20 dark:text-rose-100">
+                                    <div className="flex items-start gap-3">
+                                      <span className="rounded-2xl bg-rose-100 p-2 text-rose-700 dark:bg-rose-900/50 dark:text-rose-100">
+                                        <AlertTriangle className="h-4 w-4" />
+                                      </span>
+                                      <div className="flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-semibold">Ungeklärter Engpass</p>
+                                          <span className="rounded-full border border-rose-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
+                                            {visual.categoryKey}
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[13px] leading-relaxed text-rose-800 dark:text-rose-100">
+                                          Diese Kategorie ist am {formatGermanDate(day.planningDate)} ueber mehrere Projekte hinweg ueberbucht.
+                                        </p>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-rose-800 dark:text-rose-100">
+                                          <span>Nutzbar: {visual.usableStock}</span>
+                                          <span>Diese Planung: {visual.currentPlanningQty}</span>
+                                          <span>Andere Planungen: {visual.otherPlannedQty}</span>
+                                          <span>Fehlmenge: {visual.shortageQty}</span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            className="btn-danger px-2.5 py-1.5 text-xs"
+                                            onClick={() => openHandoverEditor(dayIndex, itemIndex)}
+                                          >
+                                            Übergabe planen
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-secondary px-2.5 py-1.5 text-xs"
+                                            onClick={() => onOpenInventoryWithQuery(visual.categoryKey)}
+                                          >
+                                            Bestand öffnen
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
                                   </div>
                                 ) : null}
 
-                                {activeHandover ? (
-                                  <div className="rounded-lg border border-amber-300 bg-amber-50/85 px-2 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                                    {effectiveLinkedPlanningId ? (
-                                      <>
-                                        <p className="font-semibold">Übergabe geplant</p>
-                                        <p className="mt-0.5">
-                                          Dieser Engpass ist bekannt und mit einem anderen Projekt verknüpft.
+                                {visual?.status === 'network' ? (
+                                  <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 px-3 py-3 text-xs text-slate-800 shadow-sm dark:border-amber-700 dark:from-amber-950/35 dark:via-slate-950 dark:to-sky-950/25 dark:text-slate-100">
+                                    <div className="flex items-start gap-3">
+                                      <span className="rounded-2xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-100">
+                                        <Link2 className="h-4 w-4" />
+                                      </span>
+                                      <div className="flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-semibold">Übergabe-Verbund aktiv</p>
+                                          <span className="rounded-full border border-amber-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-700 dark:bg-slate-950/40 dark:text-amber-100">
+                                            Konflikt bekannt
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[13px] font-medium text-slate-800 dark:text-slate-100">
+                                          {visual.categoryKey} · Fehlmenge {visual.shortageQty}
                                         </p>
-                                        <p className="mt-0.5">Fehlmenge: {availabilityItem?.shortageQty ?? 0}</p>
-                                        <p className="mt-0.5">Verknüpftes Projekt: {effectiveLinkedPlanningLabel || effectiveLinkedPlanningId}</p>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <p className="font-semibold">Übergabe unvollständig</p>
-                                        <p className="mt-0.5">Bitte noch ein Projekt auswählen.</p>
-                                      </>
-                                    )}
-                                    {effectiveHandoverNote ? <p className="mt-0.5">Hinweis: {effectiveHandoverNote}</p> : null}
-                                    <div className="mt-2 flex flex-wrap gap-1.5">
-                                      <button
-                                        type="button"
-                                        className="btn-secondary px-2 py-1 text-xs"
-                                        onClick={() => openHandoverEditor(dayIndex, itemIndex)}
-                                      >
-                                        {effectiveLinkedPlanningId ? 'Übergabe bearbeiten' : 'Projekt auswählen'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="btn-danger px-2 py-1 text-xs"
-                                        onClick={() => removeHandover(dayIndex, itemIndex)}
-                                      >
-                                        Übergabe entfernen
-                                      </button>
+                                        <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
+                                          {visual.source === 'incoming'
+                                            ? `Dieses Projekt ist bereits über ${visual.partnerLabel || 'ein Partnerprojekt'} Teil desselben Übergabe-Verbunds. Du musst hier nichts doppelt verknüpfen.`
+                                            : `Dieses Projekt ist mit ${visual.partnerLabel || 'einem Partnerprojekt'} abgestimmt. Die ${visual.categoryKey}-Fehlmenge ist als geplante Übergabe markiert.`}
+                                        </p>
+                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                                          <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
+                                            {currentPlanningLabel || 'Aktuelles Projekt'}
+                                          </span>
+                                          <span className="text-slate-400 dark:text-slate-500">↔</span>
+                                          <span className="rounded-full border border-amber-200 bg-amber-100/70 px-2.5 py-1 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                                            {visual.partnerLabel || 'Partnerprojekt'}
+                                          </span>
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+                                          <span>Status: Übergabe-Verbund aktiv</span>
+                                          <span>Partnerprojekt: {visual.partnerLabel || 'Projektverknüpfung'}</span>
+                                        </div>
+                                        {visual.note ? (
+                                          <p className="mt-2 rounded-xl border border-white/70 bg-white/65 px-2.5 py-2 text-[11px] text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+                                            Hinweis: {visual.note}
+                                          </p>
+                                        ) : null}
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {visual.source === 'incoming' ? (
+                                            <>
+                                              <button
+                                                type="button"
+                                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                                onClick={() => {
+                                                  void openPlanning(visual.partnerPlanningId);
+                                                }}
+                                              >
+                                                Partnerprojekt öffnen
+                                              </button>
+                                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-amber-700 dark:bg-slate-950/40 dark:text-slate-300">
+                                                Verbund wird über das Partnerprojekt gepflegt
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <button
+                                                type="button"
+                                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                                onClick={() => openHandoverEditor(dayIndex, itemIndex)}
+                                              >
+                                                Übergabe bearbeiten
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="btn-danger px-2.5 py-1.5 text-xs"
+                                                onClick={() => removeHandover(dayIndex, itemIndex)}
+                                              >
+                                                Verknüpfung lösen
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+
+                                {visual?.status === 'incomplete' ? (
+                                  <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 px-3 py-3 text-xs text-orange-900 shadow-sm dark:border-orange-700 dark:from-orange-950/35 dark:via-slate-950 dark:to-amber-950/20 dark:text-orange-100">
+                                    <div className="flex items-start gap-3">
+                                      <span className="rounded-2xl bg-orange-100 p-2 text-orange-700 dark:bg-orange-900/50 dark:text-orange-100">
+                                        <Link2 className="h-4 w-4" />
+                                      </span>
+                                      <div className="flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-semibold">Übergabe unvollständig</p>
+                                          <span className="rounded-full border border-orange-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:border-orange-700 dark:bg-slate-950/40 dark:text-orange-100">
+                                            Projekt fehlt
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[13px] leading-relaxed">
+                                          Die Fehlmenge ist bereits als Übergabe markiert, aber das Partnerprojekt fehlt noch.
+                                        </p>
+                                        {visual.note ? <p className="mt-2 text-[11px]">Hinweis: {visual.note}</p> : null}
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            className="btn-secondary px-2.5 py-1.5 text-xs"
+                                            onClick={() => openHandoverEditor(dayIndex, itemIndex)}
+                                          >
+                                            Projekt auswählen
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                 ) : null}
@@ -1371,173 +1681,241 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h4 className="font-semibold text-slate-900">Availability Übersicht</h4>
-                {constrainedCategories.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {constrainedCategories.map((entry) => (
-                      <button
-                        type="button"
-                        key={`constraint-${entry.key}`}
-                        className={`px-2 py-1 text-xs rounded-md border ${
-                          entry.state === 'planned'
-                            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
-                            : entry.state === 'missing_link'
-                              ? 'border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-200'
-                              : 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200'
-                        }`}
-                        onClick={() => onOpenInventoryWithQuery(entry.category)}
-                      >
-                        {entry.state === 'planned'
-                          ? `Übergabe geplant: ${entry.category}`
-                          : entry.state === 'missing_link'
-                            ? `Übergabe unvollständig: ${entry.category}`
-                            : `Ungeklärter Engpass: ${entry.category}`}
-                      </button>
-                    ))}
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-semibold text-slate-900">Availability Übersicht</h4>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Trennt klar zwischen geplanten Übergabe-Verbuenden und wirklich ungeklärten Engpaessen.
+                    </p>
                   </div>
-                ) : null}
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="status-chip border-emerald-200 bg-emerald-50 text-emerald-700">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Grün = ausreichend
-                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                      Übergabe-Verbuende: {networkVisuals.length}
+                    </span>
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-200">
+                      Unvollständig: {incompleteVisuals.length}
+                    </span>
+                    <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200">
+                      Ungeklärte Engpässe: {shortageVisuals.length}
+                    </span>
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-200">
+                      Konfliktfrei: {healthyCategoryCount}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   <span className="status-chip border-amber-200 bg-amber-50 text-amber-700">
+                    <Link2 className="h-3.5 w-3.5" />
+                    Amber = Übergabe-Verbund aktiv
+                  </span>
+                  <span className="status-chip border-orange-200 bg-orange-50 text-orange-700">
                     <Clock3 className="h-3.5 w-3.5" />
-                    Gelb = knapp
+                    Orange = Verknüpfung noch unvollständig
                   </span>
                   <span className="status-chip border-rose-200 bg-rose-50 text-rose-700">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    Rot = Engpass
+                    Rot = ungeklärter Engpass
                   </span>
                 </div>
-                <div className="mt-3 space-y-2">
-                  {(availability?.items ?? [])
-                    .filter((item) => item.shortageQty > 0 || item.hasGlobalShortage)
-                    .map((item) => {
-                      const localHandover = localHandoverByDayCategory.get(
-                        `${item.planningDate}|${normalizeCategory(item.categoryKey)}`,
-                      );
-                      const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
-                      const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
-                      const effectiveLinkedPlanningLabel =
-                        item.linkedPlanningLabel ||
-                        localHandover?.linkedPlanningLabel ||
-                        (effectiveLinkedPlanningId
-                          ? buildPlanningFallbackLabel(effectiveLinkedPlanningId, plannings)
-                          : '');
-                      const effectiveHandoverNote = localHandover?.handoverNote ?? (item.handoverNote || '');
-                      const effectiveHandoverStatus =
-                        effectiveHandoverEnabled && effectiveLinkedPlanningId
-                          ? 'planned'
-                          : effectiveHandoverEnabled && !effectiveLinkedPlanningId
-                            ? 'missing_link'
-                            : item.handoverStatus || 'none';
 
-                      return (
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  <div className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm dark:border-amber-800 dark:bg-slate-950">
+                    <div className="flex items-start gap-3">
+                      <span className="rounded-2xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                        <Link2 className="h-4 w-4" />
+                      </span>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geplante Übergaben</p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+                          Diese Projekte sind bereits miteinander abgestimmt. Die Fehlmenge bleibt sichtbar, wirkt aber nicht mehr wie ein offener Fehler.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {[...networkVisuals, ...incompleteVisuals].map((visual) => (
                         <div
-                          key={`handover-action-${item.planningDate}-${item.categoryKey}`}
-                          className={`rounded-lg border px-2 py-2 text-xs ${
-                            effectiveHandoverStatus === 'planned' || effectiveHandoverStatus === 'missing_link'
-                            ? 'border-amber-300 bg-amber-50/80 text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200'
-                            : 'border-rose-300 bg-rose-50/80 text-rose-900 dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-200'
+                          key={`network-${visual.key}`}
+                          className={`rounded-2xl border px-3 py-3 text-xs shadow-sm ${
+                            visual.status === 'incomplete'
+                              ? 'border-orange-200 bg-orange-50/80 text-orange-900 dark:border-orange-700 dark:bg-orange-950/25 dark:text-orange-100'
+                              : 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 text-slate-800 dark:border-amber-700 dark:from-amber-950/30 dark:via-slate-950 dark:to-sky-950/20 dark:text-slate-100'
                           }`}
                         >
-                          <p className="font-semibold">
-                            {effectiveHandoverStatus === 'planned'
-                              ? `Übergabe geplant: ${item.categoryKey}`
-                              : effectiveHandoverStatus === 'missing_link'
-                                ? `Übergabe unvollständig: ${item.categoryKey}`
-                                : `Ungeklärter Engpass: ${item.categoryKey}`}
-                          </p>
-                          <p className="mt-0.5">Fehlmenge {item.shortageQty} am {item.planningDate}</p>
-                          <p className="mt-0.5">
-                            Nutzbar {item.usableStock} · Diese Planung {item.currentPlanningQty} · Andere Planungen {item.otherPlannedQty} · Gesamt {item.totalPlannedQtyForDateCategory}
-                          </p>
-                          {effectiveHandoverStatus === 'planned' ? (
-                            <p className="mt-0.5">
-                              Fehlmenge ist durch geplante Projektübergabe markiert.
-                              {effectiveLinkedPlanningLabel ? ` Verknüpftes Projekt: ${effectiveLinkedPlanningLabel}.` : ''}
-                              {effectiveHandoverNote ? ` Hinweis: ${effectiveHandoverNote}` : ''}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold">
+                              {visual.status === 'incomplete' ? 'Übergabe unvollständig' : 'Übergabe-Verbund aktiv'}
                             </p>
-                          ) : effectiveHandoverStatus === 'missing_link' ? (
-                            <p className="mt-0.5">Übergabe wurde markiert, aber Projektverknüpfung fehlt.</p>
-                          ) : (
-                            <p className="mt-0.5">Mögliche Projektverknüpfung prüfen.</p>
-                          )}
-                          <details className="mt-1">
-                            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide">
+                            <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
+                              {visual.categoryKey}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[13px] font-medium">
+                            Fehlmenge {visual.shortageQty} · {formatGermanDate(visual.planningDate)}
+                          </p>
+                          <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
+                            {visual.status === 'incomplete'
+                              ? 'Die Übergabe wurde vorgemerkt, aber das Partnerprojekt fehlt noch.'
+                              : visual.source === 'incoming'
+                                ? `Dieses Projekt ist bereits über ${visual.partnerLabel || 'ein Partnerprojekt'} mit dem Übergabe-Verbund verbunden. Du musst die Verknüpfung nicht ein zweites Mal pflegen.`
+                                : `Die rechnerische Fehlmenge ist durch eine geplante Übergabe mit ${visual.partnerLabel || 'einem Partnerprojekt'} markiert.`}
+                          </p>
+                          {visual.status !== 'incomplete' ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                              <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
+                                {currentPlanningLabel || 'Aktuelles Projekt'}
+                              </span>
+                              <span className="text-slate-400 dark:text-slate-500">↔</span>
+                              <span className="rounded-full border border-amber-200 bg-amber-100/70 px-2.5 py-1 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                                {visual.partnerLabel || 'Partnerprojekt'}
+                              </span>
+                            </div>
+                          ) : null}
+                          {visual.partnerLabel ? (
+                            <p className="mt-2 text-[11px] text-slate-600 dark:text-slate-300">
+                              Partnerprojekt: {visual.partnerLabel}
+                            </p>
+                          ) : null}
+                          {visual.note ? (
+                            <p className="mt-2 rounded-xl border border-white/80 bg-white/70 px-2.5 py-2 text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+                              Hinweis: {visual.note}
+                            </p>
+                          ) : null}
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
                               Details anzeigen
                             </summary>
-                            <div className="mt-1 space-y-0.5 text-[10px]">
-                              <p>Nutzbar: {item.usableStock}</p>
-                              <p>Diese Planung: {item.currentPlanningQty}</p>
-                              <p>Andere Planungen: {item.otherPlannedQty}</p>
-                              <p>Gesamt geplant: {item.totalPlannedQtyForDateCategory}</p>
-                              <p>Rest nach Gesamtplanung: {item.remainingAfterAllPlanning}</p>
-                              <p>Fehlmenge: {item.shortageQty}</p>
-                              <p>Status: {item.availabilityState}</p>
-                              <p>Übergabe-Status: {effectiveHandoverStatus}</p>
-                              <p>Betroffene Planungen: {(item.affectedPlanningIds || []).join(', ') || '-'}</p>
+                            <div className="mt-2 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                              <p>Nutzbar: {visual.usableStock}</p>
+                              <p>Diese Planung: {visual.currentPlanningQty}</p>
+                              <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                              <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                              <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                              <p>affectedPlanningIds: {visual.affectedPlanningIds.join(', ') || '-'}</p>
+                              <p>linkedPlanningId: {visual.linkedPlanningId || '-'}</p>
                             </div>
                           </details>
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {effectiveHandoverStatus === 'planned' || effectiveHandoverStatus === 'missing_link' ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {visual.status === 'incomplete' ? (
+                              <button
+                                type="button"
+                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
+                              >
+                                Projekt auswählen
+                              </button>
+                            ) : visual.source === 'incoming' ? (
                               <>
-                                <button
-                                  type="button"
-                                  className="btn-secondary px-2 py-1 text-xs"
-                                  onClick={() => openHandoverEditorByCategory(item.categoryKey)}
+                              <button
+                                type="button"
+                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                onClick={() => {
+                                  void openPlanning(visual.partnerPlanningId);
+                                  }}
+                              >
+                                Partnerprojekt öffnen
+                              </button>
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-amber-700 dark:bg-slate-950/40 dark:text-slate-300">
+                                Verknüpfung wird über das Partnerprojekt gepflegt
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                  className="btn-secondary px-2.5 py-1.5 text-xs"
+                                  onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
                                 >
                                   Übergabe bearbeiten
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn-danger px-2 py-1 text-xs"
-                                  onClick={() => removeHandoverByCategory(item.categoryKey)}
+                                  className="btn-danger px-2.5 py-1.5 text-xs"
+                                  onClick={() => removeHandoverByKey(visual.planningDate, visual.categoryKey)}
                                 >
-                                  Übergabe entfernen
+                                  Verknüpfung lösen
                                 </button>
                               </>
-                            ) : (
-                              <button
-                                type="button"
-                                className="btn-primary px-2 py-1 text-xs"
-                                onClick={() => openHandoverEditorByCategory(item.categoryKey)}
-                              >
-                                Übergabe planen
-                              </button>
                             )}
+                          </div>
+                        </div>
+                      ))}
+                      {!networkVisuals.length && !incompleteVisuals.length ? (
+                        <p className="rounded-xl border border-dashed border-amber-200 px-3 py-4 text-center text-xs text-slate-500 dark:border-amber-800 dark:text-slate-400">
+                          Noch keine geplante Übergabe hinterlegt.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-rose-200 bg-white p-3 shadow-sm dark:border-rose-800 dark:bg-slate-950">
+                    <div className="flex items-start gap-3">
+                      <span className="rounded-2xl bg-rose-100 p-2 text-rose-700 dark:bg-rose-900/40 dark:text-rose-100">
+                        <AlertTriangle className="h-4 w-4" />
+                      </span>
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Ungeklärte Engpässe</p>
+                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+                          Nur diese Konflikte brauchen noch eine aktive Entscheidung. Wenn hier nichts steht, ist kein roter Fehler mehr offen.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {shortageVisuals.map((visual) => (
+                        <div
+                          key={`shortage-${visual.key}`}
+                          className="rounded-2xl border border-rose-200 bg-rose-50/85 px-3 py-3 text-xs text-rose-900 shadow-sm dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-100"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold">{visual.categoryKey}</p>
+                            <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
+                              Fehlmenge {visual.shortageQty}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[13px]">
+                            {formatGermanDate(visual.planningDate)} · Diese Planung {visual.currentPlanningQty} · Andere Planungen {visual.otherPlannedQty}
+                          </p>
+                          <p className="mt-2 leading-relaxed text-rose-800 dark:text-rose-100">
+                            Für diese Kategorie gibt es noch keinen Übergabe-Verbund. Das System behandelt sie deshalb bewusst als offenen Konflikt.
+                          </p>
+                          <details className="mt-2">
+                            <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
+                              Details anzeigen
+                            </summary>
+                            <div className="mt-2 space-y-0.5 text-[10px]">
+                              <p>Nutzbar: {visual.usableStock}</p>
+                              <p>Diese Planung: {visual.currentPlanningQty}</p>
+                              <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                              <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                              <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                              <p>affectedPlanningIds: {visual.affectedPlanningIds.join(', ') || '-'}</p>
+                            </div>
+                          </details>
+                          <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
-                              className="btn-secondary px-2 py-1 text-xs"
-                              onClick={() => onOpenInventoryWithQuery(item.categoryKey)}
+                              className="btn-danger px-2.5 py-1.5 text-xs"
+                              onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
+                            >
+                              Übergabe planen
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                              onClick={() => onOpenInventoryWithQuery(visual.categoryKey)}
                             >
                               Bestand öffnen
                             </button>
                           </div>
                         </div>
-                      );
-                    })}
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {(availability?.categorySummary ?? []).map((row) => (
-                    <div key={row.categoryKey} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
-                      <p className="font-semibold text-slate-900">{row.categoryKey}</p>
-                      <p>Gesamtbedarf {row.requestedTotal}</p>
-                      <p>Peak/Tag {row.maxRequestedPerDay}</p>
-                      <p>Nutzbar {row.usableStock}</p>
-                      <button
-                        type="button"
-                        className="btn-secondary mt-2 px-2 py-1 text-xs"
-                        onClick={() => onOpenInventoryWithQuery(row.categoryKey)}
-                      >
-                        Bestand öffnen
-                      </button>
+                      ))}
+                      {!shortageVisuals.length ? (
+                        <p className="rounded-xl border border-dashed border-rose-200 px-3 py-4 text-center text-xs text-slate-500 dark:border-rose-800 dark:text-slate-400">
+                          Keine ungeklärten Engpässe.
+                        </p>
+                      ) : null}
                     </div>
-                  ))}
-                  {!availability?.categorySummary?.length ? (
-                    <p className="text-xs text-slate-500">Noch keine Availability-Daten verfügbar.</p>
-                  ) : null}
+                  </div>
                 </div>
               </div>
             </div>
