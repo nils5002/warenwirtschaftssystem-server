@@ -16,6 +16,7 @@ from ..schemas.planning import (
     PlanningAvailabilityResponse,
     PlanningDayResponse,
     PlanningItemResponse,
+    PlanningListHandoverSummary,
     PlanningListItem,
     PlanningResponse,
     PlanningStatus,
@@ -52,7 +53,17 @@ def _generate_external_id(prefix: str) -> str:
     return f"{prefix}-{uuid4().hex[:12]}"
 
 
-def _planning_to_list_item(record: PlanningRecord) -> PlanningListItem:
+def _build_planning_short_label(record: PlanningRecord) -> str:
+    event_name = str(record.event_name or "").strip()
+    if event_name:
+        return f"{record.project_name} ({event_name})"
+    return record.project_name
+
+
+def _planning_to_list_item(
+    record: PlanningRecord,
+    handover_summary: PlanningListHandoverSummary | None = None,
+) -> PlanningListItem:
     return PlanningListItem(
         id=record.external_id,
         customerName=record.customer_name,
@@ -64,7 +75,107 @@ def _planning_to_list_item(record: PlanningRecord) -> PlanningListItem:
         endDate=record.end_date,
         status=_normalize_status(record.status),
         updatedAt=record.updated_at,
+        handoverSummary=handover_summary,
     )
+
+
+def _build_handover_list_summary_map(
+    db: Session,
+    records: list[PlanningRecord],
+) -> dict[str, PlanningListHandoverSummary]:
+    planning_ids = tuple(record.external_id for record in records if record.external_id)
+    if not planning_ids:
+        return {}
+
+    summary_state: dict[str, dict[str, set[str]]] = {
+        record.external_id: {"directions": set(), "partner_ids": set(), "category_keys": set()}
+        for record in records
+        if record.external_id
+    }
+
+    outgoing_rows = db.execute(
+        select(
+            PlanningRecord.external_id,
+            PlanningItemRecord.linked_planning_external_id,
+            PlanningItemRecord.category_key,
+        )
+        .join(PlanningDayRecord, PlanningDayRecord.planning_id == PlanningRecord.id)
+        .join(PlanningItemRecord, PlanningItemRecord.planning_day_id == PlanningDayRecord.id)
+        .where(PlanningRecord.external_id.in_(planning_ids))
+        .where(PlanningItemRecord.handover_enabled.is_(True))
+        .where(PlanningItemRecord.linked_planning_external_id.is_not(None))
+    ).all()
+
+    incoming_rows = db.execute(
+        select(
+            PlanningItemRecord.linked_planning_external_id,
+            PlanningRecord.external_id,
+            PlanningItemRecord.category_key,
+        )
+        .join(PlanningDayRecord, PlanningDayRecord.id == PlanningItemRecord.planning_day_id)
+        .join(PlanningRecord, PlanningRecord.id == PlanningDayRecord.planning_id)
+        .where(PlanningItemRecord.handover_enabled.is_(True))
+        .where(PlanningItemRecord.linked_planning_external_id.in_(planning_ids))
+    ).all()
+
+    partner_ids: set[str] = set()
+
+    for planning_id, linked_planning_id, category_key in outgoing_rows:
+        owner_id = str(planning_id or "").strip()
+        partner_id = str(linked_planning_id or "").strip()
+        if not owner_id or not partner_id:
+            continue
+        state = summary_state.get(owner_id)
+        if state is None:
+            continue
+        state["directions"].add("outgoing")
+        state["partner_ids"].add(partner_id)
+        state["category_keys"].add(normalize_category_or_self(category_key))
+        partner_ids.add(partner_id)
+
+    for linked_planning_id, source_planning_id, category_key in incoming_rows:
+        target_id = str(linked_planning_id or "").strip()
+        partner_id = str(source_planning_id or "").strip()
+        if not target_id or not partner_id or target_id == partner_id:
+            continue
+        state = summary_state.get(target_id)
+        if state is None:
+            continue
+        state["directions"].add("incoming")
+        state["partner_ids"].add(partner_id)
+        state["category_keys"].add(normalize_category_or_self(category_key))
+        partner_ids.add(partner_id)
+
+    partner_labels: dict[str, str] = {}
+    if partner_ids:
+        partner_rows = db.scalars(select(PlanningRecord).where(PlanningRecord.external_id.in_(tuple(partner_ids)))).all()
+        partner_labels = {row.external_id: _build_planning_short_label(row) for row in partner_rows}
+
+    summary_map: dict[str, PlanningListHandoverSummary] = {}
+    for planning_id, state in summary_state.items():
+        directions = state["directions"]
+        partner_id_values = sorted(
+            state["partner_ids"],
+            key=lambda value: (partner_labels.get(value) or value).lower(),
+        )
+        category_keys = sorted(state["category_keys"], key=str.lower)
+        if not directions or not partner_id_values or not category_keys:
+            continue
+        if directions == {"outgoing"}:
+            direction = "outgoing"
+        elif directions == {"incoming"}:
+            direction = "incoming"
+        else:
+            direction = "mixed"
+        primary_partner_id = partner_id_values[0]
+        summary_map[planning_id] = PlanningListHandoverSummary(
+            direction=direction,
+            partnerPlanningId=primary_partner_id,
+            partnerPlanningLabel=partner_labels.get(primary_partner_id),
+            partnerPlanningCount=len(partner_id_values),
+            categoryKeys=category_keys,
+        )
+    return summary_map
 
 
 def _planning_to_response(
@@ -161,7 +272,9 @@ def list_plannings(
         stmt = stmt.where(PlanningRecord.end_date >= from_date)
     if to_date:
         stmt = stmt.where(PlanningRecord.start_date <= to_date)
-    return [_planning_to_list_item(item) for item in db.scalars(stmt).all()]
+    records = db.scalars(stmt).all()
+    handover_summary_map = _build_handover_list_summary_map(db, records)
+    return [_planning_to_list_item(item, handover_summary_map.get(item.external_id)) for item in records]
 
 
 def get_planning(db: Session, planning_id: str) -> PlanningResponse | None:

@@ -172,6 +172,13 @@ export type PlanningListItem = {
   endDate: string;
   status: PlanningStatus;
   updatedAt: string;
+  handoverSummary?: {
+    direction: "outgoing" | "incoming" | "mixed";
+    partnerPlanningId?: string | null;
+    partnerPlanningLabel?: string | null;
+    partnerPlanningCount: number;
+    categoryKeys: string[];
+  } | null;
 };
 
 export type PlanningItemResponse = {

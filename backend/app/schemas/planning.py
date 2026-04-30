@@ -84,6 +84,14 @@ class PlanningResponse(BaseModel):
     days: list[PlanningDayResponse] = Field(default_factory=list)
 
 
+class PlanningListHandoverSummary(BaseModel):
+    direction: Literal["outgoing", "incoming", "mixed"]
+    partnerPlanningId: str | None = None
+    partnerPlanningLabel: str | None = None
+    partnerPlanningCount: int = 0
+    categoryKeys: list[str] = Field(default_factory=list)
+
+
 class PlanningListItem(BaseModel):
     id: str
     customerName: str
@@ -95,6 +103,7 @@ class PlanningListItem(BaseModel):
     endDate: date
     status: PlanningStatus
     updatedAt: datetime
+    handoverSummary: PlanningListHandoverSummary | None = None
 
 
 class PlanningAvailabilityItem(BaseModel):
