@@ -443,6 +443,61 @@ def test_cross_project_shortage_is_counted_for_draft_plannings() -> None:
     item = availability_b.json()["items"][0]
     assert item["alreadyPlanned"] >= first_qty
     assert item["shortageQty"] >= 0
+    assert "currentPlanningQty" in item
+    assert "otherPlannedQty" in item
+    assert "totalPlannedQtyForDateCategory" in item
+    assert "remainingAfterAllPlanning" in item
+    assert "hasGlobalShortage" in item
+    assert "affectedPlanningIds" in item
+
+
+def test_confirmed_cross_project_shortage_has_expected_global_numbers() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date(2026, 4, 30)
+    category = "iPad"
+
+    payload_a = {
+        "customerName": f"Kunde C1 {suffix}",
+        "projectName": f"Projekt C1 {suffix}",
+        "eventName": "Confirmed A",
+        "projectManagerUserId": f"pm-c1-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Confirmed A",
+        "status": "Bestaetigt",
+        "days": [{"planningDate": planning_date.isoformat(), "weekday": "Donnerstag", "items": [{"categoryKey": category, "qty": 30, "notes": None}]}],
+    }
+    payload_b = {
+        "customerName": f"Kunde C2 {suffix}",
+        "projectName": f"Projekt C2 {suffix}",
+        "eventName": "Confirmed B",
+        "projectManagerUserId": f"pm-c2-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Confirmed B",
+        "status": "Bestaetigt",
+        "days": [{"planningDate": planning_date.isoformat(), "weekday": "Donnerstag", "items": [{"categoryKey": category, "qty": 8, "notes": None}]}],
+    }
+
+    created_a = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-c1-{suffix}"), json=payload_a)
+    created_b = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-c2-{suffix}"), json=payload_b)
+    assert created_a.status_code == 200
+    assert created_b.status_code == 200
+
+    availability_a = client.get(
+        f"/api/wms/planning/{created_a.json()['id']}/availability",
+        headers=_headers(client, "Projektmanager", f"pm-c1-{suffix}"),
+    )
+    assert availability_a.status_code == 200
+    item = availability_a.json()["items"][0]
+    assert item["currentPlanningQty"] == 30
+    assert item["otherPlannedQty"] >= 8
+    assert item["totalPlannedQtyForDateCategory"] == item["currentPlanningQty"] + item["otherPlannedQty"]
+    assert item["remainingAfterAllPlanning"] == item["usableStock"] - item["totalPlannedQtyForDateCategory"]
+    assert item["shortageQty"] == max(0, -item["remainingAfterAllPlanning"])
 
 
 def test_overview_contains_planning_summary_separate_from_inventory_status() -> None:

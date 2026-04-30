@@ -106,8 +106,14 @@ class PlanningAvailabilityItem(BaseModel):
     usableStock: int
     alreadyPlanned: int
     remainingQty: int
+    currentPlanningQty: int = 0
+    otherPlannedQty: int = 0
+    totalPlannedQtyForDateCategory: int = 0
+    remainingAfterAllPlanning: int = 0
     availabilityState: AvailabilityState
     shortageQty: int
+    hasGlobalShortage: bool = False
+    affectedPlanningIds: list[str] = Field(default_factory=list)
     handoverEnabled: bool = False
     linkedPlanningId: str | None = None
     linkedPlanningLabel: str | None = None
