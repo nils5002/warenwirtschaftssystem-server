@@ -11,6 +11,51 @@ type DashboardPageProps = {
   onNavigate: (page: AppPage) => void;
 };
 
+const ASSET_ACCENT_STYLES = [
+  {
+    border: 'border-l-cyan-500',
+    badge: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+  },
+  {
+    border: 'border-l-emerald-500',
+    badge: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  },
+  {
+    border: 'border-l-amber-500',
+    badge: 'bg-amber-50 text-amber-800 border-amber-200',
+  },
+  {
+    border: 'border-l-violet-500',
+    badge: 'bg-violet-50 text-violet-800 border-violet-200',
+  },
+  {
+    border: 'border-l-rose-500',
+    badge: 'bg-rose-50 text-rose-800 border-rose-200',
+  },
+  {
+    border: 'border-l-sky-500',
+    badge: 'bg-sky-50 text-sky-800 border-sky-200',
+  },
+] as const;
+
+function hashText(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function getAssetAccentStyle(key: string) {
+  return ASSET_ACCENT_STYLES[hashText(key) % ASSET_ACCENT_STYLES.length];
+}
+
+function trimActivityAssetPrefix(detail: string, assetName?: string): string {
+  if (!assetName) return detail;
+  const escaped = assetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return detail.replace(new RegExp(`^${escaped}\\s+`, 'i'), '');
+}
+
 export function DashboardPage({
   assets,
   activities,
@@ -36,6 +81,7 @@ export function DashboardPage({
     }, {}),
   );
   const bottleneckCount = categorySummary.filter(([, entry]) => entry.total > 0 && entry.available <= 1).length;
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
 
   return (
     <section className="space-y-6">
@@ -124,15 +170,38 @@ export function DashboardPage({
           </div>
           <ul className="space-y-2">
             {activities.slice(0, 8).map((activity) => (
-              <li
-                key={activity.id}
-                className="surface-muted px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/40"
-              >
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-                  <p className="text-sm font-semibold text-slate-900">{activity.title}</p>
-                  <span className="text-xs text-slate-500">{activity.timestamp}</span>
-                </div>
-                <p className="mt-1 text-xs text-slate-600">{activity.detail}</p>
+              <li key={activity.id}>
+                {(() => {
+                  const relatedAsset = activity.assetId ? assetsById.get(activity.assetId) : undefined;
+                  const assetKey = relatedAsset?.id ?? activity.assetId ?? '';
+                  const accent = assetKey ? getAssetAccentStyle(assetKey) : null;
+                  const assetBadge = relatedAsset?.tagNumber || relatedAsset?.name || null;
+                  const detailText = trimActivityAssetPrefix(activity.detail, relatedAsset?.name);
+                  return (
+                    <div
+                      className={`surface-muted border-l-4 px-3 py-2.5 transition hover:border-brand-200 hover:bg-brand-50/40 ${
+                        accent ? accent.border : 'border-l-slate-200'
+                      }`}
+                    >
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-slate-900">{activity.title}</p>
+                          {assetBadge ? (
+                            <span
+                              className={`inline-flex shrink-0 items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${
+                                accent ? accent.badge : 'border-slate-200 bg-slate-50 text-slate-700'
+                              }`}
+                            >
+                              {assetBadge}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className="text-xs text-slate-500">{activity.timestamp}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">{detailText}</p>
+                    </div>
+                  );
+                })()}
               </li>
             ))}
           </ul>
