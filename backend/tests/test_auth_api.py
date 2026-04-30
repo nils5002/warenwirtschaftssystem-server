@@ -5,6 +5,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
+from .auth_helpers import auth_headers
 
 
 def test_login_and_me_roundtrip() -> None:
@@ -19,14 +20,14 @@ def test_login_and_me_roundtrip() -> None:
     )
     assert register.status_code in {200, 201}
 
-    users_res = client.get("/api/wms/users", headers={"X-User-Role": "Admin"})
+    users_res = client.get("/api/wms/users", headers=auth_headers(client, "Admin"))
     assert users_res.status_code == 200
     user = next((item for item in users_res.json() if item.get("email", "").lower() == email), None)
     assert user is not None
 
     activate = client.patch(
         f"/api/wms/users/{user['id']}",
-        headers={"X-User-Role": "Admin"},
+        headers=auth_headers(client, "Admin"),
         json={"status": "Aktiv"},
     )
     assert activate.status_code == 200

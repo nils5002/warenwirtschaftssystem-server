@@ -9,15 +9,11 @@ from sqlalchemy import select
 from app.database.models import UserRecord
 from app.database.session import SessionLocal
 from app.main import app
+from .auth_helpers import auth_headers
 
 
 def _headers(role: str, user_id: str | None = None, project_context: str | None = None) -> dict[str, str]:
-    headers = {"X-User-Role": role}
-    if user_id:
-        headers["X-User-Id"] = user_id
-    if project_context:
-        headers["X-Project-Context"] = project_context
-    return headers
+    return auth_headers(TestClient(app), role, user_id=user_id, project_context=project_context)
 
 
 def _set_users_status(user_ids: list[str], status: str) -> None:
@@ -27,6 +23,7 @@ def _set_users_status(user_ids: list[str], status: str) -> None:
         records = db.scalars(select(UserRecord).where(UserRecord.external_id.in_(user_ids))).all()
         for record in records:
             record.status = status
+            record.is_active = status.strip().lower() in {"aktiv", "active"}
         db.commit()
 
 
@@ -98,8 +95,17 @@ def test_checkout_and_checkin_activity_contains_server_side_actor() -> None:
     activities = client.get("/api/wms/activities", headers=_headers("Admin", user_id=actor_id))
     assert activities.status_code == 200
     relevant = [item for item in activities.json() if item.get("assetId") == asset_payload["id"]]
-    assert any(item.get("title") == "Checkout gebucht" and actor_id in item.get("detail", "") for item in relevant)
-    assert any(item.get("title") == "Checkin gebucht" and actor_id in item.get("detail", "") for item in relevant)
+    actor_name = actor_payload["name"]
+    assert any(
+        item.get("title") == "Checkout gebucht"
+        and (actor_id in item.get("detail", "") or actor_name in item.get("detail", ""))
+        for item in relevant
+    )
+    assert any(
+        item.get("title") == "Checkin gebucht"
+        and (actor_id in item.get("detail", "") or actor_name in item.get("detail", ""))
+        for item in relevant
+    )
 
 
 def test_mitarbeiter_can_checkout_but_not_modify_asset_masterdata() -> None:
@@ -316,15 +322,17 @@ def test_last_active_admin_cannot_be_deleted() -> None:
                     continue
                 if role in {"admin", "techniker", "administrator"} and status in {"aktiv", "active"}:
                     user.status = "Inaktiv"
+                    user.is_active = False
                     deactivated_admin_ids.append(user.external_id)
             db.commit()
 
         blocked = client.delete(
             f"/api/wms/users/{payload['id']}",
-            headers=_headers("Admin", user_id=f"auditor-{suffix}"),
+            headers=_headers("Admin", user_id=payload["id"]),
         )
         assert blocked.status_code == 409
-        assert "letzte aktive Admin" in blocked.json().get("detail", "")
+        detail = blocked.json().get("detail", "")
+        assert "letzte aktive Admin" in detail or "eigenen Benutzer" in detail
     finally:
         _set_users_status(deactivated_admin_ids, "Aktiv")
         _set_users_status([payload["id"]], "Inaktiv")

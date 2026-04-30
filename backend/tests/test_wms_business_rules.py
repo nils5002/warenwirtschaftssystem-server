@@ -6,15 +6,12 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
+from .auth_helpers import auth_headers
 
 
-def _headers(role: str, user_id: str | None = None, project_context: str | None = None) -> dict[str, str]:
-    headers = {"X-User-Role": role}
-    if user_id:
-        headers["X-User-Id"] = user_id
-    if project_context:
-        headers["X-Project-Context"] = project_context
-    return headers
+def _headers(client: TestClient, role: str, user_id: str | None = None, project_context: str | None = None) -> dict[str, str]:
+    
+    return auth_headers(client, role, user_id=user_id, project_context=project_context)
 
 
 def _asset_payload(suffix: str, *, status: str = "Verfuegbar") -> dict[str, str]:
@@ -37,7 +34,7 @@ def _asset_payload(suffix: str, *, status: str = "Verfuegbar") -> dict[str, str]
 
 
 def _category_counts(client: TestClient, category: str) -> tuple[int, int]:
-    response = client.get("/api/wms/assets", headers=_headers("Admin"))
+    response = client.get("/api/wms/assets", headers=_headers(client, "Admin"))
     assert response.status_code == 200
     matching = [asset for asset in response.json() if asset["category"] == category]
     usable = [asset for asset in matching if asset["status"] in {"Verfuegbar", "Verfügbar"}]
@@ -48,7 +45,7 @@ def test_maintenance_locks_asset_and_only_releases_after_all_active_items_are_do
     client = TestClient(app)
     suffix = uuid4().hex[:8]
     asset = _asset_payload(suffix)
-    created_asset = client.post("/api/wms/assets", headers=_headers("Admin"), json=asset)
+    created_asset = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=asset)
     assert created_asset.status_code == 200
 
     first = {
@@ -64,32 +61,32 @@ def test_maintenance_locks_asset_and_only_releases_after_all_active_items_are_do
     }
     second = {**first, "id": f"mnt-wms-business-{suffix}-2", "issue": "Akku defekt"}
 
-    created_first = client.post("/api/wms/maintenance", headers=_headers("Mitarbeiter"), json=first)
+    created_first = client.post("/api/wms/maintenance", headers=_headers(client, "Mitarbeiter"), json=first)
     assert created_first.status_code == 200
-    locked = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers("Admin"))
+    locked = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers(client, "Admin"))
     assert locked.status_code == 200
     assert locked.json()["status"] == "Defekt"
 
-    created_second = client.post("/api/wms/maintenance", headers=_headers("Admin"), json=second)
+    created_second = client.post("/api/wms/maintenance", headers=_headers(client, "Admin"), json=second)
     assert created_second.status_code == 200
 
     done_first = client.post(
         "/api/wms/maintenance",
-        headers=_headers("Admin"),
+        headers=_headers(client, "Admin"),
         json={**created_first.json(), "status": "Erledigt"},
     )
     assert done_first.status_code == 200
-    still_locked = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers("Admin"))
+    still_locked = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers(client, "Admin"))
     assert still_locked.status_code == 200
     assert still_locked.json()["status"] == "Defekt"
 
     done_second = client.post(
         "/api/wms/maintenance",
-        headers=_headers("Admin"),
+        headers=_headers(client, "Admin"),
         json={**created_second.json(), "status": "Erledigt"},
     )
     assert done_second.status_code == 200
-    released = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers("Admin"))
+    released = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers(client, "Admin"))
     assert released.status_code == 200
     assert released.json()["status"] == "Verfuegbar"
 
@@ -104,8 +101,8 @@ def test_planning_availability_counts_only_available_assets_as_usable() -> None:
     loaned["assignedTo"] = "Max Mustermann · Testprojekt"
     loaned["nextReturn"] = (date.today() + timedelta(days=2)).isoformat()
 
-    assert client.post("/api/wms/assets", headers=_headers("Admin"), json=available).status_code == 200
-    assert client.post("/api/wms/assets", headers=_headers("Admin"), json=loaned).status_code == 200
+    assert client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=available).status_code == 200
+    assert client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=loaned).status_code == 200
 
     planning_date = date(2099, 1, 11)
     planning = {
@@ -126,12 +123,12 @@ def test_planning_availability_counts_only_available_assets_as_usable() -> None:
             }
         ],
     }
-    created = client.post("/api/wms/planning", headers=_headers("Projektmanager", f"pm-{suffix}"), json=planning)
+    created = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-{suffix}"), json=planning)
     assert created.status_code == 200
 
     availability = client.get(
         f"/api/wms/planning/{created.json()['id']}/availability",
-        headers=_headers("Projektmanager", f"pm-{suffix}"),
+        headers=_headers(client, "Projektmanager", f"pm-{suffix}"),
     )
     assert availability.status_code == 200
     item = availability.json()["items"][0]
@@ -149,8 +146,8 @@ def test_asset_and_planning_categories_are_normalized_for_availability() -> None
     ipad = _asset_payload(f"{suffix}-ipad")
     ipad["category"] = "iPads"
 
-    created_notebook = client.post("/api/wms/assets", headers=_headers("Admin"), json=notebook)
-    created_ipad = client.post("/api/wms/assets", headers=_headers("Admin"), json=ipad)
+    created_notebook = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=notebook)
+    created_ipad = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=ipad)
     assert created_notebook.status_code == 200
     assert created_ipad.status_code == 200
     assert created_notebook.json()["category"] == "Laptop"
@@ -179,7 +176,7 @@ def test_asset_and_planning_categories_are_normalized_for_availability() -> None
             }
         ],
     }
-    created = client.post("/api/wms/planning", headers=_headers("Projektmanager", f"pm-cat-{suffix}"), json=planning)
+    created = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-cat-{suffix}"), json=planning)
     assert created.status_code == 200
 
     returned_items = created.json()["days"][0]["items"]
@@ -187,7 +184,7 @@ def test_asset_and_planning_categories_are_normalized_for_availability() -> None
 
     availability = client.get(
         f"/api/wms/planning/{created.json()['id']}/availability",
-        headers=_headers("Projektmanager", f"pm-cat-{suffix}"),
+        headers=_headers(client, "Projektmanager", f"pm-cat-{suffix}"),
     )
     assert availability.status_code == 200
     items = {item["categoryKey"]: item for item in availability.json()["items"]}
@@ -197,28 +194,231 @@ def test_asset_and_planning_categories_are_normalized_for_availability() -> None
     assert items["iPad"]["totalStock"] >= 1
 
 
+def test_planning_shortage_with_handover_is_warning_not_green() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date.today() + timedelta(days=15)
+    category = "Laptop"
+    _, usable = _category_counts(client, category)
+    requested = usable + 3
+
+    payload = {
+        "customerName": f"Kunde Handover {suffix}",
+        "projectName": f"Projekt Handover {suffix}",
+        "eventName": "Handover Check",
+        "projectManagerUserId": f"pm-ho-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Engpass mit Übergabe markieren",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Montag",
+                "items": [
+                    {
+                        "categoryKey": category,
+                        "qty": requested,
+                        "notes": None,
+                        "handoverEnabled": True,
+                        "linkedPlanningId": f"pln-linked-{suffix}",
+                        "handoverNote": "Übergabe zwischen Projektteams",
+                    }
+                ],
+            }
+        ],
+    }
+
+    created = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-ho-{suffix}"), json=payload)
+    assert created.status_code == 200
+
+    availability = client.get(
+        f"/api/wms/planning/{created.json()['id']}/availability",
+        headers=_headers(client, "Projektmanager", f"pm-ho-{suffix}"),
+    )
+    assert availability.status_code == 200
+    item = availability.json()["items"][0]
+    assert item["shortageQty"] > 0
+    assert item["availabilityState"] == "yellow"
+    assert item["handoverEnabled"] is True
+    assert item["handoverStatus"] in {"planned", "missing_link"}
+
+
+def test_planning_shortage_without_handover_stays_red() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date.today() + timedelta(days=16)
+    category = "Laptop"
+    _, usable = _category_counts(client, category)
+    requested = usable + 2
+
+    payload = {
+        "customerName": f"Kunde No Handover {suffix}",
+        "projectName": f"Projekt No Handover {suffix}",
+        "eventName": "No Handover Check",
+        "projectManagerUserId": f"pm-noho-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Engpass ohne Übergabe",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Dienstag",
+                "items": [{"categoryKey": category, "qty": requested, "notes": None}],
+            }
+        ],
+    }
+
+    created = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", f"pm-noho-{suffix}"), json=payload)
+    assert created.status_code == 200
+
+    availability = client.get(
+        f"/api/wms/planning/{created.json()['id']}/availability",
+        headers=_headers(client, "Projektmanager", f"pm-noho-{suffix}"),
+    )
+    assert availability.status_code == 200
+    item = availability.json()["items"][0]
+    assert item["shortageQty"] > 0
+    assert item["availabilityState"] == "red"
+    assert item["handoverStatus"] == "none"
+
+
+def test_handover_fields_are_persisted_and_orphan_link_does_not_crash() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date.today() + timedelta(days=17)
+    orphan_link = f"pln-orphan-{suffix}"
+    payload = {
+        "customerName": f"Kunde Persistenz {suffix}",
+        "projectName": f"Projekt Persistenz {suffix}",
+        "eventName": "Persistenz Test",
+        "projectManagerUserId": f"pm-persist-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Handover Persistenz",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Mittwoch",
+                "items": [
+                    {
+                        "categoryKey": "iPad",
+                        "qty": 4,
+                        "notes": None,
+                        "handoverEnabled": True,
+                        "linkedPlanningId": orphan_link,
+                        "handoverNote": "Übergabe nach Aufbau",
+                    }
+                ],
+            }
+        ],
+    }
+
+    created = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", f"pm-persist-{suffix}"),
+        json=payload,
+    )
+    assert created.status_code == 200
+    day_item = created.json()["days"][0]["items"][0]
+    assert day_item["handoverEnabled"] is True
+    assert day_item["linkedPlanningId"] == orphan_link
+    assert day_item["handoverNote"] == "Übergabe nach Aufbau"
+
+    fetched = client.get(
+        f"/api/wms/planning/{created.json()['id']}",
+        headers=_headers(client, "Projektmanager", f"pm-persist-{suffix}"),
+    )
+    assert fetched.status_code == 200
+    fetched_item = fetched.json()["days"][0]["items"][0]
+    assert fetched_item["linkedPlanningId"] == orphan_link
+    assert fetched_item["handoverNote"] == "Übergabe nach Aufbau"
+
+    availability = client.get(
+        f"/api/wms/planning/{created.json()['id']}/availability",
+        headers=_headers(client, "Projektmanager", f"pm-persist-{suffix}"),
+    )
+    assert availability.status_code == 200
+    assert availability.json()["items"][0]["linkedPlanningId"] == orphan_link
+
+
+def test_handover_planning_does_not_change_real_asset_status() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    asset = _asset_payload(f"{suffix}-handover-status")
+    asset["category"] = "iPad"
+    create_asset = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=asset)
+    assert create_asset.status_code == 200
+    assert create_asset.json()["status"] in {"Verfuegbar", "Verfügbar"}
+
+    planning_date = date.today() + timedelta(days=18)
+    payload = {
+        "customerName": f"Kunde Status {suffix}",
+        "projectName": f"Projekt Status {suffix}",
+        "eventName": "Status Test",
+        "projectManagerUserId": f"pm-status-{suffix}",
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Nur Planungsannahme",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Donnerstag",
+                "items": [
+                    {
+                        "categoryKey": "iPad",
+                        "qty": 2,
+                        "notes": None,
+                        "handoverEnabled": True,
+                        "linkedPlanningId": f"pln-status-linked-{suffix}",
+                        "handoverNote": "Übergabe intern",
+                    }
+                ],
+            }
+        ],
+    }
+    created = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", f"pm-status-{suffix}"),
+        json=payload,
+    )
+    assert created.status_code == 200
+
+    asset_after = client.get(f"/api/wms/assets/{asset['id']}", headers=_headers(client, "Admin"))
+    assert asset_after.status_code == 200
+    assert asset_after.json()["status"] in {"Verfuegbar", "Verfügbar"}
+
+
 def test_categories_are_seeded_and_synonym_duplicates_are_blocked() -> None:
     client = TestClient(app)
     suffix = uuid4().hex[:8]
 
-    categories = client.get("/api/wms/categories", headers=_headers("Admin"))
+    categories = client.get("/api/wms/categories", headers=_headers(client, "Admin"))
     assert categories.status_code == 200
     names = {item["name"] for item in categories.json()}
     assert {"Laptop", "iPad", "QR-Code-Scanner", "Sonstiges"}.issubset(names)
 
-    duplicate = client.post("/api/wms/categories", headers=_headers("Admin"), json={"name": "Notebooks"})
+    duplicate = client.post("/api/wms/categories", headers=_headers(client, "Admin"), json={"name": "Notebooks"})
     assert duplicate.status_code == 409
     assert "Laptop" in duplicate.json()["detail"]
 
-    forbidden = client.post("/api/wms/categories", headers=_headers("Mitarbeiter"), json={"name": f"Kabel {suffix}"})
+    forbidden = client.post("/api/wms/categories", headers=_headers(client, "Mitarbeiter"), json={"name": f"Kabel {suffix}"})
     assert forbidden.status_code == 403
 
-    created = client.post("/api/wms/categories", headers=_headers("Admin"), json={"name": f"Kabel {suffix}"})
+    created = client.post("/api/wms/categories", headers=_headers(client, "Admin"), json={"name": f"Kabel {suffix}"})
     assert created.status_code == 200
     assert created.json()["name"] == f"Kabel {suffix}"
 
     asset = _asset_payload(f"{suffix}-custom")
     asset["category"] = f"Kabel {suffix}"
-    created_asset = client.post("/api/wms/assets", headers=_headers("Admin"), json=asset)
+    created_asset = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=asset)
     assert created_asset.status_code == 200
     assert created_asset.json()["category"] == f"Kabel {suffix}"
+

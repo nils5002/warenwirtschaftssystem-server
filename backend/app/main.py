@@ -94,6 +94,19 @@ def create_app() -> FastAPI:
                 db.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
                 db.execute(text("UPDATE users SET is_active = CASE WHEN lower(status) = 'inaktiv' THEN 0 ELSE 1 END"))
                 db.commit()
+            planning_item_columns = [
+                row[1]
+                for row in db.execute(text("PRAGMA table_info(planning_items)")).fetchall()
+            ]
+            if "handover_enabled" not in planning_item_columns:
+                db.execute(text("ALTER TABLE planning_items ADD COLUMN handover_enabled BOOLEAN DEFAULT 0"))
+                db.commit()
+            if "linked_planning_external_id" not in planning_item_columns:
+                db.execute(text("ALTER TABLE planning_items ADD COLUMN linked_planning_external_id VARCHAR(64)"))
+                db.commit()
+            if "handover_note" not in planning_item_columns:
+                db.execute(text("ALTER TABLE planning_items ADD COLUMN handover_note TEXT"))
+                db.commit()
         if settings.wms_seed_legacy_on_startup:
             base_dir = Path(__file__).resolve().parents[1]
             legacy_path = settings.resolve_legacy_json_path(base_dir)
