@@ -63,6 +63,7 @@ type EditablePlanning = {
 };
 
 type PlanningSummary = PlanningListItem | PlanningResponse;
+type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
 
 type HandoverVisualStatus = 'ok' | 'handover' | 'review' | 'open';
 
@@ -228,9 +229,7 @@ function buildPlanningFallbackLabel(
   return buildPlanningLabel(match);
 }
 
-function buildPlanningListHandoverHint(item: PlanningListItem): string {
-  const summary = item.handoverSummary;
-  if (!summary) return '';
+function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): string {
   const partnerLabel =
     summary.partnerPlanningLabel?.trim() ||
     (summary.partnerPlanningId ? `Projektverknüpfung (${summary.partnerPlanningId.slice(-6)})` : 'Partnerprojekt');
@@ -277,6 +276,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   const [handoverEditorKey, setHandoverEditorKey] = useState<string | null>(null);
   const [handoverSnapshot, setHandoverSnapshot] = useState<Record<string, EditablePlanning['days'][number]['items'][number]>>({});
   const [relatedPlannings, setRelatedPlannings] = useState<Record<string, PlanningResponse>>({});
+  const [planningListDetails, setPlanningListDetails] = useState<Record<string, PlanningResponse>>({});
   const [createForm, setCreateForm] = useState({
     customerName: '',
     projectName: '',
@@ -572,6 +572,122 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
       return matchesStatus && matchesSearch;
     });
   }, [listSearch, listStatus, plannings]);
+
+  useEffect(() => {
+    const candidateIds = visiblePlannings
+      .filter((item) => !item.handoverSummary)
+      .map((item) => item.id)
+      .filter((planningId) => !planningListDetails[planningId]);
+    if (!candidateIds.length) return;
+
+    let cancelled = false;
+    void Promise.all(
+      candidateIds.map(async (planningId) => {
+        try {
+          return await getPlanning(planningId);
+        } catch {
+          return null;
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setPlanningListDetails((current) => {
+        const next = { ...current };
+        for (const planning of results) {
+          if (planning) next[planning.id] = planning;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [planningListDetails, visiblePlannings]);
+
+  const planningListHandoverFallbackMap = useMemo(() => {
+    const map = new Map<string, PlanningListHandoverSummary>();
+    const visiblePlanningIds = new Set(visiblePlannings.map((item) => item.id));
+    const visiblePlanningById = new Map(visiblePlannings.map((item) => [item.id, item]));
+    const stateByPlanningId = new Map<
+      string,
+      {
+        directions: Set<'incoming' | 'outgoing'>;
+        partnerIds: Set<string>;
+        categoryKeys: Set<string>;
+      }
+    >();
+
+    const ensureState = (planningId: string) => {
+      let state = stateByPlanningId.get(planningId);
+      if (!state) {
+        state = {
+          directions: new Set<'incoming' | 'outgoing'>(),
+          partnerIds: new Set<string>(),
+          categoryKeys: new Set<string>(),
+        };
+        stateByPlanningId.set(planningId, state);
+      }
+      return state;
+    };
+
+    for (const planning of Object.values(planningListDetails)) {
+      for (const day of planning.days) {
+        for (const item of day.items) {
+          if (!item.handoverEnabled || !item.linkedPlanningId) continue;
+          const normalizedCategory = normalizeCategory(item.categoryKey);
+          const ownerState = ensureState(planning.id);
+          ownerState.directions.add('outgoing');
+          ownerState.partnerIds.add(item.linkedPlanningId);
+          ownerState.categoryKeys.add(normalizedCategory);
+
+          if (visiblePlanningIds.has(item.linkedPlanningId)) {
+            const partnerState = ensureState(item.linkedPlanningId);
+            partnerState.directions.add('incoming');
+            partnerState.partnerIds.add(planning.id);
+            partnerState.categoryKeys.add(normalizedCategory);
+          }
+        }
+      }
+    }
+
+    for (const [planningId, state] of stateByPlanningId.entries()) {
+      if (!visiblePlanningIds.has(planningId)) continue;
+      if (!state.partnerIds.size || !state.categoryKeys.size) continue;
+
+      const partnerIds = Array.from(state.partnerIds).sort((a, b) => {
+        const aLabel =
+          planningListDetails[a] ? buildPlanningLabel(planningListDetails[a]) : buildPlanningFallbackLabel(a, plannings);
+        const bLabel =
+          planningListDetails[b] ? buildPlanningLabel(planningListDetails[b]) : buildPlanningFallbackLabel(b, plannings);
+        return aLabel.localeCompare(bLabel, 'de');
+      });
+      const primaryPartnerId = partnerIds[0];
+      const primaryPartner =
+        planningListDetails[primaryPartnerId] ??
+        (primaryPartnerId ? visiblePlanningById.get(primaryPartnerId) : undefined);
+      const partnerLabel = primaryPartner
+        ? buildPlanningLabel(primaryPartner)
+        : buildPlanningFallbackLabel(primaryPartnerId, plannings);
+
+      let direction: PlanningListHandoverSummary['direction'] = 'outgoing';
+      if (state.directions.has('incoming') && state.directions.has('outgoing')) {
+        direction = 'mixed';
+      } else if (state.directions.has('incoming')) {
+        direction = 'incoming';
+      }
+
+      map.set(planningId, {
+        direction,
+        partnerPlanningId: primaryPartnerId,
+        partnerPlanningLabel: partnerLabel,
+        partnerPlanningCount: partnerIds.length,
+        categoryKeys: Array.from(state.categoryKeys).sort((a, b) => a.localeCompare(b, 'de')),
+      });
+    }
+
+    return map;
+  }, [planningListDetails, plannings, visiblePlannings]);
 
   const handoverProjectOptions = useMemo(() => {
     const activeStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Bestaetigt'];
@@ -1029,14 +1145,17 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
             {visiblePlannings.map((item) => {
               const isActive = selectedId === item.id;
-              const hasHandoverNetwork = Boolean(item.handoverSummary);
+              const handoverSummary = item.handoverSummary ?? planningListHandoverFallbackMap.get(item.id);
+              const hasHandoverNetwork = Boolean(handoverSummary);
               return (
                 <div
                   key={item.id}
                   data-testid={`planning-row-${item.id}`}
                   className={`rounded-xl border p-3 ${
                     isActive
-                      ? 'border-brand-200 bg-brand-50/60'
+                      ? hasHandoverNetwork
+                        ? 'border-sky-300 bg-sky-50/80 ring-1 ring-brand-200 dark:border-sky-700 dark:bg-sky-950/25 dark:ring-brand-800'
+                        : 'border-brand-200 bg-brand-50/60'
                       : hasHandoverNetwork
                         ? 'border-sky-200 bg-sky-50/55 dark:border-sky-800 dark:bg-sky-950/20'
                         : 'border-slate-200 bg-slate-50'
@@ -1060,7 +1179,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                       ? managerLabelById.get(item.projectManagerUserId) ?? '-'
                       : '-'}
                   </p>
-                  {item.handoverSummary ? (
+                  {handoverSummary ? (
                     <div className="mt-2 rounded-xl border border-sky-200 bg-white/75 px-2.5 py-2 text-xs text-sky-900 shadow-sm dark:border-sky-800 dark:bg-slate-950/50 dark:text-sky-100">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
@@ -1069,7 +1188,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                         </span>
                       </div>
                       <p className="mt-1.5 text-[11px] leading-relaxed text-sky-800 dark:text-sky-100">
-                        {buildPlanningListHandoverHint(item)}
+                        {buildPlanningListHandoverHint(handoverSummary)}
                       </p>
                     </div>
                   ) : null}
