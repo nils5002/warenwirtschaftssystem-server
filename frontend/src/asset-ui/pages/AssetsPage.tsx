@@ -750,7 +750,7 @@ export function AssetsPage({
         </div>
 
         {canManageAssets ? (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900/70">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={toggleSelectAllVisible}>
@@ -796,20 +796,20 @@ export function AssetsPage({
               </colgroup>
             ) : null}
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                {canManageAssets ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Name</th>
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Kategorie</th>
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Modell</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Seriennummer</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">IP-Adresse</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC LAN</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">MAC WLAN</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th> : null}
-                <th className="sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
-                <th className={`sticky top-0 z-20 bg-white px-3 py-2 dark:bg-slate-900 ${showTechnicalColumns ? 'min-w-[160px]' : 'min-w-[140px]'}`}>Status</th>
+              <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {canManageAssets ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Auswahl</th> : null}
+                <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Name</th>
+                <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Kategorie</th>
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Modell</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Seriennummer</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">IP-Adresse</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">MAC LAN</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">MAC WLAN</th> : null}
+                {showTechnicalColumns ? <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">QR / Asset-ID</th> : null}
+                <th className="sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900">Zugewiesen an</th>
+                <th className={`sticky top-0 z-20 bg-slate-50 px-3 py-2 dark:bg-slate-900 ${showTechnicalColumns ? 'min-w-[160px]' : 'min-w-[140px]'}`}>Status</th>
                 <th
-                  className={`top-0 z-30 border-l border-slate-200 bg-white px-3 py-2 text-right dark:border-slate-700 dark:bg-slate-900 ${
+                  className={`top-0 z-30 border-l border-slate-200 bg-slate-50 px-3 py-2 text-right dark:border-slate-700 dark:bg-slate-900 ${
                     showTechnicalColumns
                       ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)]'
                       : 'sticky min-w-[240px]'
@@ -821,7 +821,7 @@ export function AssetsPage({
             </thead>
             <tbody>
               {filteredAssets.map((asset, rowIndex) => (
-                <tr key={asset.id} className="rounded-xl bg-slate-50 text-slate-700 dark:bg-slate-800/40 dark:text-slate-200">
+                <tr key={asset.id} className="rounded-xl border-b border-slate-100 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-200 dark:hover:bg-slate-800/70">
                   {canManageAssets ? (
                     <td className="rounded-l-xl px-3 py-3">
                       <input
@@ -892,7 +892,7 @@ export function AssetsPage({
                     <StatusBadge value={asset.status} />
                   </td>
                   <td
-                    className={`z-10 rounded-r-xl border-l border-slate-200 bg-slate-50 px-3 py-3 text-right dark:border-slate-700 dark:bg-slate-800/95 ${
+                    className={`z-10 rounded-r-xl border-l border-slate-200 bg-white px-3 py-3 text-right dark:border-slate-700 dark:bg-slate-800/95 ${
                       showTechnicalColumns
                         ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)]'
                         : 'min-w-[240px]'
