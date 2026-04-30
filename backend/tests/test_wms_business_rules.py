@@ -347,6 +347,112 @@ def test_handover_fields_are_persisted_and_orphan_link_does_not_crash() -> None:
     assert availability.json()["items"][0]["linkedPlanningId"] == orphan_link
 
 
+def test_handover_update_is_persisted_across_get_and_availability_reload() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date(2026, 4, 30)
+    owner_user_id = f"pm-owner-{suffix}"
+    partner_user_id = f"pm-partner-{suffix}"
+
+    partner_payload = {
+        "customerName": f"Kunde Partner {suffix}",
+        "projectName": f"Projekt Partner {suffix}",
+        "eventName": "Partnerprojekt",
+        "projectManagerUserId": partner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Partnerprojekt für Übergabe",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Donnerstag",
+                "items": [{"categoryKey": "iPad", "qty": 8, "notes": None}],
+            }
+        ],
+    }
+    owner_payload = {
+        "customerName": f"Kunde Owner {suffix}",
+        "projectName": f"Projekt Owner {suffix}",
+        "eventName": "Ownerprojekt",
+        "projectManagerUserId": owner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Ownerprojekt ohne Übergabe",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Donnerstag",
+                "items": [{"categoryKey": "iPad", "qty": 30, "notes": None}],
+            }
+        ],
+    }
+
+    created_partner = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", partner_user_id),
+        json=partner_payload,
+    )
+    created_owner = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+        json=owner_payload,
+    )
+    assert created_partner.status_code == 200
+    assert created_owner.status_code == 200
+
+    owner_id = created_owner.json()["id"]
+    partner_id = created_partner.json()["id"]
+
+    existing = client.get(
+        f"/api/wms/planning/{owner_id}",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+    )
+    assert existing.status_code == 200
+
+    update_payload = existing.json()
+    update_payload["days"][0]["items"][0]["handoverEnabled"] = True
+    update_payload["days"][0]["items"][0]["linkedPlanningId"] = partner_id
+    update_payload["days"][0]["items"][0]["handoverNote"] = "Übergabe nach Aufbau"
+
+    updated = client.put(
+        f"/api/wms/planning/{owner_id}",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+        json=update_payload,
+    )
+    assert updated.status_code == 200
+    updated_item = updated.json()["days"][0]["items"][0]
+    assert updated_item["handoverEnabled"] is True
+    assert updated_item["linkedPlanningId"] == partner_id
+    assert updated_item["handoverNote"] == "Übergabe nach Aufbau"
+    assert updated_item["linkedPlanningLabel"] == created_partner.json()["projectName"]
+
+    reloaded = client.get(
+        f"/api/wms/planning/{owner_id}",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+    )
+    assert reloaded.status_code == 200
+    reloaded_item = reloaded.json()["days"][0]["items"][0]
+    assert reloaded_item["handoverEnabled"] is True
+    assert reloaded_item["linkedPlanningId"] == partner_id
+    assert reloaded_item["handoverNote"] == "Übergabe nach Aufbau"
+    assert reloaded_item["linkedPlanningLabel"] == created_partner.json()["projectName"]
+
+    availability = client.get(
+        f"/api/wms/planning/{owner_id}/availability",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+    )
+    assert availability.status_code == 200
+    availability_item = availability.json()["items"][0]
+    assert availability_item["handoverEnabled"] is True
+    assert availability_item["linkedPlanningId"] == partner_id
+    assert availability_item["handoverNote"] == "Übergabe nach Aufbau"
+    assert availability_item["linkedPlanningLabel"] == created_partner.json()["projectName"]
+
+
 def test_handover_planning_does_not_change_real_asset_status() -> None:
     client = TestClient(app)
     suffix = uuid4().hex[:8]

@@ -672,9 +672,13 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     setError(null);
     try {
       const saved = await updatePlanning(planning.id, toUpsertPayload(planning));
-      const savedEditor = toEditablePlanning(saved);
+      const [freshPlanning, planningAvailability] = await Promise.all([
+        getPlanning(saved.id),
+        getPlanningAvailability(saved.id),
+        loadPlannings(saved.id),
+      ]);
+      const savedEditor = toEditablePlanning(freshPlanning);
       setEditor(savedEditor);
-      const [planningAvailability] = await Promise.all([getPlanningAvailability(saved.id), loadPlannings(saved.id)]);
       setAvailability(planningAvailability);
       return savedEditor;
     } catch (err) {
