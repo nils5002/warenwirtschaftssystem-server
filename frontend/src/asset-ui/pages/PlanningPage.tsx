@@ -64,7 +64,7 @@ type EditablePlanning = {
 
 type PlanningSummary = PlanningListItem | PlanningResponse;
 
-type HandoverVisualStatus = 'ok' | 'network' | 'incomplete' | 'shortage';
+type HandoverVisualStatus = 'ok' | 'handover' | 'review' | 'open';
 
 type IncomingHandoverInfo = {
   partnerPlanningId: string;
@@ -404,27 +404,38 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
         Boolean(item.hasGlobalShortage) ||
         item.shortageQty > 0 ||
         item.remainingAfterAllPlanning < 0;
+      const resolvedByHandover =
+        (effectiveHandoverEnabled && Boolean(effectiveLinkedPlanningId)) || Boolean(incomingHandover);
+      const hasOpenShortage = hasGlobalShortage && !resolvedByHandover && !effectiveHandoverEnabled;
+      const hasResolvedShortage = hasGlobalShortage && resolvedByHandover;
 
-      let status: HandoverVisualStatus = hasGlobalShortage ? 'shortage' : 'ok';
+      let status: HandoverVisualStatus = 'ok';
       let source: AvailabilityVisual['source'] = 'none';
       let partnerPlanningId = '';
       let partnerLabel = '';
       let note = '';
 
+      if (hasResolvedShortage) {
+        status = 'handover';
+      } else if (hasGlobalShortage && effectiveHandoverEnabled && !effectiveLinkedPlanningId) {
+        status = 'review';
+      } else if (hasOpenShortage) {
+        status = 'open';
+      } else if (item.availabilityState === 'yellow') {
+        status = 'review';
+      }
+
       if (effectiveHandoverEnabled && effectiveLinkedPlanningId) {
-        status = 'network';
         source = 'outgoing';
         partnerPlanningId = effectiveLinkedPlanningId;
         partnerLabel = effectiveLinkedPlanningLabel;
         note = effectiveHandoverNote;
       } else if (incomingHandover) {
-        status = 'network';
         source = 'incoming';
         partnerPlanningId = incomingHandover.partnerPlanningId;
         partnerLabel = incomingHandover.partnerLabel;
         note = incomingHandover.note;
-      } else if (effectiveHandoverEnabled) {
-        status = 'incomplete';
+      } else if (effectiveHandoverEnabled && !effectiveLinkedPlanningId) {
         note = effectiveHandoverNote;
       }
 
@@ -475,7 +486,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
     const openCount = plannings.filter((item) => openStatuses.includes(item.status)).length;
     const doneCount = plannings.filter((item) => item.status === 'Abgeschlossen').length;
-    const redCount = availabilityVisuals.filter((item) => item.status === 'shortage').length;
+    const redCount = availabilityVisuals.filter((item) => item.status === 'open').length;
     return {
       total: plannings.length,
       openCount,
@@ -485,17 +496,17 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   }, [availabilityVisuals, plannings]);
 
   const networkVisuals = useMemo(
-    () => availabilityVisuals.filter((item) => item.status === 'network'),
+    () => availabilityVisuals.filter((item) => item.status === 'handover'),
     [availabilityVisuals],
   );
 
   const incompleteVisuals = useMemo(
-    () => availabilityVisuals.filter((item) => item.status === 'incomplete'),
+    () => availabilityVisuals.filter((item) => item.status === 'review'),
     [availabilityVisuals],
   );
 
   const shortageVisuals = useMemo(
-    () => availabilityVisuals.filter((item) => item.status === 'shortage'),
+    () => availabilityVisuals.filter((item) => item.status === 'open'),
     [availabilityVisuals],
   );
 
@@ -903,7 +914,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
             <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.doneCount}</p>
           </div>
           <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Engpass-Slots</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
             <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
           </div>
         </div>
@@ -1334,11 +1345,11 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                   {availabilityItem && visual ? (
                                     <div
                                       className={`rounded-2xl border px-2.5 py-2 text-[11px] ${
-                                        visual.status === 'network'
-                                          ? 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 text-slate-700 dark:border-amber-700 dark:from-amber-950/30 dark:via-slate-950 dark:to-sky-950/20 dark:text-slate-100'
-                                          : visual.status === 'incomplete'
+                                        visual.status === 'handover'
+                                          ? 'border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 text-slate-700 dark:border-sky-700 dark:from-sky-950/30 dark:via-slate-950 dark:to-cyan-950/20 dark:text-slate-100'
+                                          : visual.status === 'review'
                                             ? 'border-orange-200 bg-orange-50/85 text-orange-900 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-100'
-                                            : visual.status === 'shortage'
+                                            : visual.status === 'open'
                                               ? 'border-rose-200 bg-rose-50/90 text-rose-900 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-100'
                                               : 'border-emerald-200 bg-emerald-50/90 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-100'
                                       }`}
@@ -1346,52 +1357,36 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         <span
                                           className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                                            visual.status === 'network'
-                                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-100'
-                                              : visual.status === 'incomplete'
+                                            visual.status === 'handover'
+                                              ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-100'
+                                              : visual.status === 'review'
                                                 ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-100'
-                                                : visual.status === 'shortage'
+                                                : visual.status === 'open'
                                                   ? 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-100'
                                                   : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-100'
                                           }`}
                                         >
-                                          {visual.status === 'network'
-                                            ? 'Übergabe geplant'
-                                            : visual.status === 'incomplete'
-                                              ? 'Übergabe offen'
-                                              : visual.status === 'shortage'
-                                                ? 'Engpass'
-                                                : 'Ausreichend'}
+                                          {visual.status === 'handover'
+                                            ? 'Übergabe-Verbund'
+                                            : visual.status === 'review'
+                                              ? 'Prüfung nötig'
+                                              : visual.status === 'open'
+                                                ? 'Offen'
+                                                : 'Verfügbar'}
                                         </span>
                                         <span className="text-[10px] font-medium text-slate-500 dark:text-slate-300">
                                           {visual.categoryKey}
                                         </span>
                                       </div>
                                       <p className="mt-1 leading-relaxed">
-                                        {visual.status === 'network'
-                                          ? `Fehlmenge ${visual.shortageQty} · Partner ${visual.partnerLabel || 'Projektverknüpfung'}`
-                                          : visual.status === 'incomplete'
-                                            ? `Fehlmenge ${visual.shortageQty} · Projektverknüpfung fehlt noch`
-                                            : visual.status === 'shortage'
-                                              ? `Fehlmenge ${visual.shortageQty} · Übergabe noch nicht geplant`
-                                              : 'Bestand ist für diesen Slot ausreichend'}
+                                        {visual.status === 'handover'
+                                          ? `${visual.categoryKey} · ${visual.shortageQty} Stück abgestimmt`
+                                          : visual.status === 'review'
+                                            ? `${visual.categoryKey} · Projektverknüpfung prüfen`
+                                            : visual.status === 'open'
+                                              ? `${visual.categoryKey} · ${visual.shortageQty} Stück offen`
+                                              : 'Kein offener Handlungsbedarf'}
                                       </p>
-                                      <details className="mt-1">
-                                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                                          Details anzeigen
-                                        </summary>
-                                        <div className="mt-1 space-y-0.5 text-[10px]">
-                                          <p>Gesamtbestand: {visual.totalStock}</p>
-                                          <p>Nutzbar: {visual.usableStock}</p>
-                                          <p>Diese Planung: {visual.currentPlanningQty}</p>
-                                          <p>Andere Planungen: {visual.otherPlannedQty}</p>
-                                          <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
-                                          <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
-                                          <p>Fehlmenge: {visual.shortageQty}</p>
-                                          <p>Betroffene Planungen: {visual.affectedPlanningIds.join(', ') || '-'}</p>
-                                          <p>linkedPlanningId: {visual.linkedPlanningId || '-'}</p>
-                                        </div>
-                                      </details>
                                     </div>
                                   ) : (
                                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
@@ -1418,7 +1413,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 </button>
                                 </div>
 
-                                {visual?.status === 'shortage' ? (
+                                {visual?.status === 'open' ? (
                                   <div className="rounded-2xl border border-rose-200 bg-gradient-to-br from-rose-50 via-white to-orange-50 px-3 py-3 text-xs text-rose-900 shadow-sm dark:border-rose-700 dark:from-rose-950/40 dark:via-slate-950 dark:to-orange-950/20 dark:text-rose-100">
                                     <div className="flex items-start gap-3">
                                       <span className="rounded-2xl bg-rose-100 p-2 text-rose-700 dark:bg-rose-900/50 dark:text-rose-100">
@@ -1426,20 +1421,29 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold">Ungeklärter Engpass</p>
+                                          <p className="text-sm font-semibold">Offener Engpass</p>
                                           <span className="rounded-full border border-rose-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
                                             {visual.categoryKey}
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed text-rose-800 dark:text-rose-100">
-                                          Diese Kategorie ist am {formatGermanDate(day.planningDate)} ueber mehrere Projekte hinweg ueberbucht.
+                                          {visual.categoryKey} · {visual.shortageQty} Stück fehlen am {formatGermanDate(day.planningDate)}.
                                         </p>
-                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-rose-800 dark:text-rose-100">
-                                          <span>Nutzbar: {visual.usableStock}</span>
-                                          <span>Diese Planung: {visual.currentPlanningQty}</span>
-                                          <span>Andere Planungen: {visual.otherPlannedQty}</span>
-                                          <span>Fehlmenge: {visual.shortageQty}</span>
-                                        </div>
+                                        <p className="mt-2 leading-relaxed text-rose-800 dark:text-rose-100">
+                                          Für diese Position gibt es aktuell keinen erklärten Übergabe-Verbund. Hier besteht Handlungsbedarf.
+                                        </p>
+                                        <details className="mt-3">
+                                          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
+                                            Details anzeigen
+                                          </summary>
+                                          <div className="mt-2 space-y-0.5 text-[10px]">
+                                            <p>Nutzbar: {visual.usableStock}</p>
+                                            <p>Diese Planung: {visual.currentPlanningQty}</p>
+                                            <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                                            <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                                            <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                                          </div>
+                                        </details>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           <button
                                             type="button"
@@ -1461,59 +1465,69 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                   </div>
                                 ) : null}
 
-                                {visual?.status === 'network' ? (
-                                  <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 px-3 py-3 text-xs text-slate-800 shadow-sm dark:border-amber-700 dark:from-amber-950/35 dark:via-slate-950 dark:to-sky-950/25 dark:text-slate-100">
+                                {visual?.status === 'handover' ? (
+                                  <div className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 px-3 py-3 text-xs text-slate-800 shadow-sm dark:border-sky-700 dark:from-sky-950/35 dark:via-slate-950 dark:to-cyan-950/25 dark:text-slate-100">
                                     <div className="flex items-start gap-3">
-                                      <span className="rounded-2xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-100">
+                                      <span className="rounded-2xl bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/50 dark:text-sky-100">
                                         <Link2 className="h-4 w-4" />
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
                                           <p className="text-sm font-semibold">Übergabe-Verbund aktiv</p>
-                                          <span className="rounded-full border border-amber-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:border-amber-700 dark:bg-slate-950/40 dark:text-amber-100">
-                                            Konflikt bekannt
+                                          <span className="rounded-full border border-sky-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:border-sky-700 dark:bg-slate-950/40 dark:text-sky-100">
+                                            Kein offener Handlungsbedarf
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] font-medium text-slate-800 dark:text-slate-100">
-                                          {visual.categoryKey} · Fehlmenge {visual.shortageQty}
+                                          {visual.categoryKey} · {visual.shortageQty} Stück abgestimmt
                                         </p>
                                         <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
                                           {visual.source === 'incoming'
                                             ? `Dieses Projekt ist bereits über ${visual.partnerLabel || 'ein Partnerprojekt'} Teil desselben Übergabe-Verbunds. Du musst hier nichts doppelt verknüpfen.`
-                                            : `Dieses Projekt ist mit ${visual.partnerLabel || 'einem Partnerprojekt'} abgestimmt. Die ${visual.categoryKey}-Fehlmenge ist als geplante Übergabe markiert.`}
+                                            : `Diese Planung ist mit ${visual.partnerLabel || 'einem Partnerprojekt'} abgestimmt. Die Übergabe wird bereits berücksichtigt.`}
                                         </p>
                                         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
                                           <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
                                             {currentPlanningLabel || 'Aktuelles Projekt'}
                                           </span>
                                           <span className="text-slate-400 dark:text-slate-500">↔</span>
-                                          <span className="rounded-full border border-amber-200 bg-amber-100/70 px-2.5 py-1 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                                          <span className="rounded-full border border-sky-200 bg-sky-100/70 px-2.5 py-1 text-sky-800 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
                                             {visual.partnerLabel || 'Partnerprojekt'}
                                           </span>
-                                        </div>
-                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-                                          <span>Status: Übergabe-Verbund aktiv</span>
-                                          <span>Partnerprojekt: {visual.partnerLabel || 'Projektverknüpfung'}</span>
                                         </div>
                                         {visual.note ? (
                                           <p className="mt-2 rounded-xl border border-white/70 bg-white/65 px-2.5 py-2 text-[11px] text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
                                             Hinweis: {visual.note}
                                           </p>
                                         ) : null}
+                                        <details className="mt-3">
+                                          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                                            Details anzeigen
+                                          </summary>
+                                          <div className="mt-2 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                                            <p>Nutzbar: {visual.usableStock}</p>
+                                            <p>Diese Planung: {visual.currentPlanningQty}</p>
+                                            <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                                            <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                                            <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                                          </div>
+                                        </details>
                                         <div className="mt-3 flex flex-wrap gap-2">
+                                          {visual.partnerPlanningId ? (
+                                            <button
+                                              type="button"
+                                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                                              onClick={() => {
+                                                void openPlanning(visual.partnerPlanningId);
+                                              }}
+                                            >
+                                              Partner öffnen
+                                            </button>
+                                          ) : null}
                                           {visual.source === 'incoming' ? (
                                             <>
-                                              <button
-                                                type="button"
-                                                className="btn-secondary px-2.5 py-1.5 text-xs"
-                                                onClick={() => {
-                                                  void openPlanning(visual.partnerPlanningId);
-                                                }}
-                                              >
-                                                Partnerprojekt öffnen
-                                              </button>
-                                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-amber-700 dark:bg-slate-950/40 dark:text-slate-300">
-                                                Verbund wird über das Partnerprojekt gepflegt
+                                              <span className="inline-flex items-center rounded-full border border-sky-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-sky-700 dark:bg-slate-950/40 dark:text-slate-300">
+                                                Partnerprojekt berücksichtigt
                                               </span>
                                             </>
                                           ) : (
@@ -1527,7 +1541,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                               </button>
                                               <button
                                                 type="button"
-                                                className="btn-danger px-2.5 py-1.5 text-xs"
+                                                className="btn-secondary px-2.5 py-1.5 text-xs"
                                                 onClick={() => removeHandover(dayIndex, itemIndex)}
                                               >
                                                 Verknüpfung lösen
@@ -1540,23 +1554,35 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                   </div>
                                 ) : null}
 
-                                {visual?.status === 'incomplete' ? (
+                                {visual?.status === 'review' ? (
                                   <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 px-3 py-3 text-xs text-orange-900 shadow-sm dark:border-orange-700 dark:from-orange-950/35 dark:via-slate-950 dark:to-amber-950/20 dark:text-orange-100">
                                     <div className="flex items-start gap-3">
                                       <span className="rounded-2xl bg-orange-100 p-2 text-orange-700 dark:bg-orange-900/50 dark:text-orange-100">
-                                        <Link2 className="h-4 w-4" />
+                                        <Clock3 className="h-4 w-4" />
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold">Übergabe unvollständig</p>
+                                          <p className="text-sm font-semibold">Prüfung nötig</p>
                                           <span className="rounded-full border border-orange-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:border-orange-700 dark:bg-slate-950/40 dark:text-orange-100">
-                                            Projekt fehlt
+                                            Verknüpfung offen
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed">
-                                          Die Fehlmenge ist bereits als Übergabe markiert, aber das Partnerprojekt fehlt noch.
+                                          Eine Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.
                                         </p>
                                         {visual.note ? <p className="mt-2 text-[11px]">Hinweis: {visual.note}</p> : null}
+                                        <details className="mt-3">
+                                          <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-200">
+                                            Details anzeigen
+                                          </summary>
+                                          <div className="mt-2 space-y-0.5 text-[10px]">
+                                            <p>Nutzbar: {visual.usableStock}</p>
+                                            <p>Diese Planung: {visual.currentPlanningQty}</p>
+                                            <p>Andere Planungen: {visual.otherPlannedQty}</p>
+                                            <p>Gesamt geplant: {visual.totalPlannedQtyForDateCategory}</p>
+                                            <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
+                                          </div>
+                                        </details>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           <button
                                             type="button"
@@ -1689,7 +1715,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-200">
                       Übergabe-Verbuende: {networkVisuals.length}
                     </span>
                     <span className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-800 dark:border-orange-700 dark:bg-orange-950/30 dark:text-orange-200">
@@ -1705,30 +1731,34 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <span className="status-chip border-amber-200 bg-amber-50 text-amber-700">
+                  <span className="status-chip border-emerald-200 bg-emerald-50 text-emerald-700">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Grün = Alles verfügbar
+                  </span>
+                  <span className="status-chip border-sky-200 bg-sky-50 text-sky-700">
                     <Link2 className="h-3.5 w-3.5" />
-                    Amber = Übergabe-Verbund aktiv
+                    Blau = Übergabe geplant
                   </span>
                   <span className="status-chip border-orange-200 bg-orange-50 text-orange-700">
                     <Clock3 className="h-3.5 w-3.5" />
-                    Orange = Verknüpfung noch unvollständig
+                    Gelb = Prüfung nötig
                   </span>
                   <span className="status-chip border-rose-200 bg-rose-50 text-rose-700">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    Rot = ungeklärter Engpass
+                    Rot = Offener Handlungsbedarf
                   </span>
                 </div>
 
                 <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                  <div className="rounded-2xl border border-amber-200 bg-white p-3 shadow-sm dark:border-amber-800 dark:bg-slate-950">
+                  <div className="rounded-2xl border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-800 dark:bg-slate-950">
                     <div className="flex items-start gap-3">
-                      <span className="rounded-2xl bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                      <span className="rounded-2xl bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
                         <Link2 className="h-4 w-4" />
                       </span>
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Geplante Übergaben</p>
                         <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
-                          Diese Projekte sind bereits miteinander abgestimmt. Die Fehlmenge bleibt sichtbar, wirkt aber nicht mehr wie ein offener Fehler.
+                          Diese Projekte sind bereits miteinander abgestimmt. Die abgestimmte Menge bleibt sichtbar, wirkt aber nicht wie ein offener Fehler.
                         </p>
                       </div>
                     </div>
@@ -1737,36 +1767,36 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                         <div
                           key={`network-${visual.key}`}
                           className={`rounded-2xl border px-3 py-3 text-xs shadow-sm ${
-                            visual.status === 'incomplete'
+                            visual.status === 'review'
                               ? 'border-orange-200 bg-orange-50/80 text-orange-900 dark:border-orange-700 dark:bg-orange-950/25 dark:text-orange-100'
-                              : 'border-amber-200 bg-gradient-to-br from-amber-50 via-white to-sky-50 text-slate-800 dark:border-amber-700 dark:from-amber-950/30 dark:via-slate-950 dark:to-sky-950/20 dark:text-slate-100'
+                              : 'border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 text-slate-800 dark:border-sky-700 dark:from-sky-950/30 dark:via-slate-950 dark:to-cyan-950/20 dark:text-slate-100'
                           }`}
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold">
-                              {visual.status === 'incomplete' ? 'Übergabe unvollständig' : 'Übergabe-Verbund aktiv'}
+                              {visual.status === 'review' ? 'Prüfung nötig' : 'Übergabe-Verbund aktiv'}
                             </p>
                             <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
                               {visual.categoryKey}
                             </span>
                           </div>
                           <p className="mt-1 text-[13px] font-medium">
-                            Fehlmenge {visual.shortageQty} · {formatGermanDate(visual.planningDate)}
+                            {visual.categoryKey} · {visual.shortageQty} Stück · {formatGermanDate(visual.planningDate)}
                           </p>
                           <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
-                            {visual.status === 'incomplete'
-                              ? 'Die Übergabe wurde vorgemerkt, aber das Partnerprojekt fehlt noch.'
+                            {visual.status === 'review'
+                              ? 'Die Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.'
                               : visual.source === 'incoming'
-                                ? `Dieses Projekt ist bereits über ${visual.partnerLabel || 'ein Partnerprojekt'} mit dem Übergabe-Verbund verbunden. Du musst die Verknüpfung nicht ein zweites Mal pflegen.`
-                                : `Die rechnerische Fehlmenge ist durch eine geplante Übergabe mit ${visual.partnerLabel || 'einem Partnerprojekt'} markiert.`}
+                                ? `Dieses Projekt ist über ${visual.partnerLabel || 'ein Partnerprojekt'} bereits eingebunden. Kein offener Handlungsbedarf.`
+                                : `Diese Menge ist über eine geplante Übergabe mit ${visual.partnerLabel || 'einem Partnerprojekt'} berücksichtigt.`}
                           </p>
-                          {visual.status !== 'incomplete' ? (
+                          {visual.status !== 'review' ? (
                             <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
                               <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
                                 {currentPlanningLabel || 'Aktuelles Projekt'}
                               </span>
                               <span className="text-slate-400 dark:text-slate-500">↔</span>
-                              <span className="rounded-full border border-amber-200 bg-amber-100/70 px-2.5 py-1 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100">
+                              <span className="rounded-full border border-sky-200 bg-sky-100/70 px-2.5 py-1 text-sky-800 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
                                 {visual.partnerLabel || 'Partnerprojekt'}
                               </span>
                             </div>
@@ -1796,7 +1826,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                             </div>
                           </details>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {visual.status === 'incomplete' ? (
+                            {visual.status === 'review' ? (
                               <button
                                 type="button"
                                 className="btn-secondary px-2.5 py-1.5 text-xs"
@@ -1811,12 +1841,12 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 className="btn-secondary px-2.5 py-1.5 text-xs"
                                 onClick={() => {
                                   void openPlanning(visual.partnerPlanningId);
-                                  }}
+                                }}
                               >
-                                Partnerprojekt öffnen
+                                Partner öffnen
                               </button>
-                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-amber-700 dark:bg-slate-950/40 dark:text-slate-300">
-                                Verknüpfung wird über das Partnerprojekt gepflegt
+                              <span className="inline-flex items-center rounded-full border border-sky-200 bg-white/75 px-2.5 py-1 text-[11px] text-slate-600 dark:border-sky-700 dark:bg-slate-950/40 dark:text-slate-300">
+                                Partnerprojekt berücksichtigt
                               </span>
                             </>
                           ) : (
@@ -1825,12 +1855,12 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                 type="button"
                                   className="btn-secondary px-2.5 py-1.5 text-xs"
                                   onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
-                                >
-                                  Übergabe bearbeiten
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn-danger px-2.5 py-1.5 text-xs"
+                              >
+                                Übergabe bearbeiten
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-secondary px-2.5 py-1.5 text-xs"
                                   onClick={() => removeHandoverByKey(visual.planningDate, visual.categoryKey)}
                                 >
                                   Verknüpfung lösen
@@ -1867,16 +1897,16 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                           className="rounded-2xl border border-rose-200 bg-rose-50/85 px-3 py-3 text-xs text-rose-900 shadow-sm dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-100"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold">{visual.categoryKey}</p>
+                            <p className="text-sm font-semibold">Offener Engpass</p>
                             <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
-                              Fehlmenge {visual.shortageQty}
+                              {visual.categoryKey}
                             </span>
                           </div>
                           <p className="mt-1 text-[13px]">
-                            {formatGermanDate(visual.planningDate)} · Diese Planung {visual.currentPlanningQty} · Andere Planungen {visual.otherPlannedQty}
+                            {visual.categoryKey} · {visual.shortageQty} Stück fehlen · {formatGermanDate(visual.planningDate)}
                           </p>
                           <p className="mt-2 leading-relaxed text-rose-800 dark:text-rose-100">
-                            Für diese Kategorie gibt es noch keinen Übergabe-Verbund. Das System behandelt sie deshalb bewusst als offenen Konflikt.
+                            Für diese Kategorie reicht der Bestand trotz aktueller Planung nicht aus. Hier besteht offener Handlungsbedarf.
                           </p>
                           <details className="mt-2">
                             <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
