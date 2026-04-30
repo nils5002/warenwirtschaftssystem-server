@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import importlib
@@ -172,10 +173,13 @@ def decode_access_token(token: str) -> AuthUserInfo:
         payload_part.encode("utf-8"),
         hashlib.sha256,
     ).digest()
-    actual_signature = _urlsafe_b64decode(signature_part)
+    try:
+        actual_signature = _urlsafe_b64decode(signature_part)
+        payload = json.loads(_urlsafe_b64decode(payload_part).decode("utf-8"))
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=401, detail="Ungültiger Auth-Token.") from exc
     if not hmac.compare_digest(expected_signature, actual_signature):
         raise HTTPException(status_code=401, detail="Ungültige Token-Signatur.")
-    payload = json.loads(_urlsafe_b64decode(payload_part).decode("utf-8"))
     now_ts = int(datetime.now(UTC).timestamp())
     if int(payload.get("exp", 0)) < now_ts:
         raise HTTPException(status_code=401, detail="Session abgelaufen. Bitte erneut einloggen.")
