@@ -9,8 +9,8 @@ AppRole = Literal["Admin", "Projektmanager", "Mitarbeiter"]
 
 
 class AuthLoginRequest(BaseModel):
-    email: str = Field(..., min_length=3, description="E-Mail")
-    password: str = Field(..., min_length=1, description="Klartext-Passwort")
+    email: str = Field(..., min_length=3, max_length=255, description="E-Mail")
+    password: str = Field(..., min_length=1, max_length=256, description="Klartext-Passwort")
 
 
 class AuthUserInfo(BaseModel):

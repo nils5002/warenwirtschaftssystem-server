@@ -53,11 +53,21 @@ export function AssetQrCard({ qrValue, assetName, tagNumber, compact = false }: 
     if (!qrDataUrl) return;
     const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=500,height=650');
     if (!printWindow) return;
+    const escapeHtml = (value: string): string =>
+      value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
     const title = `QR ${tagNumber}`;
+    const safeTitle = escapeHtml(title);
+    const safeAssetName = escapeHtml(assetName);
+    const safeTagNumber = escapeHtml(tagNumber);
     printWindow.document.write(`
       <html>
         <head>
-          <title>${title}</title>
+          <title>${safeTitle}</title>
           <style>
             body { font-family: Arial, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
             .label { text-align:center; border:1px solid #d1d5db; border-radius:12px; padding:16px; }
@@ -69,8 +79,8 @@ export function AssetQrCard({ qrValue, assetName, tagNumber, compact = false }: 
         <body>
           <div class="label">
             <img src="${qrDataUrl}" alt="QR" />
-            <div class="name">${assetName}</div>
-            <div class="tag">${tagNumber}</div>
+            <div class="name">${safeAssetName}</div>
+            <div class="tag">${safeTagNumber}</div>
           </div>
           <script>window.onload = () => window.print();</script>
         </body>
