@@ -228,6 +228,19 @@ function buildPlanningFallbackLabel(
   return buildPlanningLabel(match);
 }
 
+function updatePlanningItemInEditor(
+  planning: EditablePlanning,
+  dayIndex: number,
+  itemIndex: number,
+  updater: (item: EditablePlanning['days'][number]['items'][number]) => EditablePlanning['days'][number]['items'][number],
+): EditablePlanning {
+  const nextDays = [...planning.days];
+  const nextItems = [...nextDays[dayIndex].items];
+  nextItems[itemIndex] = updater(nextItems[itemIndex]);
+  nextDays[dayIndex] = { ...nextDays[dayIndex], items: nextItems };
+  return { ...planning, days: nextDays };
+}
+
 export function PlanningPage({ assets: _assets, categories, users, onOpenInventoryWithQuery, canEdit = true }: PlanningPageProps) {
   const { alert, confirm } = useAppDialog();
   const [plannings, setPlannings] = useState<Awaited<ReturnType<typeof listPlannings>>>([]);
@@ -640,34 +653,41 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     }
   };
 
-  const saveCurrent = async () => {
-    if (!editor) return;
-    if (!editor.customerName.trim() || !editor.projectName.trim()) {
+  const persistPlanning = async (planning: EditablePlanning) => {
+    if (!planning.customerName.trim() || !planning.projectName.trim()) {
       await alert({
         title: 'Pflichtfelder fehlen',
         message: 'Bitte Kunde und Projekt ausfüllen.',
       });
-      return;
+      return null;
     }
-    if (editor.endDate < editor.startDate) {
+    if (planning.endDate < planning.startDate) {
       await alert({
         title: 'Zeitraum ungültig',
         message: 'Das Enddatum darf nicht vor dem Startdatum liegen.',
       });
-      return;
+      return null;
     }
     setSaving(true);
     setError(null);
     try {
-      const saved = await updatePlanning(editor.id, toUpsertPayload(editor));
-      setEditor(toEditablePlanning(saved));
+      const saved = await updatePlanning(planning.id, toUpsertPayload(planning));
+      const savedEditor = toEditablePlanning(saved);
+      setEditor(savedEditor);
       const [planningAvailability] = await Promise.all([getPlanningAvailability(saved.id), loadPlannings(saved.id)]);
       setAvailability(planningAvailability);
+      return savedEditor;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht gespeichert werden.');
+      return null;
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveCurrent = async () => {
+    if (!editor) return;
+    await persistPlanning(editor);
   };
 
   const createNewPlanning = async () => {
@@ -782,13 +802,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     itemIndex: number,
     updater: (item: EditablePlanning['days'][number]['items'][number]) => EditablePlanning['days'][number]['items'][number],
   ) => {
-    patchEditor((current) => {
-      const nextDays = [...current.days];
-      const nextItems = [...nextDays[dayIndex].items];
-      nextItems[itemIndex] = updater(nextItems[itemIndex]);
-      nextDays[dayIndex] = { ...nextDays[dayIndex], items: nextItems };
-      return { ...current, days: nextDays };
-    });
+    patchEditor((current) => updatePlanningItemInEditor(current, dayIndex, itemIndex, updater));
   };
 
   const findPlanningItemPosition = (planningDate: string, categoryKey: string) => {
@@ -829,14 +843,38 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     setHandoverEditorKey((current) => (current === key ? null : current));
   };
 
-  const removeHandover = (dayIndex: number, itemIndex: number) => {
-    patchPlanningItem(dayIndex, itemIndex, (item) => ({
+  const clearHandoverSnapshot = (key: string) => {
+    setHandoverSnapshot((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const saveHandoverEditor = async (dayIndex: number, itemIndex: number) => {
+    if (!editor) return;
+    const key = handoverKey(dayIndex, itemIndex);
+    const saved = await persistPlanning(editor);
+    if (!saved) return;
+    clearHandoverSnapshot(key);
+    setHandoverEditorKey((current) => (current === key ? null : current));
+  };
+
+  const removeHandover = async (dayIndex: number, itemIndex: number) => {
+    if (!editor) return;
+    const key = handoverKey(dayIndex, itemIndex);
+    const nextEditor = updatePlanningItemInEditor(editor, dayIndex, itemIndex, (item) => ({
       ...item,
       handoverEnabled: false,
       linkedPlanningId: '',
       handoverNote: '',
     }));
-    setHandoverEditorKey((current) => (current === handoverKey(dayIndex, itemIndex) ? null : current));
+    setEditor(nextEditor);
+    const saved = await persistPlanning(nextEditor);
+    if (!saved) return;
+    clearHandoverSnapshot(key);
+    setHandoverEditorKey((current) => (current === key ? null : current));
   };
 
   const openHandoverEditorByKey = (
@@ -849,10 +887,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     openHandoverEditor(position.dayIndex, position.itemIndex, preset);
   };
 
-  const removeHandoverByKey = (planningDate: string, categoryKey: string) => {
+  const removeHandoverByKey = async (planningDate: string, categoryKey: string) => {
     const position = findPlanningItemPosition(planningDate, categoryKey);
     if (!position) return;
-    removeHandover(position.dayIndex, position.itemIndex);
+    await removeHandover(position.dayIndex, position.itemIndex);
   };
 
   const addDay = () => {
@@ -1542,7 +1580,9 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                               <button
                                                 type="button"
                                                 className="btn-secondary px-2.5 py-1.5 text-xs"
-                                                onClick={() => removeHandover(dayIndex, itemIndex)}
+                                                onClick={() => {
+                                                  void removeHandover(dayIndex, itemIndex);
+                                                }}
                                               >
                                                 Verknüpfung lösen
                                               </button>
@@ -1653,7 +1693,10 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                                       <button
                                         type="button"
                                         className="btn-primary px-2.5 py-1.5 text-xs"
-                                        onClick={() => setHandoverEditorKey(null)}
+                                        onClick={() => {
+                                          void saveHandoverEditor(dayIndex, itemIndex);
+                                        }}
+                                        disabled={saving}
                                       >
                                         Übernehmen
                                       </button>
@@ -1858,10 +1901,12 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
                               >
                                 Übergabe bearbeiten
                               </button>
-                              <button
-                                type="button"
-                                className="btn-secondary px-2.5 py-1.5 text-xs"
-                                  onClick={() => removeHandoverByKey(visual.planningDate, visual.categoryKey)}
+                                <button
+                                  type="button"
+                                  className="btn-secondary px-2.5 py-1.5 text-xs"
+                                  onClick={() => {
+                                    void removeHandoverByKey(visual.planningDate, visual.categoryKey);
+                                  }}
                                 >
                                   Verknüpfung lösen
                                 </button>
