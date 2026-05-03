@@ -1,60 +1,13 @@
-name: Deploy Production
+name: Server Deployment Disabled
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: true
-
 jobs:
-  deploy:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
+  deployment-disabled:
+    runs-on: ubuntu-latest
     steps:
-      - name: Run deploy script on production server via SSH
-        shell: pwsh
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
+      - name: Deployment is disabled
         run: |
-          $ErrorActionPreference = "Stop"
-          if ([string]::IsNullOrWhiteSpace($env:SSH_HOST) -or [string]::IsNullOrWhiteSpace($env:SSH_USER) -or [string]::IsNullOrWhiteSpace($env:SSH_KEY)) {
-            throw "Missing required secrets: SSH_HOST, SSH_USER, SSH_KEY"
-          }
-
-          $sshPort = if ([string]::IsNullOrWhiteSpace($env:SSH_PORT)) { "22" } else { $env:SSH_PORT }
-          $keyPath = Join-Path $env:RUNNER_TEMP "deploy_key"
-          $env:SSH_KEY | Out-File -FilePath $keyPath -Encoding ascii -NoNewline
-
-          ssh -i $keyPath -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -p $sshPort "$($env:SSH_USER)@$($env:SSH_HOST)" "sudo /opt/web/cloud_web/deploy/server/deploy.sh main"
-
-      - name: External health check
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $url = if ($env:EXTERNAL_HEALTH_URL) { $env:EXTERNAL_HEALTH_URL } else { "https://warehouse.example.com/" }
-          $attempts = 12
-          $sleepSeconds = 5
-
-          for ($attempt = 1; $attempt -le $attempts; $attempt++) {
-            try {
-              $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 20
-              $code = [int]$response.StatusCode
-              if ($code -ge 200 -and $code -lt 400) {
-                Write-Host "External health check OK ($code) on attempt $attempt/$attempts"
-                exit 0
-              }
-              Write-Host "External health check not ready (attempt $attempt/$attempts, status=$code)"
-            } catch {
-              Write-Host "External health check not ready (attempt $attempt/$attempts): $($_.Exception.Message)"
-            }
-            Start-Sleep -Seconds $sleepSeconds
-          }
-
-          throw "External health check failed after $attempts attempts."
+          echo "Automatic server deployment via SSH is currently disabled."
+          echo "Use tag-based GitHub Releases instead (workflow: release.yml)."
