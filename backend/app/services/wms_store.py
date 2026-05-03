@@ -230,7 +230,7 @@ def _seed_overview() -> WmsOverviewResponse:
             UserItem(
                 id="usr-01",
                 name="Nils Kramer",
-                email="nils.kramer@atlasops.io",
+                email="user1@example.com",
                 role="Admin",
                 lastActive="Heute, 11:25",
                 status="Aktiv",
@@ -238,7 +238,7 @@ def _seed_overview() -> WmsOverviewResponse:
             UserItem(
                 id="usr-02",
                 name="Lara Meier",
-                email="lara.meier@atlasops.io",
+                email="user2@example.com",
                 role="Lager / Logistik",
                 lastActive="Heute, 10:58",
                 status="Aktiv",
