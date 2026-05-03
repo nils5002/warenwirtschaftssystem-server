@@ -26,6 +26,7 @@ const apiUrls = (path: string): string[] => {
 const ACCESS_STORAGE_KEY = 'wms.accessContext';
 const AUTH_STORAGE_KEY = 'wms.authSession';
 const LOGIN_TIMEOUT_MS = 10_000;
+const AUTH_ME_TIMEOUT_MS = 8_000;
 
 type ApiAccessContext = {
   projectContext?: string;
@@ -489,8 +490,21 @@ export async function login(payload: AuthLoginPayload): Promise<AuthSession> {
 }
 
 export async function fetchAuthMe(): Promise<AuthUser> {
-  const response = await apiFetch('/api/auth/me');
-  return parseResponse<AuthUser>(response);
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), AUTH_ME_TIMEOUT_MS);
+  try {
+    const response = await apiFetch('/api/auth/me', {
+      signal: controller.signal,
+    });
+    return parseResponse<AuthUser>(response);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error('Sitzung konnte nicht geprüft werden: Backend antwortet nicht.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export function upsertAsset(asset: Asset): Promise<Asset> {
