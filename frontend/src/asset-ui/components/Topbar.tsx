@@ -1,5 +1,5 @@
-import { Bell, CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
-import type { AppRole } from '../types';
+import { Bell, ChevronRight, CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import type { AppPage, AppRole } from '../types';
 
 type TopbarProps = {
   search: string;
@@ -15,8 +15,23 @@ type TopbarProps = {
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
   onLogout: () => void;
+  activePage: AppPage;
   activeLabel: string;
   activeHint?: string;
+};
+
+const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
+  dashboard: ['Betrieb', 'Dashboard'],
+  planning: ['Betrieb', 'Einsatzplanung'],
+  inventory: ['Lager', 'Inventar'],
+  assetDetail: ['Lager', 'Inventar / Detail'],
+  checkinCheckout: ['Lager', 'Ein-/Auslagerung'],
+  tickets: ['Tickets', 'Defekte / Tickets'],
+  users: ['Verwaltung', 'Benutzerverwaltung'],
+  categories: ['Verwaltung', 'Kategorien'],
+  importExport: ['System', 'Import / Export'],
+  backup: ['System', 'Backup'],
+  qrFunctions: ['System', 'QR-Code'],
 };
 
 export function Topbar({
@@ -33,9 +48,12 @@ export function Topbar({
   onOpenNotifications,
   onOpenProfile,
   onLogout,
+  activePage,
   activeLabel,
   activeHint,
 }: TopbarProps) {
+  const [crumbGroup, crumbPage] = BREADCRUMB_MAP[activePage] ?? ['Betrieb', 'Dashboard'];
+
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-slate-50/90 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
       <div className="mx-auto grid max-w-[1600px] gap-3 px-3 py-3.5 sm:px-4 md:grid-cols-[minmax(240px,auto)_minmax(300px,1fr)_auto] md:items-start md:gap-4 md:px-8 md:py-4">
@@ -47,6 +65,11 @@ export function Topbar({
             <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-brand-700 dark:text-sky-400">
               Warenwirtschaftssystem Konventex
             </p>
+            <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-medium">{crumbGroup}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+              <span className="font-semibold text-slate-700 dark:text-slate-200">{crumbPage}</span>
+            </div>
             <p className="mt-0.5 truncate text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
               {activeLabel}
             </p>
