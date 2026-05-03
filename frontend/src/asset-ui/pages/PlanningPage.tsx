@@ -11,7 +11,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
-import { PlanningCalendarAddOn } from './planning/PlanningCalendarAddOn';
+import { PlanningCalendarAddOn } from './PlanningCalendarAddOn';
 import {
   createPlanning,
   deletePlanning,
@@ -1299,21 +1299,23 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
             <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
           </div>
         </div>
+
+        <div className="mt-4">
+          <PlanningCalendarAddOn
+            plannings={visiblePlannings}
+            selectedId={selectedId}
+            handoverSummaryById={planningListHandoverSummaryById}
+            planningDetailsById={planningListDetails}
+            availabilityByPlanningId={calendarAvailabilitiesByPlanningId}
+            onSelectPlanning={(planningId) => {
+              void openPlanning(planningId);
+            }}
+            requestPlanningData={requestCalendarPlanningData}
+          />
+        </div>
       </div>
 
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-
-      <PlanningCalendarAddOn
-        plannings={visiblePlannings}
-        selectedId={selectedId}
-        handoverSummaryById={planningListHandoverSummaryById}
-        planningDetailsById={planningListDetails}
-        availabilityByPlanningId={calendarAvailabilitiesByPlanningId}
-        onSelectPlanning={(planningId) => {
-          void openPlanning(planningId);
-        }}
-        requestPlanningData={requestCalendarPlanningData}
-      />
 
       <div className="grid gap-4 xl:grid-cols-12">
         <article className="surface-card xl:col-span-4">
