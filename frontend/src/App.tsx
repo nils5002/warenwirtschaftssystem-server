@@ -5,6 +5,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
 import { useWmsController } from './hooks/useWmsController';
+import { normalizePathname } from './routing/appRoutes';
 import {
   clearAuthSession,
   fetchAuthMe,
@@ -75,6 +76,23 @@ function App() {
       controller.setActivePage('dashboard');
     }
   }, [controller.activePage, controller.setActivePage, visibleNavigation]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || authBooting) return;
+    const currentPath = normalizePathname(window.location.pathname);
+    const isAuthenticated = Boolean(authSession && authUser);
+
+    if (!isAuthenticated) {
+      if (currentPath !== '/login') {
+        window.history.replaceState(null, '', '/login');
+      }
+      return;
+    }
+
+    if (currentPath === '/login' || currentPath === '/') {
+      window.history.replaceState(null, '', '/dashboard');
+    }
+  }, [authBooting, authSession, authUser]);
 
   const activeItem = visibleNavigation.find((item) => item.key === controller.activePage);
   const sidebarStats = {

@@ -257,7 +257,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || !isAuthenticated) return;
 
     const syncFromBrowserPath = () => {
       const resolved = resolvePageFromPath(window.location.pathname);
@@ -273,7 +273,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     return () => {
       window.removeEventListener('popstate', syncFromBrowserPath);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const selectedAsset = useMemo(
     () => assets.find((asset) => asset.id === selectedAssetId) ?? null,
