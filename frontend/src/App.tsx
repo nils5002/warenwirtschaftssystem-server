@@ -163,6 +163,7 @@ function App() {
           onOpenNotifications={controller.openNotifications}
           onOpenProfile={controller.openProfile}
           onLogout={handleLogout}
+          activePage={controller.activePage}
           activeLabel={activeItem?.label ?? (controller.activePage === 'assetDetail' ? 'Asset-Detail' : 'Dashboard')}
           activeHint={activeItem?.hint}
         />
