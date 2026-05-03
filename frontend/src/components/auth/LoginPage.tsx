@@ -64,8 +64,8 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="fixed inset-0 bg-[url('/login-background.jpg')] bg-cover bg-center bg-no-repeat" />
-      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.38)_0%,rgba(2,6,23,0.78)_70%,rgba(2,6,23,0.9)_100%)]" />
-      <div className="fixed inset-0 bg-gradient-to-br from-slate-950/45 via-slate-900/35 to-indigo-950/45" />
+      <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.02)_0%,rgba(2,6,23,0.2)_72%,rgba(2,6,23,0.32)_100%)]" />
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-950/16 via-slate-900/10 to-indigo-950/18" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-20 top-0 h-80 w-80 rounded-full bg-sky-500/16 blur-3xl" />
         <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-indigo-500/16 blur-3xl" />
