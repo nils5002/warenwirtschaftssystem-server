@@ -150,40 +150,47 @@ export function DashboardPage({
   const todayShortageCount = planningSummary?.todayShortageCount ?? 0;
   const upcomingPlannedQty = planningSummary?.upcomingPlannedQty ?? 0;
   const upcomingShortageCount = planningSummary?.upcomingShortageCount ?? 0;
+  const hasPlanningCategorySummary = Boolean(planningSummary?.categorySummaries?.length);
+  const hasActivities = activities.length > 0;
 
   return (
-    <section className="space-y-6">
-      <div className="surface-card animate-fade-up overflow-hidden p-0">
-        <div className="grid gap-4 bg-gradient-to-br from-slate-900 via-slate-800 to-brand-800 px-5 py-5 text-slate-100 md:grid-cols-[1.3fr_1fr] md:px-6 md:py-6">
+    <section className="mx-auto w-full max-w-[1520px] space-y-8">
+      <div className="surface-card animate-fade-up overflow-hidden rounded-3xl border border-slate-200/80 p-0 shadow-lg dark:border-slate-800 dark:bg-slate-900/75">
+        <div className="grid gap-6 bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 px-6 py-7 text-slate-100 md:grid-cols-[1.4fr_1fr] md:px-8 md:py-8">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-200">Dashboard</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Kernübersicht</h2>
-            <p className="mt-2 max-w-2xl text-sm text-slate-200">
-              Zentrale Steuerung für Lager, Projektplanung und Störungsbearbeitung in einer Oberfläche.
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-200">Dashboard</p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Kernübersicht</h2>
+            <p className="mt-3 max-w-2xl text-sm text-slate-200 sm:text-base">
+              Bestand, Planung und Rückgaben auf einen Blick.
             </p>
+            <div className="mt-5 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verfügbar: {available}</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verliehen: {loaned}</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Offene Tickets: {maintenanceOpen}</span>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:text-sm">
-            <button type="button" onClick={() => onNavigate('planning')} className="rounded-xl bg-white/12 px-3 py-3 text-left transition hover:bg-white/20">
+          <div className="grid grid-cols-2 gap-2.5 text-xs sm:text-sm">
+            <button type="button" onClick={() => onNavigate('planning')} className="rounded-xl border border-white/15 bg-white/12 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/20">
               <p className="font-semibold text-white">Einsatzplanung</p>
-              <p className="mt-1 text-brand-100">Projektbedarf prüfen</p>
+              <p className="mt-1 text-sky-100">Projektbedarf prüfen</p>
             </button>
-            <button type="button" onClick={() => onNavigate('checkinCheckout')} className="rounded-xl bg-white/12 px-3 py-3 text-left transition hover:bg-white/20">
+            <button type="button" onClick={() => onNavigate('checkinCheckout')} className="rounded-xl border border-white/15 bg-white/12 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/20">
               <p className="font-semibold text-white">Ein-/Auslagerung</p>
-              <p className="mt-1 text-brand-100">3-Klick Ausgabe</p>
+              <p className="mt-1 text-sky-100">3-Klick Ausgabe</p>
             </button>
-            <button type="button" onClick={() => onNavigate('inventory')} className="rounded-xl bg-white/12 px-3 py-3 text-left transition hover:bg-white/20">
+            <button type="button" onClick={() => onNavigate('inventory')} className="rounded-xl border border-white/15 bg-white/12 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/20">
               <p className="font-semibold text-white">Inventar</p>
-              <p className="mt-1 text-brand-100">Bestand & Status</p>
+              <p className="mt-1 text-sky-100">Bestand & Status</p>
             </button>
-            <button type="button" onClick={() => onNavigate('tickets')} className="rounded-xl bg-white/12 px-3 py-3 text-left transition hover:bg-white/20">
+            <button type="button" onClick={() => onNavigate('tickets')} className="rounded-xl border border-white/15 bg-white/12 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-white/20">
               <p className="font-semibold text-white">Tickets</p>
-              <p className="mt-1 text-brand-100">Defekte nachverfolgen</p>
+              <p className="mt-1 text-sky-100">Defekte nachverfolgen</p>
             </button>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <KpiCard
           title="Gesamtanzahl Assets"
           value={String(totalAssets)}
@@ -228,38 +235,41 @@ export function DashboardPage({
         />
       </div>
 
-      <article className="surface-card animate-fade-up">
+      <article className="surface-card animate-fade-up rounded-2xl border border-slate-200/80 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/75 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-base font-semibold text-slate-900">Planung heute / kommende Einsätze</h3>
-          <button type="button" onClick={() => onNavigate('planning')} className="btn-secondary px-2.5 py-1.5 text-xs">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Planung heute / kommende Einsätze</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Planungsdruck und mögliche Engpässe pro Zeitraum.</p>
+          </div>
+          <button type="button" onClick={() => onNavigate('planning')} className="btn-secondary px-3 py-1.5 text-xs">
             Einsatzplanung öffnen
           </button>
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="surface-muted px-3 py-2.5">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="surface-muted rounded-xl px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Heute geplant</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{todayPlannedQty}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{todayPlannedQty}</p>
           </div>
-          <div className="surface-muted px-3 py-2.5">
+          <div className="surface-muted rounded-xl px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-rose-700">Heute Engpässe</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{todayShortageCount}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{todayShortageCount}</p>
           </div>
-          <div className="surface-muted px-3 py-2.5">
+          <div className="surface-muted rounded-xl px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-slate-500">Kommende 7 Tage geplant</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{upcomingPlannedQty}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{upcomingPlannedQty}</p>
           </div>
-          <div className="surface-muted px-3 py-2.5">
+          <div className="surface-muted rounded-xl px-4 py-3">
             <p className="text-xs uppercase tracking-wide text-amber-700">Kommende Engpass-Kategorien</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{upcomingShortageCount}</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{upcomingShortageCount}</p>
           </div>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
           Physisch verfügbar basiert auf Inventarstatus. Nach Planung frei ist eine rechnerische Vorschau und ändert keinen echten Asset-Status.
         </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {(planningSummary?.categorySummaries ?? []).slice(0, 9).map((item) => (
-            <div key={`planning-summary-${item.categoryKey}`} className="rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-700">
-              <p className="font-semibold text-slate-900">{item.categoryKey}</p>
+            <div key={`planning-summary-${item.categoryKey}`} className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+              <p className="font-semibold text-slate-900 dark:text-slate-100">{item.categoryKey}</p>
               <p>Physisch verfügbar: {item.usableStock}</p>
               <p>Heute geplant: {item.plannedQtyToday}</p>
               <p>Nach Planung frei: {item.remainingAfterPlanning}</p>
@@ -268,21 +278,25 @@ export function DashboardPage({
               </p>
             </div>
           ))}
-          {!(planningSummary?.categorySummaries?.length) ? (
-            <p className="text-xs text-slate-500">Keine Planungsdaten verfügbar.</p>
+          {!hasPlanningCategorySummary ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center dark:border-slate-700 dark:bg-slate-900/50">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Keine Planungsdaten für heute vorhanden</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Lege eine Einsatzplanung an, um Auslastung und Engpässe zu sehen.</p>
+            </div>
           ) : null}
         </div>
       </article>
 
       <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card animate-fade-up xl:col-span-8">
+        <article className="surface-card animate-fade-up rounded-2xl border border-slate-200/80 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/75 xl:col-span-8 sm:p-6">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-slate-900">Letzte Aktivitäten</h3>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Letzte Aktivitäten</h3>
             <button type="button" onClick={() => onNavigate('inventory')} className="btn-secondary px-2.5 py-1.5 text-xs">
               Details im Inventar
             </button>
           </div>
-          <ul className="space-y-2">
+          {hasActivities ? (
+          <ul className="space-y-2.5">
             {activities.slice(0, 8).map((activity) => (
               <li key={activity.id}>
                 {(() => {
@@ -294,7 +308,7 @@ export function DashboardPage({
                   const summary = summarizeActivityLine(activity.title, detailText);
                   return (
                     <div
-                      className={`surface-muted border-l-4 px-3 py-2.5 transition ${
+                      className={`surface-muted rounded-xl border-l-4 px-3 py-3 transition ${
                         theme === 'dark' ? 'hover:bg-white/5' : 'hover:border-brand-200 hover:bg-brand-50/40'
                       } ${
                         accent ? '' : 'border-l-slate-200'
@@ -319,7 +333,7 @@ export function DashboardPage({
                         </div>
                         <span className="text-xs text-slate-500">{activity.timestamp}</span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-700">{summary.main}</p>
+                      <p className="mt-1 text-xs text-slate-700 dark:text-slate-300">{summary.main}</p>
                       {summary.meta ? <p className="mt-0.5 text-[11px] text-slate-500">{summary.meta}</p> : null}
                     </div>
                   );
@@ -327,45 +341,52 @@ export function DashboardPage({
               </li>
             ))}
           </ul>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-7 text-center dark:border-slate-700 dark:bg-slate-900/50">
+              <CalendarRange className="mx-auto h-6 w-6 text-slate-400" />
+              <p className="mt-2 text-sm font-medium text-slate-700 dark:text-slate-200">Noch keine Aktivitäten vorhanden</p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Sobald Buchungen oder Änderungen erfolgen, erscheint hier die Timeline.</p>
+            </div>
+          )}
         </article>
 
-        <article className="surface-card animate-fade-up xl:col-span-4">
-          <h3 className="text-base font-semibold text-slate-900">Betriebslage</h3>
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="surface-muted flex items-center justify-between px-3 py-2.5">
+        <article className="surface-card animate-fade-up rounded-2xl border border-slate-200/80 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/75 xl:col-span-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Betriebslage</h3>
+          <div className="mt-4 space-y-2.5 text-sm">
+            <div className="surface-muted flex items-center justify-between rounded-xl px-3 py-3">
               <span className="inline-flex items-center gap-2 text-slate-600">
                 <CalendarRange className="h-4 w-4 text-brand-600" />
                 Aktive Reservierungen
               </span>
-              <span className="font-semibold text-slate-900">{activeReservations}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{activeReservations}</span>
             </div>
-            <div className="surface-muted flex items-center justify-between px-3 py-2.5">
+            <div className="surface-muted flex items-center justify-between rounded-xl px-3 py-3">
               <span className="inline-flex items-center gap-2 text-slate-600">
                 <TriangleAlert className="h-4 w-4 text-amber-600" />
                 Offene Tickets
               </span>
-              <span className="font-semibold text-slate-900">{maintenanceOpen}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{maintenanceOpen}</span>
             </div>
-            <div className="surface-muted flex items-center justify-between px-3 py-2.5">
+            <div className="surface-muted flex items-center justify-between rounded-xl px-3 py-3">
               <span className="inline-flex items-center gap-2 text-slate-600">
                 <Wrench className="h-4 w-4 text-amber-600" />
                 Geräte in Wartung
               </span>
-              <span className="font-semibold text-slate-900">{inMaintenance}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{inMaintenance}</span>
             </div>
-            <div className="surface-muted flex items-center justify-between px-3 py-2.5">
+            <div className="surface-muted flex items-center justify-between rounded-xl px-3 py-3">
               <span className="inline-flex items-center gap-2 text-slate-600">
                 <TriangleAlert className="h-4 w-4 text-rose-600" />
                 Engpassindikatoren
               </span>
-              <span className="font-semibold text-slate-900">{bottleneckCount}</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{bottleneckCount}</span>
             </div>
-            <div className="surface-muted flex items-center justify-between px-3 py-2.5">
+            <div className="surface-muted flex items-center justify-between rounded-xl px-3 py-3">
               <span className="inline-flex items-center gap-2 text-slate-600">
                 <Users className="h-4 w-4 text-slate-600" />
                 Team & Rollen
               </span>
-              <button type="button" onClick={() => onNavigate('users')} className="btn-ghost px-2 py-1 text-xs">
+              <button type="button" onClick={() => onNavigate('users')} className="btn-ghost px-3 py-1.5 text-xs">
                 Öffnen
               </button>
             </div>
