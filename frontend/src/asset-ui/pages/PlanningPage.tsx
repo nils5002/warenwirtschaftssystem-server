@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { PlanningCalendarAddOn } from './planning/PlanningCalendarAddOn';
 import {
   createPlanning,
   deletePlanning,
@@ -339,6 +340,9 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
   const [handoverSnapshot, setHandoverSnapshot] = useState<Record<string, EditablePlanning['days'][number]['items'][number]>>({});
   const [relatedPlannings, setRelatedPlannings] = useState<Record<string, PlanningResponse>>({});
   const [planningListDetails, setPlanningListDetails] = useState<Record<string, PlanningResponse>>({});
+  const [calendarAvailabilitiesByPlanningId, setCalendarAvailabilitiesByPlanningId] = useState<
+    Record<string, PlanningAvailabilityResponse>
+  >({});
   const [createForm, setCreateForm] = useState({
     customerName: '',
     projectName: '',
@@ -941,6 +945,53 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     }
   };
 
+  const requestCalendarPlanningData = (planningIds: string[]) => {
+    const missingDetailIds = planningIds.filter((planningId) => !planningListDetails[planningId]);
+    const missingAvailabilityIds = planningIds.filter((planningId) => !calendarAvailabilitiesByPlanningId[planningId]);
+    if (!missingDetailIds.length && !missingAvailabilityIds.length) return;
+
+    if (missingDetailIds.length) {
+      void Promise.all(
+        missingDetailIds.map(async (planningId) => {
+          try {
+            return await getPlanning(planningId);
+          } catch {
+            return null;
+          }
+        }),
+      ).then((results) => {
+        setPlanningListDetails((current) => {
+          const next = { ...current };
+          for (const planning of results) {
+            if (planning) next[planning.id] = planning;
+          }
+          return next;
+        });
+      });
+    }
+
+    if (missingAvailabilityIds.length) {
+      void Promise.all(
+        missingAvailabilityIds.map(async (planningId) => {
+          try {
+            const planningAvailability = await getPlanningAvailability(planningId);
+            return { planningId, planningAvailability };
+          } catch {
+            return null;
+          }
+        }),
+      ).then((results) => {
+        setCalendarAvailabilitiesByPlanningId((current) => {
+          const next = { ...current };
+          for (const result of results) {
+            if (result) next[result.planningId] = result.planningAvailability;
+          }
+          return next;
+        });
+      });
+    }
+  };
+
   const persistPlanning = async (planning: EditablePlanning) => {
     if (!planning.customerName.trim() || !planning.projectName.trim()) {
       await alert({
@@ -1251,6 +1302,18 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
       </div>
 
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+
+      <PlanningCalendarAddOn
+        plannings={visiblePlannings}
+        selectedId={selectedId}
+        handoverSummaryById={planningListHandoverSummaryById}
+        planningDetailsById={planningListDetails}
+        availabilityByPlanningId={calendarAvailabilitiesByPlanningId}
+        onSelectPlanning={(planningId) => {
+          void openPlanning(planningId);
+        }}
+        requestPlanningData={requestCalendarPlanningData}
+      />
 
       <div className="grid gap-4 xl:grid-cols-12">
         <article className="surface-card xl:col-span-4">
