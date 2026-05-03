@@ -162,6 +162,9 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                                     "categoryKey": detail.category_key,
                                     "qty": detail.qty,
                                     "notes": detail.notes,
+                                    "handoverEnabled": bool(detail.handover_enabled),
+                                    "linkedPlanningId": detail.linked_planning_external_id,
+                                    "handoverNote": detail.handover_note,
                                 }
                                 for detail in item_map.get(day.id, [])
                             ],
@@ -323,6 +326,9 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                             category_key=planning_item.categoryKey,
                             qty=planning_item.qty,
                             notes=planning_item.notes,
+                            handover_enabled=bool(planning_item.handoverEnabled),
+                            linked_planning_external_id=(planning_item.linkedPlanningId or None),
+                            handover_note=(planning_item.handoverNote or None),
                         )
                     )
 

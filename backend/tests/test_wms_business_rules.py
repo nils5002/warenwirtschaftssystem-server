@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from uuid import uuid4
 
@@ -451,6 +452,126 @@ def test_handover_update_is_persisted_across_get_and_availability_reload() -> No
     assert availability_item["linkedPlanningId"] == partner_id
     assert availability_item["handoverNote"] == "Übergabe nach Aufbau"
     assert availability_item["linkedPlanningLabel"] == created_partner.json()["projectName"]
+
+
+def test_backup_restore_preserves_handover_links_and_availability_state() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    planning_date = date.today() + timedelta(days=20)
+    owner_user_id = f"pm-backup-owner-{suffix}"
+    partner_user_id = f"pm-backup-partner-{suffix}"
+
+    partner_payload = {
+        "customerName": f"Kunde Backup Partner {suffix}",
+        "projectName": f"Projekt Backup Partner {suffix}",
+        "eventName": "Backup Partner",
+        "projectManagerUserId": partner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Partnerprojekt für Backup-Test",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Montag",
+                "items": [{"categoryKey": "iPad", "qty": 8, "notes": None}],
+            }
+        ],
+    }
+    owner_payload = {
+        "customerName": f"Kunde Backup Owner {suffix}",
+        "projectName": f"Projekt Backup Owner {suffix}",
+        "eventName": "Backup Owner",
+        "projectManagerUserId": owner_user_id,
+        "calendarWeek": planning_date.isocalendar().week,
+        "startDate": planning_date.isoformat(),
+        "endDate": planning_date.isoformat(),
+        "notes": "Ownerprojekt für Backup-Test",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": planning_date.isoformat(),
+                "weekday": "Montag",
+                "items": [{"categoryKey": "iPad", "qty": 30, "notes": None}],
+            }
+        ],
+    }
+
+    created_partner = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", partner_user_id), json=partner_payload)
+    created_owner = client.post("/api/wms/planning", headers=_headers(client, "Projektmanager", owner_user_id), json=owner_payload)
+    assert created_partner.status_code == 200
+    assert created_owner.status_code == 200
+
+    owner_id = created_owner.json()["id"]
+    partner_id = created_partner.json()["id"]
+
+    existing_owner = client.get(f"/api/wms/planning/{owner_id}", headers=_headers(client, "Projektmanager", owner_user_id))
+    assert existing_owner.status_code == 200
+    update_payload = existing_owner.json()
+    update_payload["days"][0]["items"][0]["handoverEnabled"] = True
+    update_payload["days"][0]["items"][0]["linkedPlanningId"] = partner_id
+    update_payload["days"][0]["items"][0]["handoverNote"] = "Restore muss Verbund erhalten"
+
+    updated = client.put(f"/api/wms/planning/{owner_id}", headers=_headers(client, "Projektmanager", owner_user_id), json=update_payload)
+    assert updated.status_code == 200
+
+    exported = client.get("/api/wms/backup/export", headers=_headers(client, "Admin"))
+    assert exported.status_code == 200
+    backup_json = exported.json()
+
+    import_response = client.post(
+        "/api/wms/backup/import",
+        headers=_headers(client, "Admin"),
+        files={"file": ("backup.json", json.dumps(backup_json).encode("utf-8"), "application/json")},
+    )
+    assert import_response.status_code == 200
+
+    owner_after = client.get(f"/api/wms/planning/{owner_id}", headers=_headers(client, "Projektmanager", owner_user_id))
+    assert owner_after.status_code == 200
+    owner_item = owner_after.json()["days"][0]["items"][0]
+    assert owner_item["handoverEnabled"] is True
+    assert owner_item["linkedPlanningId"] == partner_id
+    assert owner_item["handoverNote"] == "Restore muss Verbund erhalten"
+
+    owner_availability_after = client.get(
+        f"/api/wms/planning/{owner_id}/availability",
+        headers=_headers(client, "Projektmanager", owner_user_id),
+    )
+    assert owner_availability_after.status_code == 200
+    availability_item = owner_availability_after.json()["items"][0]
+    assert availability_item["handoverEnabled"] is True
+    assert availability_item["linkedPlanningId"] == partner_id
+    assert availability_item["handoverStatus"] in {"none", "planned"}
+
+    planning_list = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
+    assert planning_list.status_code == 200
+    by_id = {item["id"]: item for item in planning_list.json()}
+    assert by_id[owner_id]["handoverSummary"] is not None
+    assert by_id[owner_id]["handoverSummary"]["partnerPlanningId"] == partner_id
+    assert by_id[partner_id]["handoverSummary"] is not None
+    assert by_id[partner_id]["handoverSummary"]["direction"] in {"incoming", "mixed"}
+
+
+def test_backup_import_remains_compatible_without_handover_fields() -> None:
+    client = TestClient(app)
+    exported = client.get("/api/wms/backup/export", headers=_headers(client, "Admin"))
+    assert exported.status_code == 200
+    backup_json = exported.json()
+
+    for planning in backup_json.get("plannings", []):
+        for day in planning.get("days", []):
+            for item in day.get("items", []):
+                item.pop("handoverEnabled", None)
+                item.pop("linkedPlanningId", None)
+                item.pop("handoverNote", None)
+
+    imported = client.post(
+        "/api/wms/backup/import",
+        headers=_headers(client, "Admin"),
+        files={"file": ("legacy-backup.json", json.dumps(backup_json).encode("utf-8"), "application/json")},
+    )
+    assert imported.status_code == 200
 
 
 def test_planning_list_marks_outgoing_and_incoming_handover_networks() -> None:

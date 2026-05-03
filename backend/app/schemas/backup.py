@@ -88,6 +88,9 @@ class BackupPlanningItem(BaseModel):
     categoryKey: str
     qty: int
     notes: str | None = None
+    handoverEnabled: bool = False
+    linkedPlanningId: str | None = None
+    handoverNote: str | None = None
 
 
 class BackupPlanningDay(BaseModel):
