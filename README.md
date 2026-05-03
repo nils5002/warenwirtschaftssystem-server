@@ -1,11 +1,37 @@
-# Warehouse-System Server
+# Warenwirtschaftssystem Server
 
-Hardware-Warenwirtschaft mit FastAPI-Backend und Vite-Frontend.
+Hardware-Warenwirtschaft für projektbezogene Geräteplanung, Ausgabe/Rückgabe und Defektprozesse.
 
-## Schnellstart lokal
+## Überblick
+Dieses Repository enthält ein praxisnahes Warenwirtschaftssystem für Hardware-Projekte (z. B. iPads, Laptops, Handhelds).  
+Ziel ist ein klarer, alltagstauglicher Ablauf statt komplexer ERP-Strukturen.
+
+## Hauptfunktionen
+- Inventarverwaltung mit Kategorien, Status und QR-Code-Bezug
+- Einsatzplanung mit Verfügbarkeitsberechnung und Engpassanzeige
+- Übergabe-/Verbundlogik zwischen Projekten
+- Check-in/Check-out Prozesse für Gerätezuordnung
+- Defekt- und Wartungsworkflow
+- Backup/Restore für Bestands- und Planungsdaten
+
+## Tech-Stack
+- Backend: FastAPI, SQLAlchemy, SQLite
+- Frontend: React, TypeScript, Vite
+- Container: Docker, Docker Compose
+- CI/CD: GitHub Actions (tag-basierte Releases)
+
+## Projektstruktur
+- `backend/` API, Datenmodelle, Fachlogik, Tests
+- `frontend/` UI, Seiten, Komponenten, Build
+- `deploy/` Deploy-Skripte und Runbooks
+- `.github/workflows/` GitHub Actions Workflows
+- `Hardwarebestand/` Import-bezogene Hardwaredateien (lokal)
+- `Hardwareplannung/` lokale Planungsdateien (lokal)
+
+## Lokale Entwicklung
+Schnellstart im Projektroot:
 
 ```powershell
-# im Projektroot
 npm run dev
 ```
 
@@ -25,59 +51,13 @@ npm install
 npm run dev
 ```
 
-## Portainer Deployment (provider-neutral)
+## Docker-/Server-Hinweis
+- `docker-compose.yml` ist für containerisierte Ausführung vorgesehen.
+- Deployment-Anleitungen liegen in `DEPLOYMENT.md` und `deploy/`.
+- Aktuell ist kein automatisches SSH-Serverdeployment per GitHub Actions aktiv.
 
-1. Stack aus Git-Repo erstellen.
-2. `docker-compose.yml` waehlen.
-3. ENV-Werte setzen (mindestens Domain/CORS/Secrets).
-4. Deploy ausfuehren.
-
-Wichtige ENV-Werte:
-- `BASE_URL`
-- `FRONTEND_URL`
-- `CORS_ORIGINS`
-- `FRONTEND_PORT` (Default `8080`)
-- `BACKEND_PORT` (Default `8001`)
-- `VITE_API_URL=/api`
-- `VITE_API_BASE=`
-- `VITE_PROXY_TARGET=http://backend:8000`
-
-## Netzwerkmodell
-
-- Frontend intern: `4173`
-- Backend intern: `8000`
-- TLS/HTTPS wird vor der App terminiert (Reverse Proxy / Load Balancer / Hosting-Proxy).
-- Frontend ruft API relativ ueber `/api` auf.
-
-Zielbild:
-- Internet -> DNS/Reverse Proxy -> `SERVER-IP:FRONTEND_PORT` -> Frontend
-- Frontend `/api` -> Backend-Service im Docker-Netz
-
-## Domain wechseln
-
-Nur ENV aendern:
-- `BASE_URL`
-- `FRONTEND_URL`
-- `CORS_ORIGINS`
-
-Optional:
-- `FRONTEND_PORT`
-- `BACKEND_PORT`
-
-Keine feste Domain im Code erforderlich.
-
-## Cloudflare Hinweis
-
-Cloudflare kann optional als DNS/Proxy/CDN genutzt werden.
-Ein Cloudflare Tunnel (`cloudflared`) ist nicht erforderlich.
-
-## Details
-
-Ausfuehrliche Deploy-Doku: `DEPLOYMENT.md`
-
-## GitHub Push und Releases
-
-Normale Aenderung veroeffentlichen:
+## GitHub Releases
+Normale Änderung veröffentlichen:
 
 ```powershell
 git add .
@@ -85,20 +65,20 @@ git commit -m "feat: beschreibung"
 git push
 ```
 
-Neue Release per Tag veroeffentlichen:
+Neue Release über Tag veröffentlichen:
 
 ```powershell
 git tag v1.0.0
 git push origin v1.0.0
 ```
 
-Optional manuell mit GitHub CLI:
+Optional mit GitHub CLI:
 
 ```powershell
 gh release create v1.0.0 --title "v1.0.0" --generate-notes
 ```
 
-
-######
-###
-####
+## Screenshots (Platzhalter)
+- `docs/screenshots/dashboard.png` (optional)
+- `docs/screenshots/planning.png` (optional)
+- `docs/screenshots/checkin-checkout.png` (optional)

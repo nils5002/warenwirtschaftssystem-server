@@ -12,6 +12,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      # Creates a GitHub Release when a tag like v1.2.3 is pushed.
       - name: Create release from tag
         env:
           GH_TOKEN: ${{ github.token }}
