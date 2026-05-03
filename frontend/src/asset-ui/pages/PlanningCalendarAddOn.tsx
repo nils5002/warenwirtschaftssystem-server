@@ -22,6 +22,13 @@ type PlanningCalendarAddOnProps = {
 };
 
 type CalendarVisualStatus = 'green' | 'sky' | 'amber' | 'red' | 'gray';
+type NetworkTone = 'sky' | 'teal' | 'indigo' | 'violet' | 'cyan' | 'amber';
+type NetworkSummary = {
+  partnerLabel: string;
+  memberCount: number;
+};
+
+const NETWORK_TONES: NetworkTone[] = ['sky', 'teal', 'indigo', 'violet', 'cyan', 'amber'];
 
 function toIsoDate(value: Date): string {
   const year = value.getFullYear();
@@ -110,13 +117,32 @@ function getVisualStatus(
 }
 
 function barClasses(status: CalendarVisualStatus, active: boolean): string {
-  const base = 'rounded-xl border p-2 text-left transition';
+  const base = 'rounded-2xl border p-3 text-left transition shadow-sm hover:shadow';
   const ring = active ? ' ring-2 ring-brand-300 dark:ring-brand-700' : '';
   if (status === 'red') return `${base} border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-100${ring}`;
   if (status === 'amber') return `${base} border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-100${ring}`;
   if (status === 'sky') return `${base} border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-100${ring}`;
   if (status === 'gray') return `${base} border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900/55 dark:text-slate-200${ring}`;
   return `${base} border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-100${ring}`;
+}
+
+function networkToneClasses(tone: NetworkTone, active: boolean): string {
+  const ring = active ? ' ring-2 ring-brand-300 dark:ring-brand-700' : '';
+  if (tone === 'teal') return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-teal-300 bg-teal-50 text-teal-900 dark:border-teal-700 dark:bg-teal-950/30 dark:text-teal-100${ring}`;
+  if (tone === 'indigo') return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-indigo-300 bg-indigo-50 text-indigo-900 dark:border-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-100${ring}`;
+  if (tone === 'violet') return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-violet-300 bg-violet-50 text-violet-900 dark:border-violet-700 dark:bg-violet-950/30 dark:text-violet-100${ring}`;
+  if (tone === 'cyan') return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-cyan-300 bg-cyan-50 text-cyan-900 dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-100${ring}`;
+  if (tone === 'amber') return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100${ring}`;
+  return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-100${ring}`;
+}
+
+function networkBadgeClasses(tone: NetworkTone): string {
+  if (tone === 'teal') return 'border-teal-200 bg-white/80 text-teal-700 dark:border-teal-700 dark:bg-slate-950/40 dark:text-teal-100';
+  if (tone === 'indigo') return 'border-indigo-200 bg-white/80 text-indigo-700 dark:border-indigo-700 dark:bg-slate-950/40 dark:text-indigo-100';
+  if (tone === 'violet') return 'border-violet-200 bg-white/80 text-violet-700 dark:border-violet-700 dark:bg-slate-950/40 dark:text-violet-100';
+  if (tone === 'cyan') return 'border-cyan-200 bg-white/80 text-cyan-700 dark:border-cyan-700 dark:bg-slate-950/40 dark:text-cyan-100';
+  if (tone === 'amber') return 'border-amber-200 bg-white/80 text-amber-700 dark:border-amber-700 dark:bg-slate-950/40 dark:text-amber-100';
+  return 'border-sky-200 bg-white/80 text-sky-700 dark:border-sky-700 dark:bg-slate-950/40 dark:text-sky-100';
 }
 
 export function PlanningCalendarAddOn({
@@ -149,26 +175,109 @@ export function PlanningCalendarAddOn({
     requestPlanningData(weekPlannings.map((item) => item.id));
   }, [requestPlanningData, weekPlannings]);
 
+  const networkMetaByPlanningId = useMemo(() => {
+    const visibleIds = new Set(weekPlannings.map((item) => item.id));
+    const adjacency = new Map<string, Set<string>>();
+    const ensureNode = (planningId: string) => {
+      if (!adjacency.has(planningId)) adjacency.set(planningId, new Set<string>());
+    };
+    const addEdge = (fromId: string, toId: string) => {
+      if (!fromId || !toId) return;
+      ensureNode(fromId);
+      ensureNode(toId);
+      adjacency.get(fromId)?.add(toId);
+      adjacency.get(toId)?.add(fromId);
+    };
+
+    for (const planningId of visibleIds) ensureNode(planningId);
+    for (const [planningId, summary] of handoverSummaryById.entries()) {
+      if (!visibleIds.has(planningId) || !summary.partnerPlanningId) continue;
+      addEdge(planningId, summary.partnerPlanningId);
+    }
+
+    const planningById = new Map(weekPlannings.map((planning) => [planning.id, planning]));
+    for (const planning of weekPlannings) {
+      const details = planningDetailsById[planning.id];
+      if (!details) continue;
+      for (const day of details.days) {
+        for (const item of day.items) {
+          if (!item.handoverEnabled || !item.linkedPlanningId || !visibleIds.has(item.linkedPlanningId)) continue;
+          addEdge(planning.id, item.linkedPlanningId);
+        }
+      }
+    }
+
+    const meta = new Map<string, { tone: NetworkTone; summary: NetworkSummary }>();
+    const visited = new Set<string>();
+    const components: string[][] = [];
+
+    for (const planningId of visibleIds) {
+      if (visited.has(planningId)) continue;
+      const queue = [planningId];
+      const component: string[] = [];
+      visited.add(planningId);
+      while (queue.length) {
+        const current = queue.shift();
+        if (!current) continue;
+        component.push(current);
+        for (const neighbour of adjacency.get(current) ?? []) {
+          if (visited.has(neighbour) || !visibleIds.has(neighbour)) continue;
+          visited.add(neighbour);
+          queue.push(neighbour);
+        }
+      }
+      if (component.length > 1) {
+        components.push(component.sort((a, b) => a.localeCompare(b, 'de')));
+      }
+    }
+
+    components
+      .sort((a, b) => {
+        const aStart = (planningById.get(a[0])?.startDate ?? '9999-12-31');
+        const bStart = (planningById.get(b[0])?.startDate ?? '9999-12-31');
+        if (aStart !== bStart) return aStart.localeCompare(bStart);
+        return a[0].localeCompare(b[0], 'de');
+      })
+      .forEach((component, index) => {
+        const tone = NETWORK_TONES[index % NETWORK_TONES.length];
+        const labels = component
+          .map((id) => planningById.get(id)?.projectName || `Projekt ${id.slice(-4)}`)
+          .filter(Boolean);
+        const partnerLabel = labels.slice(0, 2).join(' ↔ ');
+        for (const memberId of component) {
+          meta.set(memberId, {
+            tone,
+            summary: {
+              memberCount: component.length,
+              partnerLabel,
+            },
+          });
+        }
+      });
+
+    return meta;
+  }, [handoverSummaryById, planningDetailsById, weekPlannings]);
+
   return (
-    <article className="surface-card">
+    <article className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/40 lg:p-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-semibold text-slate-900">Kalenderübersicht</h3>
           <p className="text-xs text-slate-500">Wochenansicht als Add-on zur bestehenden Einsatzplanung.</p>
         </div>
-        <div className="inline-flex overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <button type="button" className={`px-3 py-1.5 text-xs ${!showCalendar ? 'bg-slate-100 text-slate-700' : ''}`} onClick={() => setShowCalendar(false)}>
+        <div className="inline-flex overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <button type="button" className={`px-4 py-2 text-xs font-semibold ${!showCalendar ? 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100' : 'text-slate-600 dark:text-slate-300'}`} onClick={() => setShowCalendar(false)}>
             Planung bearbeiten
           </button>
-          <button type="button" className={`px-3 py-1.5 text-xs ${showCalendar ? 'bg-brand-50 text-brand-700' : ''}`} onClick={() => setShowCalendar(true)}>
+          <button type="button" className={`px-4 py-2 text-xs font-semibold ${showCalendar ? 'bg-brand-50 text-brand-700 dark:bg-brand-900/35 dark:text-brand-200' : 'text-slate-600 dark:text-slate-300'}`} onClick={() => setShowCalendar(true)}>
             Kalenderübersicht
           </button>
         </div>
       </div>
 
       {showCalendar ? (
-        <div className="mt-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white/85 p-2 dark:border-slate-800 dark:bg-slate-950/55">
             <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => setAnchorDate((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() - 7))}>
               <ChevronLeft className="h-3.5 w-3.5" />
               Vorherige Woche
@@ -180,28 +289,35 @@ export function PlanningCalendarAddOn({
               Nächste Woche
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
               {formatGermanDate(weekStartIso)} - {formatGermanDate(weekEndIso)}
             </span>
           </div>
 
-          <div className="hidden gap-2 md:grid md:grid-cols-7">
+          <div className="hidden min-w-[920px] gap-3 overflow-x-auto pb-1 md:grid md:grid-cols-7">
             {weekDays.map((day) => {
               const iso = toIsoDate(day);
               const isToday = iso === todayIso;
               const label = day.toLocaleDateString('de-DE', { weekday: 'short' });
               return (
-                <div key={iso} className={`rounded-xl border px-2 py-1.5 text-xs ${isToday ? 'border-brand-300 bg-brand-50 text-brand-800' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>
-                  <p className="font-semibold uppercase">{label}</p>
-                  <p>{formatGermanDate(iso)}</p>
+                <div key={iso} className={`min-h-16 rounded-xl border px-3 py-2 text-xs ${isToday ? 'border-brand-300 bg-brand-50 text-brand-800 dark:bg-brand-900/25 dark:text-brand-200' : 'border-slate-200 bg-slate-100/70 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300'}`}>
+                  <p className="font-semibold uppercase tracking-wide">{label}</p>
+                  <p className="mt-1">{formatGermanDate(iso)}</p>
                 </div>
               );
             })}
           </div>
 
-          <div className="hidden space-y-2 md:block">
+          <div className="hidden flex-wrap gap-2 text-xs md:flex">
+            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200">Grün: verfügbar</span>
+            <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-700 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200">Blau: Übergabe/Verbund</span>
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">Gelb: Prüfung</span>
+            <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-200">Rot: Handlungsbedarf</span>
+          </div>
+
+          <div className="hidden min-w-[920px] space-y-3 overflow-x-auto pb-1 md:block">
             {!weekPlannings.length ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/45 dark:text-slate-300">
                 Keine Planungen in dieser Woche.
               </div>
             ) : null}
@@ -210,21 +326,30 @@ export function PlanningCalendarAddOn({
               const demandText = details ? buildDemandSummary(details.days.flatMap((day) => day.items)) : '';
               const handoverSummary = handoverSummaryById.get(planning.id);
               const visual = getVisualStatus(planning, handoverSummary, availabilityByPlanningId[planning.id]);
+              const networkMeta = networkMetaByPlanningId.get(planning.id);
+              const wrapperClass = networkMeta
+                ? networkToneClasses(networkMeta.tone, planning.id === selectedId)
+                : barClasses(visual.status, planning.id === selectedId);
               return (
-                <button key={planning.id} type="button" className={barClasses(visual.status, planning.id === selectedId)} onClick={() => onSelectPlanning(planning.id)}>
+                <button key={planning.id} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold">{planning.projectName}</p>
-                      <p className="text-xs opacity-90">{planning.customerName}{planning.eventName ? ` · ${planning.eventName}` : ''}</p>
+                      <p className="text-base font-semibold">{planning.projectName}</p>
+                      <p className="text-sm opacity-90">{planning.customerName}{planning.eventName ? ` · ${planning.eventName}` : ''}</p>
                     </div>
-                    <span className="rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    <span className="rounded-full border border-white/70 bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide dark:border-slate-700 dark:bg-slate-950/35">
                       {visual.label}
                     </span>
                   </div>
-                  <p className="mt-1 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                  <p className="mt-2 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     {demandText ? <span>{demandText}</span> : <span>Hardwarebedarf beim Öffnen sichtbar</span>}
-                    {handoverSummary ? (
+                    {networkMeta ? (
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 ${networkBadgeClasses(networkMeta.tone)}`}>
+                        <Link2 className="h-3 w-3" />
+                        Verbund aktiv ({networkMeta.summary.memberCount})
+                      </span>
+                    ) : handoverSummary ? (
                       <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white/75 px-2 py-0.5 text-sky-700 dark:border-sky-700 dark:bg-slate-950/40 dark:text-sky-100">
                         <Link2 className="h-3 w-3" />
                         Übergabe geplant
@@ -237,6 +362,11 @@ export function PlanningCalendarAddOn({
                       </span>
                     ) : null}
                   </div>
+                  {networkMeta ? (
+                    <p className="mt-2 text-[11px] opacity-90">
+                      {networkMeta.summary.partnerLabel}
+                    </p>
+                  ) : null}
                 </button>
               );
             })}
@@ -251,14 +381,24 @@ export function PlanningCalendarAddOn({
             {weekPlannings.map((planning) => {
               const handoverSummary = handoverSummaryById.get(planning.id);
               const visual = getVisualStatus(planning, handoverSummary, availabilityByPlanningId[planning.id]);
+              const networkMeta = networkMetaByPlanningId.get(planning.id);
+              const wrapperClass = networkMeta
+                ? networkToneClasses(networkMeta.tone, planning.id === selectedId)
+                : barClasses(visual.status, planning.id === selectedId);
               return (
-                <button key={`mobile-${planning.id}`} type="button" className={barClasses(visual.status, planning.id === selectedId)} onClick={() => onSelectPlanning(planning.id)}>
+                <button key={`mobile-${planning.id}`} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold">{planning.projectName}</p>
                     <Calendar className="h-4 w-4 opacity-70" />
                   </div>
                   <p className="mt-1 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
                   <p className="mt-1 text-[11px]">{visual.label}</p>
+                  {networkMeta ? (
+                    <p className="mt-1 inline-flex items-center gap-1 text-[11px]">
+                      <Link2 className="h-3 w-3" />
+                      Verbund aktiv
+                    </p>
+                  ) : null}
                 </button>
               );
             })}
