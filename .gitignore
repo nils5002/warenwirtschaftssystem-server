@@ -2,6 +2,9 @@
 backend/.venv/
 frontend/node_modules/
 frontend/dist/
+node_modules/
+dist/
+build/
 __pycache__/
 *.pyc
 *.db
@@ -12,6 +15,11 @@ __pycache__/
 
 # Logs / runtime artifacts
 *.log
+*.out
+*.err
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 backend/uvicorn*.log
 deploy_manifest_last.txt
 
@@ -30,6 +38,12 @@ docker-compose.production.yml
 *.pfx
 secrets/
 cloudflared/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+*.tmp
+*.temp
 
 # Real hardware inventory sheets (import-only, never commit)
 Hardwarebestand/*.xlsx
