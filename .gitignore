@@ -49,3 +49,5 @@ Thumbs.db
 Hardwarebestand/*.xlsx
 Hardwarebestand/*.xlsm
 Hardwareplannung/
+.github
+actions-runner/
