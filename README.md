@@ -75,6 +75,29 @@ Ein Cloudflare Tunnel (`cloudflared`) ist nicht erforderlich.
 
 Ausfuehrliche Deploy-Doku: `DEPLOYMENT.md`
 
+## GitHub Push und Releases
+
+Normale Aenderung veroeffentlichen:
+
+```powershell
+git add .
+git commit -m "feat: beschreibung"
+git push
+```
+
+Neue Release per Tag veroeffentlichen:
+
+```powershell
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Optional manuell mit GitHub CLI:
+
+```powershell
+gh release create v1.0.0 --title "v1.0.0" --generate-notes
+```
+
 
 ######
 ###
