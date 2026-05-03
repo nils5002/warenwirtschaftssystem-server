@@ -55,3 +55,8 @@ npm run dev
 - `docker-compose.yml` ist für containerisierte Ausführung vorgesehen.
 - Deployment-Anleitungen liegen in `DEPLOYMENT.md` und `deploy/`.
 - Aktuell ist kein automatisches SSH-Serverdeployment per GitHub Actions aktiv.
+
+## Login-Hintergrundbild
+- `frontend/public/login-background.jpg` wurde aus dem Repository `VULGA01/Authentik-Login-theme-Glassmorphism` übernommen.
+- Quelle: `Background_2.0.jpg`
+- Das Referenz-Repository steht unter MIT-Lizenz.
