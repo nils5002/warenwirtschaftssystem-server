@@ -7,45 +7,54 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: warehouse-production-deploy
-  cancel-in-progress: false
+  group: deploy-production
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    runs-on:
-      - self-hosted
-      - cloud-web-prod
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     steps:
-      - name: Run deploy script on production server
-        shell: bash
+      - name: Run deploy script on production server via SSH
+        shell: pwsh
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
-          set -euo pipefail
-          sudo /opt/web/cloud_web/deploy/server/deploy.sh main
+          $ErrorActionPreference = "Stop"
+          if ([string]::IsNullOrWhiteSpace($env:SSH_HOST) -or [string]::IsNullOrWhiteSpace($env:SSH_USER) -or [string]::IsNullOrWhiteSpace($env:SSH_KEY)) {
+            throw "Missing required secrets: SSH_HOST, SSH_USER, SSH_KEY"
+          }
+
+          $sshPort = if ([string]::IsNullOrWhiteSpace($env:SSH_PORT)) { "22" } else { $env:SSH_PORT }
+          $keyPath = Join-Path $env:RUNNER_TEMP "deploy_key"
+          $env:SSH_KEY | Out-File -FilePath $keyPath -Encoding ascii -NoNewline
+
+          ssh -i $keyPath -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -p $sshPort "$($env:SSH_USER)@$($env:SSH_HOST)" "sudo /opt/web/cloud_web/deploy/server/deploy.sh main"
 
       - name: External health check
-        shell: bash
+        shell: pwsh
         run: |
-          set -euo pipefail
-          URL="${EXTERNAL_HEALTH_URL:-https://warehouse.example.com/}"
-          ATTEMPTS=12
-          SLEEP_SECONDS=5
+          $ErrorActionPreference = "Stop"
+          $url = if ($env:EXTERNAL_HEALTH_URL) { $env:EXTERNAL_HEALTH_URL } else { "https://warehouse.example.com/" }
+          $attempts = 12
+          $sleepSeconds = 5
 
-          for attempt in $(seq 1 "$ATTEMPTS"); do
-            http_code="$(curl -sS -o /tmp/warehouse_health_body.txt -w '%{http_code}' --max-time 20 "$URL" || true)"
-            if [[ "$http_code" =~ ^[0-9]+$ ]] && [ "$http_code" -ge 200 ] && [ "$http_code" -lt 400 ]; then
-              echo "External health check OK ($http_code) on attempt $attempt/$ATTEMPTS"
-              exit 0
-            fi
+          for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+            try {
+              $response = Invoke-WebRequest -Uri $url -Method Get -TimeoutSec 20
+              $code = [int]$response.StatusCode
+              if ($code -ge 200 -and $code -lt 400) {
+                Write-Host "External health check OK ($code) on attempt $attempt/$attempts"
+                exit 0
+              }
+              Write-Host "External health check not ready (attempt $attempt/$attempts, status=$code)"
+            } catch {
+              Write-Host "External health check not ready (attempt $attempt/$attempts): $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds $sleepSeconds
+          }
 
-            echo "External health check not ready (attempt $attempt/$ATTEMPTS, status=${http_code:-n/a})"
-            if [ -s /tmp/warehouse_health_body.txt ]; then
-              echo "Response snippet:"
-              head -c 200 /tmp/warehouse_health_body.txt || true
-              echo
-            fi
-            sleep "$SLEEP_SECONDS"
-          done
-
-          echo "External health check failed after ${ATTEMPTS} attempts."
-          exit 1
+          throw "External health check failed after $attempts attempts."
