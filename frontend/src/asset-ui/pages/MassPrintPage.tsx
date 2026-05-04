@@ -1,5 +1,5 @@
 import { CheckSquare, Printer, Search, Square, XSquare } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
@@ -13,17 +13,13 @@ type PrintEntry = {
   quantity: number;
 };
 
+type PrintLabel = {
+  assetName: string;
+  qrDataUrl: string;
+};
+
 const PRINT_WIDTH_MM = 89;
 const PRINT_HEIGHT_MM = 41;
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [search, setSearch] = useState('');
@@ -31,6 +27,8 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isPrinting, setIsPrinting] = useState(false);
+  const [printLabels, setPrintLabels] = useState<PrintLabel[]>([]);
+  const [printRequested, setPrintRequested] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
 
   const categories = useMemo(() => {
@@ -109,12 +107,22 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
     setQuantities((current) => ({ ...current, [assetId]: next }));
   };
 
+  useEffect(() => {
+    if (!printRequested || !printLabels.length) return;
+    const timeoutId = window.setTimeout(() => {
+      window.print();
+      setIsPrinting(false);
+      setPrintRequested(false);
+    }, 80);
+    return () => window.clearTimeout(timeoutId);
+  }, [printLabels, printRequested]);
+
   const printSelected = async () => {
     if (!selectedEntries.length) return;
     setIsPrinting(true);
     setPrintError(null);
     try {
-      const expanded: Array<{ assetName: string; qrDataUrl: string }> = [];
+      const expanded: PrintLabel[] = [];
       for (const entry of selectedEntries) {
         const qrValue = getAssetQrCode(entry.asset);
         // fixed size keeps output consistent on Dymo labels
@@ -127,140 +135,95 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           expanded.push({ assetName: entry.asset.name, qrDataUrl });
         }
       }
-
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        setPrintError(
-          'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
-        );
-        return;
-      }
-
-      const pagesMarkup = expanded
-        .map(
-          (item) => `
-            <section class="qr-print-page">
-              <div class="qr-print-label">
-                <div class="qr-print-code">
-                  <img src="${item.qrDataUrl}" alt="QR-Code" />
-                </div>
-                <div class="qr-print-name">${escapeHtml(item.assetName)}</div>
-              </div>
-            </section>
-          `,
-        )
-        .join('');
-
-      try {
-        printWindow.document.open();
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>QR-Code Massendruck</title>
-              <style>
-                @page {
-                  size: ${PRINT_WIDTH_MM}mm ${PRINT_HEIGHT_MM}mm;
-                  margin: 0;
-                }
-
-                html,
-                body {
-                  margin: 0;
-                  padding: 0;
-                  width: ${PRINT_WIDTH_MM}mm;
-                  background: #fff;
-                  color: #000;
-                  font-family: Arial, sans-serif;
-                }
-
-                .qr-print-page {
-                  width: ${PRINT_WIDTH_MM}mm;
-                  height: ${PRINT_HEIGHT_MM}mm;
-                  page-break-after: always;
-                  break-after: page;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  overflow: hidden;
-                  background: #fff;
-                }
-
-                .qr-print-label {
-                  width: ${PRINT_WIDTH_MM}mm;
-                  height: ${PRINT_HEIGHT_MM}mm;
-                  box-sizing: border-box;
-                  padding: 3mm 4mm;
-                  display: flex;
-                  flex-direction: column;
-                  align-items: center;
-                  justify-content: center;
-                }
-
-                .qr-print-code {
-                  width: 26mm;
-                  height: 26mm;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                }
-
-                .qr-print-code img {
-                  width: 100%;
-                  height: 100%;
-                  object-fit: contain;
-                }
-
-                .qr-print-name {
-                  margin-top: 2mm;
-                  max-width: 80mm;
-                  font-size: 11pt;
-                  font-weight: 700;
-                  line-height: 1.1;
-                  text-align: center;
-                  color: #000;
-                  white-space: nowrap;
-                  overflow: hidden;
-                  text-overflow: ellipsis;
-                }
-              </style>
-            </head>
-            <body>
-              ${pagesMarkup}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-
-        const triggerPrint = () => {
-          try {
-            printWindow.focus();
-            printWindow.print();
-          } catch {
-            setPrintError(
-              'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
-            );
-          }
-        };
-
-        if (printWindow.document.readyState === 'complete') {
-          window.setTimeout(triggerPrint, 60);
-        } else {
-          printWindow.addEventListener('load', () => {
-            window.setTimeout(triggerPrint, 60);
-          }, { once: true });
-        }
-      } catch {
-        setPrintError(
-          'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
-        );
-      }
-    } finally {
+      setPrintLabels(expanded);
+      setPrintRequested(true);
+    } catch {
+      setPrintError('Druckansicht konnte nicht erstellt werden. Bitte versuche es erneut.');
       setIsPrinting(false);
     }
   };
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-5 mass-print-root">
+      <style>
+        {`
+          @page {
+            size: ${PRINT_WIDTH_MM}mm ${PRINT_HEIGHT_MM}mm;
+            margin: 0;
+          }
+
+          @media print {
+            .mass-print-screen {
+              display: none !important;
+            }
+
+            .mass-print-only {
+              display: block !important;
+            }
+
+            html,
+            body {
+              margin: 0;
+              padding: 0;
+              width: ${PRINT_WIDTH_MM}mm;
+              background: #fff;
+              color: #000;
+              font-family: Arial, sans-serif;
+            }
+
+            .qr-print-page {
+              width: ${PRINT_WIDTH_MM}mm;
+              height: ${PRINT_HEIGHT_MM}mm;
+              page-break-after: always;
+              break-after: page;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              background: #fff;
+            }
+
+            .qr-print-label {
+              width: ${PRINT_WIDTH_MM}mm;
+              height: ${PRINT_HEIGHT_MM}mm;
+              box-sizing: border-box;
+              padding: 3mm 4mm;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .qr-print-code {
+              width: 26mm;
+              height: 26mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .qr-print-code img {
+              width: 100%;
+              height: 100%;
+              object-fit: contain;
+            }
+
+            .qr-print-name {
+              margin-top: 2mm;
+              max-width: 80mm;
+              font-size: 11pt;
+              font-weight: 700;
+              line-height: 1.1;
+              text-align: center;
+              color: #000;
+              white-space: nowrap;
+              overflow: hidden;
+              text-overflow: ellipsis;
+            }
+          }
+        `}
+      </style>
+      <div className="mass-print-screen space-y-5">
       <div>
         <p className="page-kicker">Admin</p>
         <h2 className="page-title">QR-Code Massendruck</h2>
@@ -384,6 +347,20 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           </button>
         </div>
       </article>
+      </div>
+
+      <div className="mass-print-only hidden" aria-hidden={true}>
+        {printLabels.map((item, index) => (
+          <section className="qr-print-page" key={`${item.assetName}-${index}`}>
+            <div className="qr-print-label">
+              <div className="qr-print-code">
+                <img src={item.qrDataUrl} alt="QR-Code" />
+              </div>
+              <div className="qr-print-name">{item.assetName}</div>
+            </div>
+          </section>
+        ))}
+      </div>
     </section>
   );
 }
