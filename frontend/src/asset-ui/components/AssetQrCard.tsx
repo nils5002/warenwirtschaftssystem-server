@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import { useEffect, useState } from 'react';
 import { Download, Printer, QrCode } from 'lucide-react';
-import { printQrLabel } from '../printQrLabel';
+import { printSingleLabel } from '../printLabels';
 
 type AssetQrCardProps = {
   qrValue: string;
@@ -52,7 +52,7 @@ export function AssetQrCard({ qrValue, assetName, tagNumber, compact = false }: 
 
   const printQr = () => {
     if (!qrDataUrl) return;
-    printQrLabel({ qrDataUrl, assetName, tagNumber });
+    void printSingleLabel({ qrDataUrl, assetName, tagNumber });
   };
 
   return (
