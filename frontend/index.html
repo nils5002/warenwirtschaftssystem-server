@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Best-effort cache hints for the HTML shell. The hashed JS/CSS bundles
+      under /assets/ can stay cached forever (their filenames change on every
+      build), but this index.html must always be revalidated so the browser
+      sees the new bundle hash after a deploy. Real enforcement should still
+      happen via Cache-Control headers on the reverse proxy.
+    -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>ERP-System</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
