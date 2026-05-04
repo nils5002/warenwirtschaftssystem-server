@@ -322,3 +322,121 @@ h3 {
     color: #f1f5f9;
   }
 }
+
+/* ============================================================
+   QR-/Etiketten-Druck
+   Eine gemeinsame Drucklogik fuer Einzel- und Massendruck.
+   - .wms-print-root: temporaerer Container an document.body
+   - body.wms-printing: globaler Druckmodus aktiv
+   - body.wms-printing-single | -mass: Layout-Variante
+   ============================================================ */
+
+.wms-print-root {
+  display: none;
+}
+
+@media print {
+  body.wms-printing > *:not(.wms-print-root) {
+    display: none !important;
+  }
+
+  body.wms-printing {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  body.wms-printing .wms-print-root {
+    display: block !important;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: Arial, sans-serif;
+  }
+
+  /* --- Einzel-QR-Druck (A4 / auto, ein zentriertes Label) --- */
+  body.wms-printing-single .wms-label-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8mm;
+  }
+
+  body.wms-printing-single .wms-label-img {
+    width: 60mm;
+    height: 60mm;
+    object-fit: contain;
+    margin-bottom: 6mm;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 2mm;
+    background: #fff;
+  }
+
+  body.wms-printing-single .wms-label-name {
+    font-size: 14pt;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 2mm;
+    max-width: 90mm;
+    word-break: break-word;
+    color: #000;
+  }
+
+  body.wms-printing-single .wms-label-tag {
+    font-size: 12pt;
+    text-align: center;
+    max-width: 90mm;
+    word-break: break-word;
+    color: #000;
+  }
+
+  /* --- Massendruck (Dymo 89mm x 41mm, mehrere Labels) --- */
+  body.wms-printing-mass .wms-label-page {
+    width: 89mm;
+    height: 41mm;
+    page-break-after: always;
+    break-after: page;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  body.wms-printing-mass .wms-label-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  body.wms-printing-mass .wms-label-inner {
+    width: 89mm;
+    height: 41mm;
+    box-sizing: border-box;
+    padding: 3mm 4mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  body.wms-printing-mass .wms-label-img {
+    width: 26mm;
+    height: 26mm;
+    object-fit: contain;
+  }
+
+  body.wms-printing-mass .wms-label-name {
+    margin-top: 2mm;
+    max-width: 80mm;
+    font-size: 11pt;
+    font-weight: 700;
+    line-height: 1.1;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000;
+  }
+}
