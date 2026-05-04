@@ -6,6 +6,7 @@ import { CheckinCheckoutPage } from '../asset-ui/pages/CheckinCheckoutPage';
 import { DashboardPage } from '../asset-ui/pages/DashboardPage';
 import { ImportExportPage } from '../asset-ui/pages/ImportExportPage';
 import { MaintenancePage } from '../asset-ui/pages/MaintenancePage';
+import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
@@ -313,6 +314,11 @@ export function WmsPageView({
           }}
         />
       );
+    case 'massPrint':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Massendruck nur für Admin / Techniker.</div>;
+      }
+      return <MassPrintPage assets={assets} />;
     case 'tickets':
       return (
         <MaintenancePage

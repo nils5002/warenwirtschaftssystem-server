@@ -5,6 +5,7 @@ import {
   Download,
   LayoutDashboard,
   QrCode,
+  Printer,
   Shapes,
   ShieldCheck,
   TriangleAlert,
@@ -83,5 +84,12 @@ export const navigation: NavItem[] = [
     icon: QrCode,
     group: 'administration',
     hint: 'Scanaktionen',
+  },
+  {
+    key: 'massPrint',
+    label: 'Massendruck',
+    icon: Printer,
+    group: 'administration',
+    hint: 'QR-Labels drucken',
   },
 ];

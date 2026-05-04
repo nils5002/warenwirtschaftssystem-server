@@ -62,10 +62,10 @@ function App() {
     if (activeRole === 'Admin') return navigation;
     if (activeRole === 'Projektmanager') {
       return navigation.filter(
-        (item) => !['users', 'categories', 'importExport', 'backup', 'qrFunctions'].includes(item.key),
+        (item) => !['users', 'categories', 'importExport', 'backup', 'qrFunctions', 'massPrint'].includes(item.key),
       );
     }
-    return navigation.filter((item) => !['users', 'categories', 'importExport', 'backup'].includes(item.key));
+    return navigation.filter((item) => !['users', 'categories', 'importExport', 'backup', 'massPrint'].includes(item.key));
   }, [activeRole]);
 
   useEffect(() => {

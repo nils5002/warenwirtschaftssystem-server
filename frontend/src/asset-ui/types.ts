@@ -25,6 +25,7 @@ export type AppPage =
   | 'assetDetail'
   | 'checkinCheckout'
   | 'qrFunctions'
+  | 'massPrint'
   | 'tickets'
   | 'importExport'
   | 'backup'
