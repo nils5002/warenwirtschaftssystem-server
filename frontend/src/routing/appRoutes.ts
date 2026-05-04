@@ -11,6 +11,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   importExport: '/import-export',
   backup: '/backup',
   qrFunctions: '/qr-funktionen',
+  massPrint: '/massendruck',
   assetDetail: '/inventar',
 };
 
@@ -46,6 +47,7 @@ const PATH_ALIASES: Record<string, AppPage> = {
   '/qr-funktionen': 'qrFunctions',
   '/qr-code': 'qrFunctions',
   '/qrcode': 'qrFunctions',
+  '/massendruck': 'massPrint',
 };
 
 export function normalizePathname(pathname: string): string {

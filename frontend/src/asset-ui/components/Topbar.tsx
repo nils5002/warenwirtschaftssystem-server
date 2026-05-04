@@ -32,6 +32,7 @@ const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
   importExport: ['System', 'Import / Export'],
   backup: ['System', 'Backup'],
   qrFunctions: ['System', 'QR-Code'],
+  massPrint: ['System', 'Massendruck'],
 };
 
 export function Topbar({
