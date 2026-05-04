@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "set VITE_DEV_API_TARGET=http://127.0.0.1:8010&& vite",
-    "dev:backend": "cd ..\\backend && ..\\backend\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010",
+    "dev:backend": "cd ..\\backend && ..\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010",
     "build": "vite build",
     "preview": "vite preview"
   },

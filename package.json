@@ -2,6 +2,7 @@
   "name": "cloud_web",
   "private": true,
   "scripts": {
+    "postinstall": "npm --prefix frontend install",
     "dev": "npm --prefix frontend run dev"
   }
 }

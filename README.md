@@ -29,9 +29,13 @@ Ziel ist ein klarer, alltagstauglicher Ablauf statt komplexer ERP-Strukturen.
 - `Hardwareplannung/` lokale Planungsdateien (lokal)
 
 ## Lokale Entwicklung
-Schnellstart im Projektroot:
+Empfohlener Ablauf nach frischem Clone:
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+
+npm install
 npm run dev
 ```
 
