@@ -1,5 +1,6 @@
 import { CheckSquare, Printer, Search, Square, XSquare } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
 import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
@@ -20,6 +21,7 @@ type PrintLabel = {
 
 const PRINT_WIDTH_MM = 89;
 const PRINT_HEIGHT_MM = 41;
+const PRINT_PORTAL_ID = 'mass-print-portal';
 
 export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [search, setSearch] = useState('');
@@ -30,6 +32,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [printLabels, setPrintLabels] = useState<PrintLabel[]>([]);
   const [printRequested, setPrintRequested] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const portalRef = useRef<HTMLDivElement | null>(null);
 
   const categories = useMemo(() => {
     return ['Alle Kategorien', ...Array.from(new Set(assets.map((asset) => asset.category).filter(Boolean)))];
@@ -107,15 +110,54 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
     setQuantities((current) => ({ ...current, [assetId]: next }));
   };
 
+  // Triggert window.print() erst, wenn alle Label-Bilder im Portal geladen sind.
+  // Wichtig bei vielen Labels (180+): sonst druckt der Browser leere Kacheln.
   useEffect(() => {
     if (!printRequested || !printLabels.length) return;
-    const timeoutId = window.setTimeout(() => {
-      window.print();
-      setIsPrinting(false);
+    const portal = portalRef.current;
+    if (!portal) return;
+
+    let cancelled = false;
+    const images = Array.from(portal.querySelectorAll('img'));
+
+    const waitImage = (img: HTMLImageElement) =>
+      new Promise<void>((resolve) => {
+        if (img.complete && img.naturalWidth > 0) {
+          resolve();
+          return;
+        }
+        const done = () => {
+          img.removeEventListener('load', done);
+          img.removeEventListener('error', done);
+          resolve();
+        };
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+      });
+
+    const handleAfterPrint = () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+      setPrintLabels([]);
       setPrintRequested(false);
-    }, 80);
-    return () => window.clearTimeout(timeoutId);
-  }, [printLabels, printRequested]);
+      setIsPrinting(false);
+    };
+
+    Promise.all(images.map(waitImage)).then(() => {
+      if (cancelled) return;
+      window.addEventListener('afterprint', handleAfterPrint);
+      // Sicherheits-Reset, falls afterprint nicht gefeuert wird (z. B. einige Browser bei Abbruch).
+      window.setTimeout(() => {
+        setIsPrinting(false);
+        setPrintRequested(false);
+      }, 5000);
+      window.print();
+    });
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [printRequested, printLabels]);
 
   const printSelected = async () => {
     if (!selectedEntries.length) return;
@@ -125,7 +167,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
       const expanded: PrintLabel[] = [];
       for (const entry of selectedEntries) {
         const qrValue = getAssetQrCode(entry.asset);
-        // fixed size keeps output consistent on Dymo labels
+        // Feste Groesse fuer konsistente Dymo-Etiketten.
         const qrDataUrl = await QRCode.toDataURL(qrValue, {
           width: 360,
           margin: 0,
@@ -143,32 +185,61 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
     }
   };
 
+  const printPortal =
+    typeof document !== 'undefined' && printLabels.length > 0
+      ? createPortal(
+          <div id={PRINT_PORTAL_ID} ref={portalRef} aria-hidden={true} data-mass-print="true">
+            {printLabels.map((item, index) => (
+              <section className="qr-print-page" key={`${item.assetName}-${index}`}>
+                <div className="qr-print-label">
+                  <div className="qr-print-code">
+                    <img src={item.qrDataUrl} alt="" />
+                  </div>
+                  <div className="qr-print-name">{item.assetName}</div>
+                </div>
+              </section>
+            ))}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <section className="space-y-5 mass-print-root">
+    <section className="space-y-5">
       <style>
         {`
+          /* Portal-Container im Normalmodus komplett verstecken,
+             damit er weder die UI verschiebt noch Layout beeinflusst. */
+          #${PRINT_PORTAL_ID} {
+            display: none;
+          }
+
           @page {
             size: ${PRINT_WIDTH_MM}mm ${PRINT_HEIGHT_MM}mm;
             margin: 0;
           }
 
           @media print {
-            .mass-print-screen {
+            /* Alles im Body verstecken, ausser dem Druck-Portal.
+               So bleiben Sidebar/Topbar/Background-Blobs zuverlaessig draussen. */
+            body > *:not(#${PRINT_PORTAL_ID}) {
               display: none !important;
-            }
-
-            .mass-print-only {
-              display: block !important;
             }
 
             html,
             body {
-              margin: 0;
-              padding: 0;
+              margin: 0 !important;
+              padding: 0 !important;
               width: ${PRINT_WIDTH_MM}mm;
-              background: #fff;
-              color: #000;
+              background: #fff !important;
+              color: #000 !important;
               font-family: Arial, sans-serif;
+            }
+
+            #${PRINT_PORTAL_ID} {
+              display: block !important;
+              position: static !important;
+              background: #fff !important;
             }
 
             .qr-print-page {
@@ -181,6 +252,11 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
               justify-content: center;
               overflow: hidden;
               background: #fff;
+            }
+
+            .qr-print-page:last-child {
+              page-break-after: auto;
+              break-after: auto;
             }
 
             .qr-print-label {
@@ -223,7 +299,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           }
         `}
       </style>
-      <div className="mass-print-screen space-y-5">
+
       <div>
         <p className="page-kicker">Admin</p>
         <h2 className="page-title">QR-Code Massendruck</h2>
@@ -347,20 +423,8 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           </button>
         </div>
       </article>
-      </div>
 
-      <div className="mass-print-only hidden" aria-hidden={true}>
-        {printLabels.map((item, index) => (
-          <section className="qr-print-page" key={`${item.assetName}-${index}`}>
-            <div className="qr-print-label">
-              <div className="qr-print-code">
-                <img src={item.qrDataUrl} alt="QR-Code" />
-              </div>
-              <div className="qr-print-name">{item.assetName}</div>
-            </div>
-          </section>
-        ))}
-      </div>
+      {printPortal}
     </section>
   );
 }
