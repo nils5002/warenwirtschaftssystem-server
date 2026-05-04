@@ -128,7 +128,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
         }
       }
 
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+      const printWindow = window.open('', '_blank');
       if (!printWindow) {
         setPrintError(
           'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
@@ -152,6 +152,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
         .join('');
 
       try {
+        printWindow.document.open();
         printWindow.document.write(`
           <html>
             <head>
@@ -225,15 +226,29 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
             </head>
             <body>
               ${pagesMarkup}
-              <script>
-                window.onload = function() {
-                  window.print();
-                };
-              </script>
             </body>
           </html>
         `);
         printWindow.document.close();
+
+        const triggerPrint = () => {
+          try {
+            printWindow.focus();
+            printWindow.print();
+          } catch {
+            setPrintError(
+              'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
+            );
+          }
+        };
+
+        if (printWindow.document.readyState === 'complete') {
+          window.setTimeout(triggerPrint, 60);
+        } else {
+          printWindow.addEventListener('load', () => {
+            window.setTimeout(triggerPrint, 60);
+          }, { once: true });
+        }
       } catch {
         setPrintError(
           'Das Druckfenster konnte nicht geöffnet werden. Bitte erlaube Popups für diese Seite und versuche es erneut.',
