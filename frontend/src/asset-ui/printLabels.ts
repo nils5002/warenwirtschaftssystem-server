@@ -23,6 +23,22 @@ export type LabelInput = {
   tagNumber?: string;
 };
 
+export type MassLabelSettings = {
+  labelWidthMm: number;
+  labelHeightMm: number;
+  qrSizeMm: number;
+  fontSizePt: number;
+  gapMm: number;
+  paddingTopMm: number;
+  paddingRightMm: number;
+  paddingBottomMm: number;
+  paddingLeftMm: number;
+  offsetXMm: number;
+  offsetYMm: number;
+  fontWeight: number;
+  textMaxLines: number;
+};
+
 type PrintMode = 'single' | 'mass';
 
 function clearLingering(): void {
@@ -95,7 +111,7 @@ function waitForImages(root: HTMLElement): Promise<void> {
   return Promise.all(images.map(waitOne)).then(() => undefined);
 }
 
-function runPrint(labels: LabelInput[], mode: PrintMode): Promise<void> {
+function runPrint(labels: LabelInput[], mode: PrintMode, massSettings?: MassLabelSettings): Promise<void> {
   if (typeof document === 'undefined' || typeof window === 'undefined') return Promise.resolve();
   if (!labels.length) return Promise.resolve();
 
@@ -107,6 +123,21 @@ function runPrint(labels: LabelInput[], mode: PrintMode): Promise<void> {
   const root = document.createElement('div');
   root.className = PRINT_ROOT_CLASS;
   root.setAttribute('aria-hidden', 'true');
+  if (mode === 'mass' && massSettings) {
+    root.style.setProperty('--wms-label-width-mm', `${massSettings.labelWidthMm}mm`);
+    root.style.setProperty('--wms-label-height-mm', `${massSettings.labelHeightMm}mm`);
+    root.style.setProperty('--wms-qr-size-mm', `${massSettings.qrSizeMm}mm`);
+    root.style.setProperty('--wms-font-size-pt', `${massSettings.fontSizePt}pt`);
+    root.style.setProperty('--wms-gap-mm', `${massSettings.gapMm}mm`);
+    root.style.setProperty('--wms-padding-top-mm', `${massSettings.paddingTopMm}mm`);
+    root.style.setProperty('--wms-padding-right-mm', `${massSettings.paddingRightMm}mm`);
+    root.style.setProperty('--wms-padding-bottom-mm', `${massSettings.paddingBottomMm}mm`);
+    root.style.setProperty('--wms-padding-left-mm', `${massSettings.paddingLeftMm}mm`);
+    root.style.setProperty('--wms-offset-x-mm', `${massSettings.offsetXMm}mm`);
+    root.style.setProperty('--wms-offset-y-mm', `${massSettings.offsetYMm}mm`);
+    root.style.setProperty('--wms-font-weight', `${massSettings.fontWeight}`);
+    root.style.setProperty('--wms-text-max-lines', `${massSettings.textMaxLines}`);
+  }
 
   for (const label of labels) {
     root.appendChild(buildLabel(label, includeTag));
@@ -151,6 +182,6 @@ export function printSingleLabel(input: LabelInput): Promise<void> {
   return runPrint([input], 'single');
 }
 
-export function printMultipleLabels(inputs: LabelInput[]): Promise<void> {
-  return runPrint(inputs, 'mass');
+export function printMultipleLabels(inputs: LabelInput[], massSettings?: MassLabelSettings): Promise<void> {
+  return runPrint(inputs, 'mass', massSettings);
 }
