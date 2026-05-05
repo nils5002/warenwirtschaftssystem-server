@@ -394,8 +394,8 @@ h3 {
 
   /* --- Massendruck (Dymo 89mm x 41mm, mehrere Labels) --- */
   body.wms-printing-mass .wms-label-page {
-    width: 89mm;
-    height: 41mm;
+    width: var(--wms-label-width-mm, 89mm);
+    height: var(--wms-label-height-mm, 41mm);
     page-break-after: always;
     break-after: page;
     display: flex;
@@ -411,33 +411,39 @@ h3 {
   }
 
   body.wms-printing-mass .wms-label-inner {
-    width: 89mm;
-    height: 41mm;
+    width: var(--wms-label-width-mm, 89mm);
+    height: var(--wms-label-height-mm, 41mm);
     box-sizing: border-box;
-    padding: 2.5mm 4mm 4.5mm;
+    padding:
+      var(--wms-padding-top-mm, 3mm)
+      var(--wms-padding-right-mm, 4mm)
+      var(--wms-padding-bottom-mm, 3mm)
+      var(--wms-padding-left-mm, 4mm);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    transform: translateY(0mm);
+    transform: translate(var(--wms-offset-x-mm, 0mm), var(--wms-offset-y-mm, 0mm));
   }
 
   body.wms-printing-mass .wms-label-img {
-    width: 26mm;
-    height: 26mm;
+    width: var(--wms-qr-size-mm, 26mm);
+    height: var(--wms-qr-size-mm, 26mm);
     object-fit: contain;
   }
 
   body.wms-printing-mass .wms-label-name {
-    margin-top: 2mm;
+    margin-top: var(--wms-gap-mm, 2mm);
     max-width: 80mm;
-    font-size: 11pt;
-    font-weight: 700;
+    font-size: var(--wms-font-size-pt, 11pt);
+    font-weight: var(--wms-font-weight, 700);
     line-height: 1.1;
     text-align: center;
-    white-space: nowrap;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: var(--wms-text-max-lines, 1);
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
     color: #000;
   }
 }

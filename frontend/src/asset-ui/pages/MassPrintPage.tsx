@@ -1,9 +1,9 @@
 import { CheckSquare, Printer, Search, Square, XSquare } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
-import { printMultipleLabels, type LabelInput } from '../printLabels';
+import { printMultipleLabels, type LabelInput, type MassLabelSettings } from '../printLabels';
 
 type MassPrintPageProps = {
   assets: Asset[];
@@ -14,6 +14,59 @@ type PrintEntry = {
   quantity: number;
 };
 
+const MASS_LABEL_SETTINGS_STORAGE_KEY = 'wms.massPrint.labelSettings.v1';
+
+const DEFAULT_LABEL_SETTINGS: MassLabelSettings = {
+  labelWidthMm: 89,
+  labelHeightMm: 41,
+  qrSizeMm: 26,
+  fontSizePt: 11,
+  gapMm: 2,
+  paddingTopMm: 3,
+  paddingRightMm: 4,
+  paddingBottomMm: 3,
+  paddingLeftMm: 4,
+  offsetXMm: 0,
+  offsetYMm: 0,
+  fontWeight: 700,
+  textMaxLines: 1,
+};
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function sanitizeSettings(value: unknown): MassLabelSettings {
+  const raw = typeof value === 'object' && value ? (value as Record<string, unknown>) : {};
+  return {
+    labelWidthMm: clampNumber(raw.labelWidthMm, DEFAULT_LABEL_SETTINGS.labelWidthMm, 20, 200),
+    labelHeightMm: clampNumber(raw.labelHeightMm, DEFAULT_LABEL_SETTINGS.labelHeightMm, 20, 200),
+    qrSizeMm: clampNumber(raw.qrSizeMm, DEFAULT_LABEL_SETTINGS.qrSizeMm, 8, 60),
+    fontSizePt: clampNumber(raw.fontSizePt, DEFAULT_LABEL_SETTINGS.fontSizePt, 6, 24),
+    gapMm: clampNumber(raw.gapMm, DEFAULT_LABEL_SETTINGS.gapMm, 0, 20),
+    paddingTopMm: clampNumber(raw.paddingTopMm, DEFAULT_LABEL_SETTINGS.paddingTopMm, 0, 30),
+    paddingRightMm: clampNumber(raw.paddingRightMm, DEFAULT_LABEL_SETTINGS.paddingRightMm, 0, 30),
+    paddingBottomMm: clampNumber(raw.paddingBottomMm, DEFAULT_LABEL_SETTINGS.paddingBottomMm, 0, 30),
+    paddingLeftMm: clampNumber(raw.paddingLeftMm, DEFAULT_LABEL_SETTINGS.paddingLeftMm, 0, 30),
+    offsetXMm: clampNumber(raw.offsetXMm, DEFAULT_LABEL_SETTINGS.offsetXMm, -20, 20),
+    offsetYMm: clampNumber(raw.offsetYMm, DEFAULT_LABEL_SETTINGS.offsetYMm, -20, 20),
+    fontWeight: clampNumber(raw.fontWeight, DEFAULT_LABEL_SETTINGS.fontWeight, 400, 900),
+    textMaxLines: Math.round(clampNumber(raw.textMaxLines, DEFAULT_LABEL_SETTINGS.textMaxLines, 1, 3)),
+  };
+}
+
+function loadStoredSettings(): MassLabelSettings {
+  if (typeof window === 'undefined') return DEFAULT_LABEL_SETTINGS;
+  try {
+    const raw = window.localStorage.getItem(MASS_LABEL_SETTINGS_STORAGE_KEY);
+    if (!raw) return DEFAULT_LABEL_SETTINGS;
+    return sanitizeSettings(JSON.parse(raw));
+  } catch {
+    return DEFAULT_LABEL_SETTINGS;
+  }
+}
+
 export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('Alle Kategorien');
@@ -21,6 +74,8 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [labelSettings, setLabelSettings] = useState<MassLabelSettings>(() => loadStoredSettings());
+  const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>('');
 
   const categories = useMemo(() => {
     return ['Alle Kategorien', ...Array.from(new Set(assets.map((asset) => asset.category).filter(Boolean)))];
@@ -53,6 +108,47 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const totalPages = useMemo(() => {
     return selectedEntries.reduce((sum, entry) => sum + entry.quantity, 0);
   }, [selectedEntries]);
+
+  const previewAsset = useMemo(() => {
+    return selectedEntries[0]?.asset ?? filteredAssets[0] ?? assets[0] ?? null;
+  }, [assets, filteredAssets, selectedEntries]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MASS_LABEL_SETTINGS_STORAGE_KEY, JSON.stringify(labelSettings));
+    } catch {
+      // Ignorieren: Druck bleibt funktionsfaehig, auch wenn localStorage blockiert ist.
+    }
+  }, [labelSettings]);
+
+  useEffect(() => {
+    if (!previewAsset) {
+      setPreviewQrDataUrl('');
+      return;
+    }
+    let cancelled = false;
+    void QRCode.toDataURL(getAssetQrCode(previewAsset), {
+      width: 360,
+      margin: 0,
+      color: { dark: '#000000', light: '#ffffff' },
+    }).then(
+      (url) => {
+        if (!cancelled) setPreviewQrDataUrl(url);
+      },
+      () => {
+        if (!cancelled) setPreviewQrDataUrl('');
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [previewAsset]);
+
+  const updateLabelSetting = (key: keyof MassLabelSettings, value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setLabelSettings((current) => sanitizeSettings({ ...current, [key]: parsed }));
+  };
 
   const toggleAsset = (assetId: string) => {
     setSelectedIds((current) =>
@@ -116,7 +212,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           labels.push({ qrDataUrl, assetName: entry.asset.name });
         }
       }
-      await printMultipleLabels(labels);
+      await printMultipleLabels(labels, labelSettings);
     } catch {
       setPrintError('Druckansicht konnte nicht erstellt werden. Bitte versuche es erneut.');
     } finally {
@@ -133,6 +229,132 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
       </div>
 
       <article className="surface-card animate-fade-up space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Label-Layout anpassen</h3>
+          <p className="mt-1 text-xs text-slate-600">
+            Passe hier die Position und Größe des QR-Labels an. Die Einstellungen werden lokal im Browser gespeichert
+            und beim Drucken verwendet.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="field text-xs">
+              Labelbreite (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.labelWidthMm} onChange={(event) => updateLabelSetting('labelWidthMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Labelhöhe (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.labelHeightMm} onChange={(event) => updateLabelSetting('labelHeightMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              QR-Größe (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.qrSizeMm} onChange={(event) => updateLabelSetting('qrSizeMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Schriftgröße (pt)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.fontSizePt} onChange={(event) => updateLabelSetting('fontSizePt', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Abstand QR/Text (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.gapMm} onChange={(event) => updateLabelSetting('gapMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Padding oben (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingTopMm} onChange={(event) => updateLabelSetting('paddingTopMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Padding rechts (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingRightMm} onChange={(event) => updateLabelSetting('paddingRightMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Padding unten (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingBottomMm} onChange={(event) => updateLabelSetting('paddingBottomMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Padding links (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingLeftMm} onChange={(event) => updateLabelSetting('paddingLeftMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              X-Offset (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.offsetXMm} onChange={(event) => updateLabelSetting('offsetXMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Y-Offset (mm)
+              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.offsetYMm} onChange={(event) => updateLabelSetting('offsetYMm', event.target.value)} />
+            </label>
+            <label className="field text-xs">
+              Schriftstärke
+              <input className="field-input h-9" type="number" step="100" value={labelSettings.fontWeight} onChange={(event) => updateLabelSetting('fontWeight', event.target.value)} />
+            </label>
+            <label className="field text-xs sm:col-span-2 lg:col-span-1">
+              Max. Textzeilen
+              <input className="field-input h-9" type="number" step="1" value={labelSettings.textMaxLines} onChange={(event) => updateLabelSetting('textMaxLines', event.target.value)} />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button type="button" className="btn-secondary text-xs" onClick={() => setLabelSettings(DEFAULT_LABEL_SETTINGS)}>
+              Standardwerte zurücksetzen
+            </button>
+            <span className="text-xs text-slate-500">
+              Vorschau-Asset: {previewAsset?.name ?? 'Kein Asset verfügbar'}
+            </span>
+          </div>
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div
+              className="relative overflow-hidden rounded border border-dashed border-slate-300 bg-slate-50"
+              style={{
+                width: `${labelSettings.labelWidthMm * 4}px`,
+                height: `${labelSettings.labelHeightMm * 4}px`,
+                maxWidth: '100%',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  boxSizing: 'border-box',
+                  paddingTop: `${labelSettings.paddingTopMm * 4}px`,
+                  paddingRight: `${labelSettings.paddingRightMm * 4}px`,
+                  paddingBottom: `${labelSettings.paddingBottomMm * 4}px`,
+                  paddingLeft: `${labelSettings.paddingLeftMm * 4}px`,
+                  transform: `translate(${labelSettings.offsetXMm * 4}px, ${labelSettings.offsetYMm * 4}px)`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {previewQrDataUrl ? (
+                  <img
+                    src={previewQrDataUrl}
+                    alt="Vorschau QR"
+                    style={{
+                      width: `${labelSettings.qrSizeMm * 4}px`,
+                      height: `${labelSettings.qrSizeMm * 4}px`,
+                      objectFit: 'contain',
+                      background: '#fff',
+                    }}
+                  />
+                ) : null}
+                <div
+                  style={{
+                    marginTop: `${labelSettings.gapMm * 4}px`,
+                    fontSize: `${labelSettings.fontSizePt * (4 / 3)}px`,
+                    fontWeight: labelSettings.fontWeight,
+                    lineHeight: 1.1,
+                    textAlign: 'center',
+                    maxWidth: '92%',
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: labelSettings.textMaxLines,
+                    WebkitBoxOrient: 'vertical',
+                  }}
+                >
+                  {previewAsset?.name ?? 'Asset-Name'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid gap-3 md:grid-cols-[1fr_auto]">
           <label className="field">
             Suche
