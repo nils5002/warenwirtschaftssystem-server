@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { listPlannings, type PlanningListItem } from '../../services/wmsApi';
@@ -89,6 +89,8 @@ export function CheckinCheckoutPage({
   const [scannerTarget, setScannerTarget] = useState<Mode | null>(null);
   const [showCheckoutOptions, setShowCheckoutOptions] = useState(false);
   const [showCheckinOptions, setShowCheckinOptions] = useState(false);
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const [projectPickerSearch, setProjectPickerSearch] = useState('');
   const [planningProjects, setPlanningProjects] = useState<PlanningListItem[]>([]);
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
 
@@ -162,6 +164,12 @@ export function CheckinCheckoutPage({
     if (lastProject.trim()) options.unshift(lastProject.trim());
     return [...new Set(options)];
   }, [projectOptions, lastProject]);
+
+  const filteredProjectOptions = useMemo(() => {
+    const needle = projectPickerSearch.trim().toLowerCase();
+    if (!needle) return checkoutProjectOptions;
+    return checkoutProjectOptions.filter((item) => item.toLowerCase().includes(needle));
+  }, [checkoutProjectOptions, projectPickerSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -420,6 +428,14 @@ export function CheckinCheckoutPage({
         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
         : 'border-sky-200 bg-sky-50 text-sky-800';
 
+  const applyProjectSelection = (value: string) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    setCheckoutProject(normalized);
+    setProjectPickerOpen(false);
+    setProjectPickerSearch('');
+  };
+
   return (
     <section className={`space-y-5 ${isMobile ? 'pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'pb-24 sm:pb-6'}`}>
       <div>
@@ -535,27 +551,43 @@ export function CheckinCheckoutPage({
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 2</p>
-            <label className="field mt-1">
-              Projekt
-              <input
-                ref={checkoutProjectRef}
-                list="checkout-project-options"
-                className="field-input"
-                placeholder="Projekt wählen oder eintragen"
-                value={checkoutProject}
-                onChange={(event) => setCheckoutProject(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return;
-                  event.preventDefault();
-                  focusElement(checkoutSubmitRef.current);
-                }}
-              />
-              <datalist id="checkout-project-options">
-                {checkoutProjectOptions.map((project) => (
-                  <option key={project} value={project} />
-                ))}
-              </datalist>
-            </label>
+            {isMobile ? (
+              <label className="field mt-1">
+                Projekt
+                <button
+                  type="button"
+                  className="field-input flex h-12 items-center justify-between text-left"
+                  onClick={() => setProjectPickerOpen(true)}
+                >
+                  <span className="truncate text-sm text-slate-800 dark:text-slate-100">
+                    {checkoutProject.trim() || 'Projekt auswählen'}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+                </button>
+              </label>
+            ) : (
+              <label className="field mt-1">
+                Projekt
+                <input
+                  ref={checkoutProjectRef}
+                  list="checkout-project-options"
+                  className="field-input"
+                  placeholder="Projekt wählen oder eintragen"
+                  value={checkoutProject}
+                  onChange={(event) => setCheckoutProject(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    focusElement(checkoutSubmitRef.current);
+                  }}
+                />
+                <datalist id="checkout-project-options">
+                  {checkoutProjectOptions.map((project) => (
+                    <option key={project} value={project} />
+                  ))}
+                </datalist>
+              </label>
+            )}
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
@@ -790,6 +822,67 @@ export function CheckinCheckoutPage({
           onDetected={onDetectedByCamera}
           onClose={() => setScannerTarget(null)}
         />
+      ) : null}
+
+      {isMobile && projectPickerOpen ? (
+        <div className="fixed inset-0 z-40 bg-slate-900/45" onClick={() => setProjectPickerOpen(false)}>
+          <div
+            className="absolute inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-h-[70vh] rounded-t-2xl border border-slate-200 bg-white p-3 shadow-panel dark:border-slate-700 dark:bg-slate-950"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Projekt auswählen</h4>
+              <button type="button" className="btn-ghost h-10 w-10 p-0" onClick={() => setProjectPickerOpen(false)}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <input
+              className="field-input h-11"
+              placeholder="Projekt suchen..."
+              value={projectPickerSearch}
+              onChange={(event) => setProjectPickerSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                applyProjectSelection(projectPickerSearch);
+              }}
+            />
+
+            <div className="soft-scrollbar mt-2 max-h-[42vh] space-y-1 overflow-y-auto pr-1">
+              {filteredProjectOptions.map((project) => (
+                <button
+                  key={project}
+                  type="button"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  onClick={() => applyProjectSelection(project)}
+                >
+                  <span className="block break-words">{project}</span>
+                </button>
+              ))}
+              {!filteredProjectOptions.length ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                  Kein Projekt gefunden.
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+              <button
+                type="button"
+                className="btn-secondary h-11"
+                onClick={() => {
+                  applyProjectSelection(projectPickerSearch);
+                }}
+              >
+                Manuell übernehmen
+              </button>
+              <button type="button" className="btn-secondary h-11" onClick={() => setProjectPickerOpen(false)}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );
