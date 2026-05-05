@@ -71,7 +71,7 @@ export function CheckinCheckoutPage({
   const [mode, setMode] = useState<Mode>('checkout');
   const [message, setMessage] = useState<FlowMessage | null>(null);
 
-  const [checkoutAssetId, setCheckoutAssetId] = useState<string>(assets[0]?.id ?? '');
+  const [checkoutAssetId, setCheckoutAssetId] = useState<string>('');
   const [checkoutAssignee, setCheckoutAssignee] = useState('');
   const [checkoutProject, setCheckoutProject] = useState('');
   const [checkoutDueDate, setCheckoutDueDate] = useState(plusTwoDays);
@@ -79,6 +79,8 @@ export function CheckinCheckoutPage({
   const [checkoutScan, setCheckoutScan] = useState('');
 
   const [checkinAssetId, setCheckinAssetId] = useState<string>('');
+  const [currentCheckoutAssetId, setCurrentCheckoutAssetId] = useState<string | null>(null);
+  const [currentCheckinAssetId, setCurrentCheckinAssetId] = useState<string | null>(null);
   const [checkinCondition, setCheckinCondition] = useState('');
   const [checkinProject, setCheckinProject] = useState('');
   const [checkinScan, setCheckinScan] = useState('');
@@ -126,18 +128,34 @@ export function CheckinCheckoutPage({
     if (!assets.length) {
       setCheckoutAssetId('');
       setCheckinAssetId('');
+      setCurrentCheckoutAssetId(null);
+      setCurrentCheckinAssetId(null);
       return;
     }
-    if (!assets.some((asset) => asset.id === checkoutAssetId)) {
-      setCheckoutAssetId(assets[0].id);
+    if (checkoutAssetId && !assets.some((asset) => asset.id === checkoutAssetId)) {
+      setCheckoutAssetId('');
+      setCurrentCheckoutAssetId(null);
     }
     if (checkinAssetId && !assets.some((asset) => asset.id === checkinAssetId)) {
       setCheckinAssetId('');
+      setCurrentCheckinAssetId(null);
     }
   }, [assets, checkoutAssetId, checkinAssetId]);
 
   const checkoutAsset = assets.find((asset) => asset.id === checkoutAssetId) ?? null;
   const checkinAsset = assets.find((asset) => asset.id === checkinAssetId) ?? null;
+  const hasCurrentCheckoutSelection = Boolean(
+    currentCheckoutAssetId &&
+      checkoutAsset &&
+      checkoutAsset.id === currentCheckoutAssetId &&
+      (checkoutScan.trim().length > 0 || checkoutAssetId === currentCheckoutAssetId),
+  );
+  const hasCurrentCheckinSelection = Boolean(
+    currentCheckinAssetId &&
+      checkinAsset &&
+      checkinAsset.id === currentCheckinAssetId &&
+      (checkinScan.trim().length > 0 || checkinAssetId === currentCheckinAssetId),
+  );
 
   const checkoutContextProject = checkoutAsset
     ? parseProjectFromAsset(checkoutAsset) || parseProjectFromAssignedTo(checkoutAsset)
@@ -206,10 +224,18 @@ export function CheckinCheckoutPage({
 
   const resetCheckinState = () => {
     setCheckinAssetId('');
+    setCurrentCheckinAssetId(null);
     setCheckinProject('');
     setCheckinCondition('');
     setCheckinScan('');
     setShowCheckinOptions(false);
+  };
+
+  const resetCheckoutState = () => {
+    setCheckoutAssetId('');
+    setCurrentCheckoutAssetId(null);
+    setCheckoutScan('');
+    setShowCheckoutOptions(false);
   };
 
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
@@ -235,6 +261,7 @@ export function CheckinCheckoutPage({
 
     setCheckoutScan(scanValue);
     setCheckoutAssetId(asset.id);
+    setCurrentCheckoutAssetId(asset.id);
     const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
     if (parsedProject) {
       setCheckoutProject(parsedProject);
@@ -286,6 +313,7 @@ export function CheckinCheckoutPage({
 
     setCheckinScan(scanValue);
     setCheckinAssetId(asset.id);
+    setCurrentCheckinAssetId(asset.id);
 
     if (asset.status === 'Verfügbar') {
       setMessage({
@@ -369,7 +397,7 @@ export function CheckinCheckoutPage({
     setLastProject(normalizedProject);
     setCheckoutProject(normalizedProject);
     setCheckoutNote('');
-    setCheckoutScan('');
+    resetCheckoutState();
     setMessage({ kind: 'success', text: `${checkoutAsset.name} wurde ausgegeben.` });
     focusElement(checkoutScanRef.current);
   };
@@ -455,6 +483,8 @@ export function CheckinCheckoutPage({
             }`}
             onClick={() => {
               setMode('checkout');
+              resetCheckoutState();
+              resetCheckinState();
               setMessage(null);
             }}
           >
@@ -470,6 +500,7 @@ export function CheckinCheckoutPage({
             }`}
             onClick={() => {
               setMode('checkin');
+              resetCheckoutState();
               resetCheckinState();
               setMessage(null);
             }}
@@ -549,7 +580,7 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
-          {checkoutAsset ? (
+          {hasCurrentCheckoutSelection && checkoutAsset ? (
             <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                 Ausgewähltes Gerät
@@ -620,7 +651,10 @@ export function CheckinCheckoutPage({
                 <select
                   className="field-input"
                   value={checkoutAssetId}
-                  onChange={(event) => setCheckoutAssetId(event.target.value)}
+                  onChange={(event) => {
+                    setCheckoutAssetId(event.target.value);
+                    setCurrentCheckoutAssetId(event.target.value || null);
+                  }}
                 >
                   {assets.map((asset) => (
                     <option key={asset.id} value={asset.id}>
@@ -673,8 +707,9 @@ export function CheckinCheckoutPage({
 
           <button
             ref={checkoutSubmitRef}
-            className="btn-primary hidden w-full sm:inline-flex"
+            className="btn-primary hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
             onClick={() => void checkoutNow()}
+            disabled={!hasCurrentCheckoutSelection}
           >
             <Handshake className="h-4 w-4" />
             Jetzt ausgeben
@@ -724,7 +759,7 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
-          {checkinAsset ? (
+          {hasCurrentCheckinSelection && checkinAsset ? (
             <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Gerät</p>
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
@@ -766,7 +801,10 @@ export function CheckinCheckoutPage({
                 <select
                   className="field-input"
                   value={checkinAssetId}
-                  onChange={(event) => setCheckinAssetId(event.target.value)}
+                  onChange={(event) => {
+                    setCheckinAssetId(event.target.value);
+                    setCurrentCheckinAssetId(event.target.value || null);
+                  }}
                 >
                   {assets.map((asset) => (
                     <option key={asset.id} value={asset.id}>
@@ -820,7 +858,11 @@ export function CheckinCheckoutPage({
 
       <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur sm:hidden">
         {mode === 'checkout' ? (
-          <button className="btn-primary w-full py-3 text-base" onClick={() => void checkoutNow()}>
+          <button
+            className="btn-primary w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => void checkoutNow()}
+            disabled={!hasCurrentCheckoutSelection}
+          >
             <Handshake className="h-5 w-5" />
             Jetzt ausgeben
           </button>
@@ -828,7 +870,7 @@ export function CheckinCheckoutPage({
           <button
             className="btn-dark w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void checkinNow()}
-            disabled={!checkinAsset}
+            disabled={!hasCurrentCheckinSelection}
           >
             <ClipboardCheck className="h-5 w-5" />
             Rücknahme bestätigen
