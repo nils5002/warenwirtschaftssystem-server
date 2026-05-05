@@ -549,6 +549,20 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
+          {checkoutAsset ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                Ausgewähltes Gerät
+              </p>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
+                  {checkoutAsset.tagNumber} · {checkoutAsset.name}
+                </p>
+                <StatusBadge value={checkoutAsset.status} />
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 2</p>
             {isMobile ? (
@@ -588,22 +602,6 @@ export function CheckinCheckoutPage({
                 </datalist>
               </label>
             )}
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 3</p>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-semibold text-slate-900">{checkoutAsset?.name ?? 'Kein Gerät ausgewählt'}</p>
-              {checkoutAsset ? <StatusBadge value={checkoutAsset.status} /> : null}
-            </div>
-            <button
-              ref={checkoutSubmitRef}
-              className="btn-primary mt-3 hidden w-full sm:inline-flex"
-              onClick={() => void checkoutNow()}
-            >
-              <Handshake className="h-4 w-4" />
-              Jetzt ausgeben
-            </button>
           </div>
 
           <button
@@ -672,6 +670,15 @@ export function CheckinCheckoutPage({
               </label>
             </div>
           ) : null}
+
+          <button
+            ref={checkoutSubmitRef}
+            className="btn-primary hidden w-full sm:inline-flex"
+            onClick={() => void checkoutNow()}
+          >
+            <Handshake className="h-4 w-4" />
+            Jetzt ausgeben
+          </button>
         </article>
       ) : (
         <article className="surface-card animate-fade-up space-y-4">
@@ -717,6 +724,18 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
+          {checkinAsset ? (
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Gerät</p>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
+                  {checkinAsset.tagNumber} · {checkinAsset.name}
+                </p>
+                <StatusBadge value={checkinAsset.status} />
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-3 text-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Schritt 2</p>
             {checkinAsset ? (
@@ -728,15 +747,6 @@ export function CheckinCheckoutPage({
             ) : (
               <p className="mt-1 text-slate-600">Noch kein Gerät gescannt.</p>
             )}
-            <button
-              ref={checkinSubmitRef}
-              className="btn-dark mt-2 hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
-              onClick={() => void checkinNow()}
-              disabled={!checkinAsset}
-            >
-              <ClipboardCheck className="h-4 w-4" />
-              Rücknahme bestätigen
-            </button>
             <p className="mt-2 text-xs text-slate-500">Rückgabedatum: {today}</p>
           </div>
 
@@ -795,6 +805,16 @@ export function CheckinCheckoutPage({
               </label>
             </div>
           ) : null}
+
+          <button
+            ref={checkinSubmitRef}
+            className="btn-dark hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+            onClick={() => void checkinNow()}
+            disabled={!checkinAsset}
+          >
+            <ClipboardCheck className="h-4 w-4" />
+            Rücknahme bestätigen
+          </button>
         </article>
       )}
 
