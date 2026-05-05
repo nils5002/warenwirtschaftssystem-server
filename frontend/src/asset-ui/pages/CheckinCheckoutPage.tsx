@@ -53,6 +53,16 @@ function parseProjectFromAssignedTo(asset: Asset): string {
   return parts[parts.length - 1];
 }
 
+function getDisplayAssetName(asset: Asset): string {
+  return (
+    asset.name?.trim() ||
+    asset.model?.trim() ||
+    asset.serialNumber?.trim() ||
+    asset.tagNumber?.trim() ||
+    asset.id
+  );
+}
+
 export function CheckinCheckoutPage({
   assets,
   users,
@@ -587,7 +597,7 @@ export function CheckinCheckoutPage({
               </p>
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
                 <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
-                  {checkoutAsset.tagNumber} · {checkoutAsset.name}
+                  {getDisplayAssetName(checkoutAsset)}
                 </p>
                 <StatusBadge value={checkoutAsset.status} />
               </div>
@@ -764,7 +774,7 @@ export function CheckinCheckoutPage({
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Gerät</p>
               <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
                 <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
-                  {checkinAsset.tagNumber} · {checkinAsset.name}
+                  {getDisplayAssetName(checkinAsset)}
                 </p>
                 <StatusBadge value={checkinAsset.status} />
               </div>
