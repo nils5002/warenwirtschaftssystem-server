@@ -5,6 +5,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
 import { useWmsController } from './hooks/useWmsController';
+import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
 import {
   clearAuthSession,
@@ -23,6 +24,7 @@ function App() {
   const [authBooting, setAuthBooting] = useState<boolean>(!!getAuthSession());
 
   const activeRole = authUser?.role ?? 'Mitarbeiter';
+  const isMobile = useIsMobile();
   const controller = useWmsController({
     activeRole,
     isAuthenticated: !!authSession,
@@ -95,6 +97,16 @@ function App() {
   }, [authBooting, authSession, authUser]);
 
   const activeItem = visibleNavigation.find((item) => item.key === controller.activePage);
+  const mobileNavItems = visibleNavigation.filter((item) =>
+    ['dashboard', 'checkinCheckout', 'inventory', 'planning', 'tickets'].includes(item.key),
+  );
+  const mobileNavLabelMap: Record<string, string> = {
+    dashboard: 'Start',
+    checkinCheckout: 'Scan',
+    inventory: 'Inventar',
+    planning: 'Planung',
+    tickets: 'Defekte',
+  };
   const sidebarStats = {
     availableAssets: controller.assets.filter((asset) => asset.status === 'Verfügbar').length,
     loanedAssets: controller.assets.filter((asset) => asset.status === 'Verliehen').length,
@@ -148,7 +160,7 @@ function App() {
         stats={sidebarStats}
       />
 
-      <div className="relative md:pl-72">
+      <div className={`relative ${isMobile ? '' : 'md:pl-72'}`}>
         <Topbar
           search={controller.search}
           onSearch={controller.setSearch}
@@ -166,8 +178,9 @@ function App() {
           activePage={controller.activePage}
           activeLabel={activeItem?.label ?? (controller.activePage === 'assetDetail' ? 'Asset-Detail' : 'Dashboard')}
           activeHint={activeItem?.hint}
+          compact={isMobile}
         />
-        <main className="px-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-5 sm:px-4 md:px-8 md:pt-6">
+        <main className={`px-3 pt-4 sm:px-4 md:px-8 md:pt-6 ${isMobile ? 'pb-[calc(7.5rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}>
           <div className={`mx-auto w-full ${controller.activePage === 'inventory' ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
             {controller.isLoading ? (
               <div className="mb-4 surface-muted px-3 py-2 text-sm text-slate-600">Lade Daten...</div>
@@ -224,9 +237,34 @@ function App() {
               onNavigate={controller.setActivePage}
               onOpenInventoryWithQuery={controller.openInventoryWithQuery}
               activeRole={activeRole}
+              isMobile={isMobile}
             />
           </div>
         </main>
+        {isMobile ? (
+          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+            <div className="grid grid-cols-5 gap-2">
+              {mobileNavItems.map((item) => {
+                const active = controller.activePage === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-1 text-[10px] font-semibold leading-tight ${
+                      active
+                        ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
+                        : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                    }`}
+                    onClick={() => controller.setActivePage(item.key)}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    <span className="mt-1 truncate">{mobileNavLabelMap[item.key] ?? item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        ) : null}
       </div>
     </div>
   );

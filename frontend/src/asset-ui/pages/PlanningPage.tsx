@@ -36,6 +36,7 @@ type PlanningPageProps = {
   users: UserItem[];
   onOpenInventoryWithQuery: (query: string) => void;
   canEdit?: boolean;
+  isMobile?: boolean;
 };
 
 type EditablePlanning = {
@@ -323,7 +324,14 @@ function updatePlanningItemInEditor(
   return { ...planning, days: nextDays };
 }
 
-export function PlanningPage({ assets: _assets, categories, users, onOpenInventoryWithQuery, canEdit = true }: PlanningPageProps) {
+export function PlanningPage({
+  assets: _assets,
+  categories,
+  users,
+  onOpenInventoryWithQuery,
+  canEdit = true,
+  isMobile = false,
+}: PlanningPageProps) {
   const { alert, confirm } = useAppDialog();
   const [plannings, setPlannings] = useState<Awaited<ReturnType<typeof listPlannings>>>([]);
   const [selectedId, setSelectedId] = useState<string>('');
@@ -1260,6 +1268,13 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
     void loadPlannings();
   }, []);
 
+  const todayIso = toIsoDate(new Date());
+  const tomorrowIso = toIsoDate(new Date(Date.now() + 86400000));
+  const weekEndIso = toIsoDate(new Date(Date.now() + 6 * 86400000));
+  const mobileToday = visiblePlannings.filter((item) => item.startDate <= todayIso && item.endDate >= todayIso);
+  const mobileTomorrow = visiblePlannings.filter((item) => item.startDate <= tomorrowIso && item.endDate >= tomorrowIso);
+  const mobileWeek = visiblePlannings.filter((item) => item.startDate <= weekEndIso && item.endDate >= todayIso);
+
   return (
     <section className="space-y-5">
       <div className="surface-card animate-fade-up">
@@ -1317,7 +1332,59 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
 
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
 
-      <div className="grid gap-4 xl:grid-cols-12">
+      {isMobile ? (
+        <article className="surface-card">
+          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">Mobile Planung</h3>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Heute, Morgen und diese Woche im Überblick.</p>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+            <div className="surface-muted px-2 py-2">
+              <p className="font-semibold text-slate-600 dark:text-slate-300">Heute</p>
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mobileToday.length}</p>
+            </div>
+            <div className="surface-muted px-2 py-2">
+              <p className="font-semibold text-slate-600 dark:text-slate-300">Morgen</p>
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mobileTomorrow.length}</p>
+            </div>
+            <div className="surface-muted px-2 py-2">
+              <p className="font-semibold text-slate-600 dark:text-slate-300">Woche</p>
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">{mobileWeek.length}</p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {mobileWeek.slice(0, 12).map((item) => {
+              const handoverSummary = planningListHandoverSummaryById.get(item.id);
+              const availability = calendarAvailabilitiesByPlanningId[item.id];
+              const hasShortage = (availability?.summary?.withShortageCount ?? 0) > 0;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="surface-muted block min-h-[52px] w-full px-3 py-2 text-left"
+                  onClick={() => {
+                    void openPlanning(item.id);
+                  }}
+                >
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.projectName}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    {formatPeriod(item.startDate, item.endDate)} · {item.status}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {handoverSummary ? 'Übergabe/Verbund aktiv' : 'Kein Verbund'}
+                    {hasShortage ? ' · Engpass offen' : ''}
+                  </p>
+                </button>
+              );
+            })}
+            {!mobileWeek.length ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-400">
+                Keine Planungen in dieser Woche.
+              </div>
+            ) : null}
+          </div>
+        </article>
+      ) : null}
+
+      {!isMobile ? <div className="grid gap-4 xl:grid-cols-12">
         <article className="surface-card xl:col-span-4">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">Planungsliste</h3>
@@ -2379,7 +2446,7 @@ export function PlanningPage({ assets: _assets, categories, users, onOpenInvento
             </div>
           )}
         </article>
-      </div>
+      </div> : null}
 
       {createOpen && canEdit ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4">

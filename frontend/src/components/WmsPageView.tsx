@@ -7,6 +7,7 @@ import { DashboardPage } from '../asset-ui/pages/DashboardPage';
 import { ImportExportPage } from '../asset-ui/pages/ImportExportPage';
 import { MaintenancePage } from '../asset-ui/pages/MaintenancePage';
 import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
+import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
@@ -122,6 +123,7 @@ type WmsPageViewProps = {
   }) => Promise<void>;
   onNavigate: (page: AppPage) => void;
   onOpenInventoryWithQuery: (query: string) => void;
+  isMobile?: boolean;
 };
 
 export function WmsPageView({
@@ -171,6 +173,7 @@ export function WmsPageView({
   onCheckinFromForm,
   onNavigate,
   onOpenInventoryWithQuery,
+  isMobile = false,
 }: WmsPageViewProps) {
   const isAdmin = activeRole === 'Admin';
   const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
@@ -178,6 +181,9 @@ export function WmsPageView({
 
   switch (activePage) {
     case 'dashboard':
+      if (isMobile) {
+        return <MobileDashboardPage onNavigate={onNavigate} />;
+      }
       return (
         <DashboardPage
           assets={assets}
@@ -193,6 +199,7 @@ export function WmsPageView({
       return (
         <AssetsPage
           assets={assets}
+          isMobile={isMobile}
           onNavigate={onNavigate}
           onOpenDetail={onOpenAssetDetail}
           initialSearch={search}
@@ -269,6 +276,7 @@ export function WmsPageView({
           users={users}
           onOpenInventoryWithQuery={onOpenInventoryWithQuery}
           canEdit={canEditPlanning}
+          isMobile={isMobile}
         />
       );
     case 'checkinCheckout':
@@ -279,6 +287,7 @@ export function WmsPageView({
         <CheckinCheckoutPage
           assets={assets}
           users={users}
+          isMobile={isMobile}
           activeRole={activeRole}
           operatorName={currentUserName}
           projectContext={projectContext}

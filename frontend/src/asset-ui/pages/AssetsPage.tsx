@@ -9,6 +9,7 @@ import type { AppPage, Asset } from '../types';
 
 type AssetsPageProps = {
   assets: Asset[];
+  isMobile?: boolean;
   canManageAssets?: boolean;
   initialSearch?: string;
   onOpenDetail: (assetId: string) => void;
@@ -107,6 +108,7 @@ function createBulkActionForm(): BulkActionForm {
 
 export function AssetsPage({
   assets,
+  isMobile = false,
   canManageAssets = true,
   initialSearch,
   onOpenDetail,
@@ -678,8 +680,8 @@ export function AssetsPage({
       </div>
 
       <article className="surface-card animate-fade-up">
-        <div className="grid gap-3 md:grid-cols-6 xl:grid-cols-12">
-          <div className="relative md:col-span-3 xl:col-span-4">
+        <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'md:grid-cols-6 xl:grid-cols-12'}`}>
+          <div className={`relative ${isMobile ? '' : 'md:col-span-3 xl:col-span-4'}`}>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
@@ -688,22 +690,22 @@ export function AssetsPage({
               className="field-input w-full pl-9"
             />
           </div>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
             {categories.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
+          <select value={location} onChange={(event) => setLocation(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
             {locations.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input md:col-span-1 xl:col-span-2">
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
             {statuses.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <div className="flex items-center gap-2 md:col-span-1 xl:col-span-2">
+          <div className={`flex items-center gap-2 ${isMobile ? '' : 'md:col-span-1 xl:col-span-2'}`}>
             <button className="btn-secondary h-10 px-3 text-sm" onClick={resetFilters}>
               <Filter className="h-4 w-4" />
               Reset
@@ -772,7 +774,7 @@ export function AssetsPage({
           </div>
         ) : null}
 
-        <div className="mt-4 hidden lg:block">
+        <div className={`mt-4 ${isMobile ? 'hidden' : 'hidden lg:block'}`}>
           <div
             className={`soft-scrollbar relative max-h-[68vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${
               showTechnicalColumns ? 'overflow-auto' : 'overflow-y-auto overflow-x-hidden'
@@ -939,13 +941,13 @@ export function AssetsPage({
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:hidden">
+        <div className={`mt-4 grid gap-3 ${isMobile ? '' : 'lg:hidden'}`}>
           {filteredAssets.map((asset) => (
             <article key={asset.id} className="surface-muted p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h4 className="text-sm font-semibold text-slate-900">{asset.name}</h4>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 break-words">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
@@ -967,15 +969,17 @@ export function AssetsPage({
                 </div>
                 <StatusBadge value={asset.status} />
               </div>
-              <div className="mt-3 flex items-center justify-between">
-                <p className="text-xs text-slate-500">{asset.tagNumber}</p>
-                <button type="button" className="btn-primary px-2.5 py-1.5 text-xs" onClick={() => setQuickViewId(asset.id)}>
+              <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
+                <p className="text-xs text-slate-500 break-all">ID: {asset.tagNumber}</p>
+                <button type="button" className="btn-primary min-h-[44px] px-3 py-2 text-xs" onClick={() => setQuickViewId(asset.id)}>
                   Schnellansicht
                 </button>
               </div>
+              <p className="mt-1 text-xs text-slate-500 break-all">SN: {asset.serialNumber || '-'}</p>
+              <p className="mt-1 text-xs text-slate-500 break-all">MAC LAN: {asset.macLan || '-'}</p>
               <button
                 type="button"
-                className="btn-danger mt-2 w-full px-2.5 py-1.5 text-xs"
+                className="btn-danger mt-2 min-h-[44px] w-full px-3 py-2 text-xs"
                 onClick={() =>
                   onCreateMaintenance({
                     assetName: asset.name,
@@ -990,7 +994,7 @@ export function AssetsPage({
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    className="btn-secondary w-full px-2.5 py-1.5 text-xs"
+                    className="btn-secondary min-h-[44px] w-full px-3 py-2 text-xs"
                     onClick={() => {
                       openAdminActions(asset);
                     }}
@@ -999,7 +1003,7 @@ export function AssetsPage({
                   </button>
                   <button
                     type="button"
-                    className="btn-danger w-full px-2.5 py-1.5 text-xs"
+                    className="btn-danger min-h-[44px] w-full px-3 py-2 text-xs"
                     onClick={() => {
                       void runAdminDeleteAsset(asset);
                     }}
