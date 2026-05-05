@@ -100,7 +100,7 @@ export function Topbar({
           </button>
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-brand-700 dark:text-sky-400">
-              Warenwirtschaftssystem Konventex
+              Warenwirtschaftssystem Conventex
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
               <span className="font-medium">{crumbGroup}</span>
