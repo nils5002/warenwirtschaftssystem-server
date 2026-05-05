@@ -1,4 +1,4 @@
-import { AlertCircle, GripVertical, Wrench } from 'lucide-react';
+import { AlertCircle, ChevronDown, GripVertical, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { StatusBadge } from '../components/StatusBadge';
@@ -198,18 +198,21 @@ export function MaintenancePage({
           <div className="mt-4 space-y-3">
             <label className="field">
               Gerät
-              <input
-                list="maintenance-asset-options"
-                className="field-input"
-                placeholder="Asset-Name"
-                value={assetName}
-                onChange={(event) => setAssetName(event.target.value)}
-              />
-              <datalist id="maintenance-asset-options">
-                {assets.map((asset) => (
-                  <option key={asset.id} value={asset.name} />
-                ))}
-              </datalist>
+              <div className="relative">
+                <select
+                  className="field-input h-11 w-full appearance-none pr-10"
+                  value={assetName}
+                  onChange={(event) => setAssetName(event.target.value)}
+                >
+                  <option value="">Gerät auswählen</option>
+                  {assets.map((asset) => (
+                    <option key={asset.id} value={asset.name}>
+                      {asset.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-300" />
+              </div>
             </label>
 
             <label className="field">
