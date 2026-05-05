@@ -10,6 +10,7 @@ import type { AppRole, Asset, UserItem } from '../types';
 type CheckinCheckoutPageProps = {
   assets: Asset[];
   users: UserItem[];
+  isMobile?: boolean;
   activeRole: AppRole;
   operatorName: string;
   projectContext: string;
@@ -55,6 +56,7 @@ function parseProjectFromAssignedTo(asset: Asset): string {
 export function CheckinCheckoutPage({
   assets,
   users,
+  isMobile = false,
   activeRole,
   operatorName,
   projectContext,
@@ -419,7 +421,7 @@ export function CheckinCheckoutPage({
         : 'border-sky-200 bg-sky-50 text-sky-800';
 
   return (
-    <section className="space-y-5 pb-24 sm:pb-6">
+    <section className={`space-y-5 ${isMobile ? 'pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'pb-24 sm:pb-6'}`}>
       <div>
         <p className="page-kicker">Ein-/Auslagerung</p>
         <h2 className="page-title">Schnellflow mit QR</h2>
@@ -430,7 +432,7 @@ export function CheckinCheckoutPage({
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+            className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
               mode === 'checkout'
                 ? 'border-brand-300 bg-brand-50 text-brand-800'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -445,7 +447,7 @@ export function CheckinCheckoutPage({
           </button>
           <button
             type="button"
-            className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+            className={`inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
               mode === 'checkin'
                 ? 'border-slate-400 bg-slate-100 text-slate-900'
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -479,6 +481,13 @@ export function CheckinCheckoutPage({
       ) : null}
 
       {message ? <div className={`rounded-xl border px-3 py-2 text-sm ${messageClass}`}>{message.text}</div> : null}
+      {isMobile ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
+          {mode === 'checkout'
+            ? 'Ablauf: 1) Scannen  2) Projekt  3) Ausgabe bestätigen'
+            : 'Ablauf: 1) Scannen  2) Rücknahme bestätigen'}
+        </div>
+      ) : null}
 
       {mode === 'checkout' ? (
         <article className="surface-card animate-fade-up space-y-4">
@@ -502,7 +511,7 @@ export function CheckinCheckoutPage({
                 <input
                   ref={checkoutScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkout'}
-                  className="field-input"
+                  className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code oder Inventarnummer"
                   value={checkoutScan}
                   onChange={(event) => setCheckoutScan(event.target.value)}
@@ -512,11 +521,11 @@ export function CheckinCheckoutPage({
                     void applyCheckoutScan();
                   }}
                 />
-                <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => void applyCheckoutScan()}>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => void applyCheckoutScan()}>
                   <ScanLine className="h-4 w-4" />
                   Scannen
                 </button>
-                <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setScannerTarget('checkout')}>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkout')}>
                   <QrCode className="h-4 w-4" />
                   Kamera
                 </button>
@@ -654,7 +663,7 @@ export function CheckinCheckoutPage({
                 <input
                   ref={checkinScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkin'}
-                  className="field-input"
+                  className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code oder Inventarnummer"
                   value={checkinScan}
                   onChange={(event) => setCheckinScan(event.target.value)}
@@ -664,11 +673,11 @@ export function CheckinCheckoutPage({
                     void applyCheckinScan();
                   }}
                 />
-                <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => void applyCheckinScan()}>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => void applyCheckinScan()}>
                   <ScanLine className="h-4 w-4" />
                   Scannen
                 </button>
-                <button type="button" className="btn-secondary w-full sm:w-auto" onClick={() => setScannerTarget('checkin')}>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkin')}>
                   <QrCode className="h-4 w-4" />
                   Kamera
                 </button>
@@ -757,7 +766,7 @@ export function CheckinCheckoutPage({
         </article>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur sm:hidden">
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur sm:hidden">
         {mode === 'checkout' ? (
           <button className="btn-primary w-full py-3 text-base" onClick={() => void checkoutNow()}>
             <Handshake className="h-5 w-5" />

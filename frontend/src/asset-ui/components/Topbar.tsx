@@ -18,6 +18,7 @@ type TopbarProps = {
   activePage: AppPage;
   activeLabel: string;
   activeHint?: string;
+  compact?: boolean;
 };
 
 const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
@@ -52,8 +53,43 @@ export function Topbar({
   activePage,
   activeLabel,
   activeHint,
+  compact = false,
 }: TopbarProps) {
   const [crumbGroup, crumbPage] = BREADCRUMB_MAP[activePage] ?? ['Betrieb', 'Dashboard'];
+  if (compact) {
+    return (
+      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-slate-50/95 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" className="btn-secondary h-11 w-11 p-0" onClick={onMenuOpen}>
+              <Menu className="h-5 w-5" />
+            </button>
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-700 dark:text-sky-400">
+                {crumbGroup}
+              </p>
+              <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{activeLabel}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              title={theme === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
+              aria-label={theme === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln'}
+              className="btn-secondary h-11 w-11 p-0"
+            >
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            <button type="button" onClick={onLogout} className="btn-secondary h-11 px-2.5 sm:px-3">
+              <LogOut className="h-4 w-4" />
+              <span className="hidden text-xs font-medium sm:inline">Logout</span>
+            </button>
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-slate-50/90 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
