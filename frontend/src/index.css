@@ -419,6 +419,7 @@ h3 {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    transform: translateY(5mm);
   }
 
   body.wms-printing-mass .wms-label-img {
