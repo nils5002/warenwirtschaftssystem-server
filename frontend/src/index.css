@@ -414,7 +414,7 @@ h3 {
     width: 89mm;
     height: 41mm;
     box-sizing: border-box;
-    padding: 3mm 4mm;
+    padding: 2.5mm 4mm 4.5mm;
     display: flex;
     flex-direction: column;
     align-items: center;
