@@ -60,7 +60,11 @@ export function MaintenancePage({
   const [boardHint, setBoardHint] = useState<string | null>(null);
   const [touchLike, setTouchLike] = useState(false);
 
-  const isAdmin = activeRole === 'Admin';
+  const normalizedRole = String(activeRole || '').toLowerCase();
+  const canManageRepairBoard =
+    normalizedRole === 'admin' ||
+    normalizedRole === 'techniker' ||
+    normalizedRole === 'technician';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -117,7 +121,7 @@ export function MaintenancePage({
   };
 
   const moveItem = async (item: MaintenanceItem, targetStatus: BoardStatus) => {
-    if (!isAdmin || item.status === targetStatus) return;
+    if (!canManageRepairBoard || item.status === targetStatus) return;
     if (!canMoveBoardStatus(item.status as BoardStatus, targetStatus)) {
       await alert({
         title: 'Nicht erlaubt',
@@ -141,21 +145,21 @@ export function MaintenancePage({
   };
 
   const onDragStartCard = (event: DragEvent<HTMLElement>, itemId: string) => {
-    if (!isAdmin) return;
+    if (!canManageRepairBoard) return;
     event.dataTransfer.setData('text/plain', itemId);
     event.dataTransfer.effectAllowed = 'move';
     setDraggedId(itemId);
   };
 
   const onDragOverColumn = (event: DragEvent<HTMLElement>, status: BoardStatus) => {
-    if (!isAdmin) return;
+    if (!canManageRepairBoard) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     setDragOverStatus(status);
   };
 
   const onDropColumn = (event: DragEvent<HTMLElement>, status: BoardStatus) => {
-    if (!isAdmin) return;
+    if (!canManageRepairBoard) return;
     event.preventDefault();
     const fromTransfer = event.dataTransfer.getData('text/plain');
     const sourceId = fromTransfer || draggedId;
@@ -183,7 +187,7 @@ export function MaintenancePage({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card animate-fade-up xl:col-span-4">
+        <article className={`surface-card animate-fade-up ${canManageRepairBoard ? 'xl:col-span-4' : 'xl:col-span-12'}`}>
           <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
             <AlertCircle className="h-4 w-4" />
             Defekt melden
@@ -249,13 +253,14 @@ export function MaintenancePage({
           </div>
         </article>
 
+        {canManageRepairBoard ? (
         <article className="surface-card animate-fade-up xl:col-span-8">
           <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
             <Wrench className="h-4 w-4" />
             Board
           </h3>
           <p className="mt-1 text-xs text-slate-500">
-            {isAdmin
+            {canManageRepairBoard
               ? 'Karte ziehen und in die nächste Spalte fallen lassen.'
               : 'Statusübersicht der gemeldeten Defekte.'}
           </p>
@@ -282,10 +287,10 @@ export function MaintenancePage({
                       return (
                         <article
                           key={item.id}
-                          draggable={isAdmin}
+                          draggable={canManageRepairBoard}
                           onDragStart={(event) => onDragStartCard(event, item.id)}
                           onDragEnd={onDragEndCard}
-                          className={`rounded-xl border border-slate-200 bg-white p-3 ${isAdmin ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedId === item.id ? 'opacity-60' : ''}`}
+                          className={`rounded-xl border border-slate-200 bg-white p-3 ${canManageRepairBoard ? 'cursor-grab active:cursor-grabbing' : ''} ${draggedId === item.id ? 'opacity-60' : ''}`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div>
@@ -293,7 +298,7 @@ export function MaintenancePage({
                               <p className="mt-1 text-sm text-slate-700">{item.issue}</p>
                               <p className="mt-1 text-xs text-slate-500">{item.reportedAt}</p>
                             </div>
-                            {isAdmin ? <GripVertical className="h-4 w-4 text-slate-400" /> : <StatusBadge value={item.status} />}
+                            {canManageRepairBoard ? <GripVertical className="h-4 w-4 text-slate-400" /> : <StatusBadge value={item.status} />}
                           </div>
 
                           <div className="mt-2 flex items-center justify-between gap-2">
@@ -311,7 +316,7 @@ export function MaintenancePage({
                               Asset
                             </button>
 
-                            {isAdmin && touchLike && nextStatus ? (
+                            {canManageRepairBoard && touchLike && nextStatus ? (
                               <button
                                 type="button"
                                 className="btn-secondary px-2 py-1 text-xs"
@@ -336,6 +341,7 @@ export function MaintenancePage({
             ))}
           </div>
         </article>
+        ) : null}
       </div>
 
       <article className="surface-card animate-fade-up">
