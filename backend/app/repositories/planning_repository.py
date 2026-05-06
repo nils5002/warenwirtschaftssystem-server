@@ -24,7 +24,8 @@ from ..schemas.planning import (
 )
 
 # Include "Entwurf" so planning conflicts are visible early during project preparation.
-ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt"}
+# Keep both confirmed variants for legacy rows that may still contain umlauts.
+ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt", "Bestätigt"}
 
 
 def _normalize_status(value: str | PlanningStatus) -> PlanningStatus:

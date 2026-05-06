@@ -719,7 +719,7 @@ def get_overview(db: Session) -> WmsOverviewResponse:
 
 
 def _build_planning_summary(db: Session) -> PlanningSummaryItem:
-    planning_statuses = ("Entwurf", "Geplant", "Bestaetigt")
+    planning_statuses = ("Entwurf", "Geplant", "Bestaetigt", "Bestätigt")
     today = date.today()
     upcoming_end = today + timedelta(days=7)
 

@@ -36,6 +36,7 @@ type PlanningPageProps = {
   categories: CategoryItem[];
   users: UserItem[];
   planningSummary: WmsOverview['planningSummary'];
+  onRefreshOverview?: () => Promise<void>;
   onOpenInventoryWithQuery: (query: string) => void;
   canEdit?: boolean;
   isMobile?: boolean;
@@ -373,6 +374,7 @@ export function PlanningPage({
   categories,
   users,
   planningSummary,
+  onRefreshOverview,
   onOpenInventoryWithQuery,
   canEdit = true,
   isMobile = false,
@@ -1095,6 +1097,14 @@ export function PlanningPage({
     }
   };
 
+  const refreshOverview = async () => {
+    try {
+      await onRefreshOverview?.();
+    } catch {
+      // Keep planning flows stable even if global overview refresh fails.
+    }
+  };
+
   const handlePlanningCardClick = (planningId: string) => {
     if (detailModalOpen) return;
     if (selectedId === planningId) {
@@ -1177,6 +1187,7 @@ export function PlanningPage({
         getPlanningAvailability(saved.id),
         loadPlannings(saved.id),
       ]);
+      await refreshOverview();
       const savedEditor = toEditablePlanning(freshPlanning);
       setEditor(savedEditor);
       setEditorInitial(cloneEditablePlanning(savedEditor));
@@ -1276,6 +1287,7 @@ export function PlanningPage({
         notes: '',
       }));
       await loadPlannings(created.id);
+      await refreshOverview();
       await openPlanning(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht angelegt werden.');
@@ -1290,6 +1302,7 @@ export function PlanningPage({
     try {
       const duplicated = await duplicatePlanning(planningId);
       await loadPlannings(duplicated.id);
+      await refreshOverview();
       await openPlanning(duplicated.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht dupliziert werden.');
@@ -1328,6 +1341,7 @@ export function PlanningPage({
         return next;
       });
       await loadPlannings();
+      await refreshOverview();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht gelöscht werden.');
     } finally {
@@ -1346,6 +1360,7 @@ export function PlanningPage({
       } else {
         await loadPlannings();
       }
+      await refreshOverview();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Status konnte nicht gesetzt werden.');
     } finally {
