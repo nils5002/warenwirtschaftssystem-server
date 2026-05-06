@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..database.session import get_db
 from ..routes.dependencies import AccessContext, get_access_context, require_roles
-from ..schemas.backup import BackupImportResponse, WarehouseBackupPayload
+from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
 from ..services import backup_service
 
 router = APIRouter(prefix="/api/wms/backup", tags=["WMS Backup"])
@@ -57,3 +57,12 @@ async def import_backup(
         raise HTTPException(status_code=400, detail="Backup-Datei hat ein ungültiges Format.") from exc
 
     return backup_service.import_backup(db, payload)
+
+
+@router.post("/reset-for-import", response_model=BackupClearDataResponse)
+def reset_for_import(
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> BackupClearDataResponse:
+    require_roles(context, "admin")
+    return backup_service.clear_data_for_import(db, keep_user_id=context.user_id)

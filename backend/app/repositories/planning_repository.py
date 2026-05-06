@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from uuid import uuid4
 
 from sqlalchemy import delete, select
@@ -463,6 +463,26 @@ def delete_planning(db: Session, planning_id: str) -> bool:
     return True
 
 
+def _period_end_exclusive(start_date: date, end_date: date) -> date:
+    if end_date > start_date:
+        return end_date
+    return start_date + timedelta(days=1)
+
+
+def _iter_bound_dates(start_date: date, end_date: date) -> list[date]:
+    dates: list[date] = []
+    cursor = start_date
+    end_exclusive = _period_end_exclusive(start_date, end_date)
+    while cursor < end_exclusive:
+        dates.append(cursor)
+        cursor += timedelta(days=1)
+    return dates
+
+
+def _date_in_bound_window(target: date, start_date: date, end_date: date) -> bool:
+    return start_date <= target < _period_end_exclusive(start_date, end_date)
+
+
 def _availability_state(requested_qty: int, remaining_qty: int) -> str:
     after_request = remaining_qty - requested_qty
     if after_request < 0:
@@ -472,15 +492,14 @@ def _availability_state(requested_qty: int, remaining_qty: int) -> str:
     return "green"
 
 
-def _availability_state_with_handover(
-    requested_qty: int,
-    remaining_qty: int,
-    handover_enabled: bool,
-) -> str:
-    state = _availability_state(requested_qty, remaining_qty)
-    if state == "red" and handover_enabled:
+def _availability_state_with_handover(remaining_after_all: int, handover_covered_qty: int) -> str:
+    if remaining_after_all < 0:
+        return "red"
+    if handover_covered_qty > 0:
         return "yellow"
-    return state
+    if remaining_after_all <= 2:
+        return "yellow"
+    return "green"
 
 
 def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabilityResponse | None:
@@ -510,8 +529,26 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         )
 
     days_by_id = {day.id: day for day in day_rows}
-    categories = sorted({category_repository.normalize_category_for_db(db, item.category_key) for item in item_rows})
-    dates = sorted({days_by_id[item.planning_day_id].planning_date for item in item_rows})
+    bound_dates = _iter_bound_dates(planning.start_date, planning.end_date)
+    bound_dates_set = set(bound_dates)
+    if not bound_dates:
+        return PlanningAvailabilityResponse(
+            planningId=planning.external_id,
+            periodStart=planning.start_date,
+            periodEnd=planning.end_date,
+            items=[],
+            categorySummary=[],
+        )
+    relevant_item_rows = [item for item in item_rows if days_by_id[item.planning_day_id].planning_date in bound_dates_set]
+    if not relevant_item_rows:
+        return PlanningAvailabilityResponse(
+            planningId=planning.external_id,
+            periodStart=planning.start_date,
+            periodEnd=planning.end_date,
+            items=[],
+            categorySummary=[],
+        )
+    categories = sorted({category_repository.normalize_category_for_db(db, item.category_key) for item in relevant_item_rows})
 
     stock_totals: dict[str, int] = defaultdict(int)
     stock_usable: dict[str, int] = defaultdict(int)
@@ -524,67 +561,158 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             stock_usable[category] += 1
     stock_map = {category: (stock_totals[category], stock_usable[category]) for category in categories}
 
+    explicit_requested_qty_by_day_category: dict[tuple[date, str], int] = defaultdict(int)
+    max_requested_qty_by_category: dict[str, int] = defaultdict(int)
+    category_meta: dict[str, dict[str, object]] = {}
+    weekday_by_date: dict[date, str] = {}
+    linked_ids: set[str] = set()
+
+    for item in relevant_item_rows:
+        day = days_by_id[item.planning_day_id]
+        weekday_by_date[day.planning_date] = day.weekday
+        category = category_repository.normalize_category_for_db(db, item.category_key)
+        key = (day.planning_date, category)
+        explicit_requested_qty_by_day_category[key] += int(item.qty or 0)
+        max_requested_qty_by_category[category] = max(max_requested_qty_by_category[category], explicit_requested_qty_by_day_category[key])
+
+        linked_planning_id = str(item.linked_planning_external_id or "").strip()
+        handover_note = str(item.handover_note or "").strip() or None
+        current_meta = category_meta.get(category)
+        if current_meta is None or day.planning_date < current_meta["sourceDate"]:
+            category_meta[category] = {
+                "sourceDate": day.planning_date,
+                "handoverEnabled": bool(item.handover_enabled),
+                "linkedPlanningId": linked_planning_id or None,
+                "handoverNote": handover_note,
+            }
+        else:
+            current_meta["handoverEnabled"] = bool(current_meta["handoverEnabled"]) or bool(item.handover_enabled)
+            if not current_meta.get("linkedPlanningId") and linked_planning_id:
+                current_meta["linkedPlanningId"] = linked_planning_id
+            if not current_meta.get("handoverNote") and handover_note:
+                current_meta["handoverNote"] = handover_note
+        if linked_planning_id:
+            linked_ids.add(linked_planning_id)
+
+    requested_by_day_category: dict[tuple[date, str], dict[str, object]] = {}
+    for category in categories:
+        default_qty = int(max_requested_qty_by_category.get(category, 0))
+        if default_qty <= 0:
+            continue
+        meta = category_meta.get(category, {})
+        for bound_date in bound_dates:
+            requested_qty = int(explicit_requested_qty_by_day_category.get((bound_date, category), default_qty))
+            if requested_qty <= 0:
+                continue
+            requested_by_day_category[(bound_date, category)] = {
+                "weekday": weekday_by_date.get(bound_date) or _normalize_weekday(None, bound_date),
+                "category": category,
+                "qty": requested_qty,
+                "handoverEnabled": bool(meta.get("handoverEnabled", False)),
+                "linkedPlanningId": str(meta.get("linkedPlanningId") or "") or None,
+                "handoverNote": str(meta.get("handoverNote") or "") or None,
+            }
+
     overlap_map: dict[tuple[date, str], int] = defaultdict(int)
     overlap_planning_ids_map: dict[tuple[date, str], set[str]] = defaultdict(set)
     overlap_items = db.execute(
         select(
+            PlanningRecord.external_id,
+            PlanningRecord.start_date,
+            PlanningRecord.end_date,
             PlanningDayRecord.planning_date,
             PlanningItemRecord.category_key,
             PlanningItemRecord.qty,
-            PlanningRecord.external_id,
         )
         .join(PlanningItemRecord, PlanningItemRecord.planning_day_id == PlanningDayRecord.id)
         .join(PlanningRecord, PlanningRecord.id == PlanningDayRecord.planning_id)
         .where(PlanningRecord.external_id != planning_id)
         .where(PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES)))
-        .where(PlanningRecord.start_date <= planning.end_date)
-        .where(PlanningRecord.end_date >= planning.start_date)
-        .where(PlanningDayRecord.planning_date.in_(dates))
+        .where(PlanningRecord.start_date < _period_end_exclusive(planning.start_date, planning.end_date))
+        .where(PlanningRecord.end_date > planning.start_date)
     ).all()
+    overlap_explicit_qty_map: dict[tuple[str, date, str], int] = defaultdict(int)
+    overlap_default_qty_map: dict[tuple[str, str], int] = defaultdict(int)
+    overlap_period_map: dict[str, tuple[date, date]] = {}
     for row in overlap_items:
+        other_id = str(row.external_id or "").strip()
+        if not other_id:
+            continue
+        overlap_period_map[other_id] = (row.start_date, row.end_date)
         category = category_repository.normalize_category_for_db(db, str(row.category_key))
-        if category in categories:
-            overlap_map[(row.planning_date, category)] += int(row.qty or 0)
-            other_id = str(row.external_id or "").strip()
-            if other_id:
-                overlap_planning_ids_map[(row.planning_date, category)].add(other_id)
+        if category not in categories:
+            continue
+        qty_key = (other_id, row.planning_date, category)
+        overlap_explicit_qty_map[qty_key] += int(row.qty or 0)
+        overlap_default_qty_map[(other_id, category)] = max(overlap_default_qty_map[(other_id, category)], overlap_explicit_qty_map[qty_key])
+
+    for (other_id, category), default_qty in overlap_default_qty_map.items():
+        if default_qty <= 0:
+            continue
+        start_end = overlap_period_map.get(other_id)
+        if start_end is None:
+            continue
+        other_start, other_end = start_end
+        for bound_date in _iter_bound_dates(other_start, other_end):
+            if bound_date not in bound_dates_set:
+                continue
+            effective_qty = int(overlap_explicit_qty_map.get((other_id, bound_date, category), default_qty))
+            if effective_qty <= 0:
+                continue
+            overlap_map[(bound_date, category)] += effective_qty
+            overlap_planning_ids_map[(bound_date, category)].add(other_id)
 
     availability_items: list[PlanningAvailabilityItem] = []
     summary_requested: dict[str, int] = defaultdict(int)
     summary_max_per_day: dict[str, int] = defaultdict(int)
-    requested_by_day_category: dict[tuple[date, str], dict[str, object]] = {}
-    linked_ids: set[str] = set()
-
-    for item in item_rows:
-        day = days_by_id[item.planning_day_id]
-        category = category_repository.normalize_category_for_db(db, item.category_key)
-        key = (day.planning_date, category)
-        current = requested_by_day_category.setdefault(
-            key,
-            {
-                "weekday": day.weekday,
-                "category": category,
-                "qty": 0,
-                "handoverEnabled": False,
-                "linkedPlanningId": None,
-                "handoverNote": None,
-            },
-        )
-        current["qty"] = int(current["qty"]) + item.qty
-        if bool(item.handover_enabled):
-            current["handoverEnabled"] = True
-        linked_planning_id = str(item.linked_planning_external_id or "").strip()
-        if linked_planning_id:
-            current["linkedPlanningId"] = linked_planning_id
-            linked_ids.add(linked_planning_id)
-        handover_note = str(item.handover_note or "").strip()
-        if handover_note:
-            current["handoverNote"] = handover_note
 
     linked_labels: dict[str, str] = {}
     if linked_ids:
         linked_rows = db.scalars(select(PlanningRecord).where(PlanningRecord.external_id.in_(tuple(linked_ids)))).all()
         linked_labels = {row.external_id: row.project_name for row in linked_rows}
+
+    previous_dates = {planning_date - timedelta(days=1) for planning_date, _ in requested_by_day_category.keys()}
+    handover_source_qty_map: dict[tuple[str, date, str], int] = defaultdict(int)
+    if linked_ids and previous_dates:
+        handover_source_rows = db.execute(
+            select(
+                PlanningRecord.external_id,
+                PlanningRecord.start_date,
+                PlanningRecord.end_date,
+                PlanningDayRecord.planning_date,
+                PlanningItemRecord.category_key,
+                PlanningItemRecord.qty,
+            )
+            .join(PlanningDayRecord, PlanningDayRecord.planning_id == PlanningRecord.id)
+            .join(PlanningItemRecord, PlanningItemRecord.planning_day_id == PlanningDayRecord.id)
+            .where(PlanningRecord.external_id.in_(tuple(linked_ids)))
+            .where(PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES)))
+        ).all()
+        source_explicit_qty_map: dict[tuple[str, date, str], int] = defaultdict(int)
+        source_default_qty_map: dict[tuple[str, str], int] = defaultdict(int)
+        source_period_map: dict[str, tuple[date, date]] = {}
+        for row in handover_source_rows:
+            source_id = str(row.external_id or "").strip()
+            if not source_id:
+                continue
+            source_period_map[source_id] = (row.start_date, row.end_date)
+            category = category_repository.normalize_category_for_db(db, str(row.category_key))
+            key = (source_id, row.planning_date, category)
+            source_explicit_qty_map[key] += int(row.qty or 0)
+            source_default_qty_map[(source_id, category)] = max(source_default_qty_map[(source_id, category)], source_explicit_qty_map[key])
+        for (source_id, category), default_qty in source_default_qty_map.items():
+            if default_qty <= 0:
+                continue
+            start_end = source_period_map.get(source_id)
+            if start_end is None:
+                continue
+            source_start, source_end = start_end
+            for previous_day in previous_dates:
+                if not _date_in_bound_window(previous_day, source_start, source_end):
+                    continue
+                handover_source_qty_map[(source_id, previous_day, category)] = int(
+                    source_explicit_qty_map.get((source_id, previous_day, category), default_qty)
+                )
 
     for (planning_date, category), requested in sorted(requested_by_day_category.items(), key=lambda row: (row[0][0], row[0][1])):
         requested_qty = int(requested["qty"])
@@ -596,11 +724,17 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         total_planned_qty_for_date_category = current_planning_qty + other_planned_qty
         remaining_after_all_planning = usable_stock - total_planned_qty_for_date_category
         shortage_qty = max(0, -remaining_after_all_planning)
-        has_global_shortage = shortage_qty > 0
+        handover_covered_qty = 0
         handover_enabled = bool(requested["handoverEnabled"])
         linked_planning_id = str(requested["linkedPlanningId"] or "") or None
         handover_status: "none" | "planned" | "missing_link" = "none"
-        if has_global_shortage and handover_enabled:
+        if shortage_qty > 0 and handover_enabled and linked_planning_id:
+            previous_day = planning_date - timedelta(days=1)
+            source_capacity = handover_source_qty_map.get((linked_planning_id, previous_day, category), 0)
+            handover_covered_qty = min(shortage_qty, max(0, source_capacity))
+        shortage_after_handover_qty = max(0, shortage_qty - handover_covered_qty)
+        has_global_shortage = shortage_after_handover_qty > 0
+        if shortage_qty > 0 and handover_enabled:
             handover_status = "planned" if linked_planning_id else "missing_link"
         availability_items.append(
             PlanningAvailabilityItem(
@@ -615,9 +749,12 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 currentPlanningQty=current_planning_qty,
                 otherPlannedQty=other_planned_qty,
                 totalPlannedQtyForDateCategory=total_planned_qty_for_date_category,
-                remainingAfterAllPlanning=remaining_after_all_planning,
-                availabilityState=_availability_state_with_handover(total_planned_qty_for_date_category, usable_stock, handover_enabled),
-                shortageQty=shortage_qty,
+                remainingAfterAllPlanning=remaining_after_all_planning + handover_covered_qty,
+                availabilityState=_availability_state_with_handover(
+                    remaining_after_all_planning + handover_covered_qty,
+                    handover_covered_qty,
+                ),
+                shortageQty=shortage_after_handover_qty,
                 hasGlobalShortage=has_global_shortage,
                 affectedPlanningIds=sorted(overlap_planning_ids_map.get((planning_date, category), set())),
                 handoverEnabled=handover_enabled,
@@ -625,6 +762,8 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 linkedPlanningLabel=linked_labels.get(linked_planning_id or ""),
                 handoverNote=str(requested["handoverNote"] or "") or None,
                 handoverStatus=handover_status,
+                handoverCoveredQty=handover_covered_qty,
+                shortageAfterHandoverQty=shortage_after_handover_qty,
             )
         )
         summary_requested[category] += requested_qty

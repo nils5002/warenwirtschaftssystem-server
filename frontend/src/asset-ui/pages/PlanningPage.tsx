@@ -104,6 +104,7 @@ type AvailabilityVisual = {
   affectedPlanningIds: string[];
   linkedPlanningId: string;
   linkedPlanningLabel: string;
+  handoverCoveredQty: number;
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -193,6 +194,14 @@ function buildPlanningLabel(planning: Pick<PlanningSummary, 'projectName' | 'eve
   return `${planning.projectName}${datePart}`;
 }
 
+function getPeriodEndExclusiveIso(startDate: string, endDate: string): string {
+  if (endDate > startDate) return endDate;
+  const start = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return endDate;
+  start.setDate(start.getDate() + 1);
+  return toIsoDate(start);
+}
+
 function buildDaysInRange(startDate: string, endDate: string): EditablePlanning['days'] {
   if (!startDate || !endDate) return [];
   const start = new Date(`${startDate}T00:00:00`);
@@ -200,9 +209,10 @@ function buildDaysInRange(startDate: string, endDate: string): EditablePlanning[
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
     return [];
   }
+  const endExclusive = new Date(`${getPeriodEndExclusiveIso(startDate, endDate)}T00:00:00`);
   const days: EditablePlanning['days'] = [];
   const cursor = new Date(start);
-  while (cursor <= end) {
+  while (cursor < endExclusive) {
     const iso = toIsoDate(cursor);
     days.push({
       planningDate: iso,
@@ -277,11 +287,13 @@ function handoverKey(dayIndex: number, itemIndex: number): string {
 }
 
 function isDateWithinRange(isoDate: string, startDate: string, endDate: string): boolean {
-  return isoDate >= startDate && isoDate <= endDate;
+  return isoDate >= startDate && isoDate < getPeriodEndExclusiveIso(startDate, endDate);
 }
 
 function rangesOverlap(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return aStart <= bEnd && bStart <= aEnd;
+  const aEndExclusive = getPeriodEndExclusiveIso(aStart, aEnd);
+  const bEndExclusive = getPeriodEndExclusiveIso(bStart, bEnd);
+  return aStart < bEndExclusive && bStart < aEndExclusive;
 }
 
 function buildPlanningFallbackLabel(
@@ -511,9 +523,14 @@ export function PlanningPage({
         Boolean(item.hasGlobalShortage) ||
         item.shortageQty > 0 ||
         item.remainingAfterAllPlanning < 0;
+      const handoverCoveredQty = Math.max(0, Number(item.handoverCoveredQty ?? 0));
+      const hadShortageBeforeHandover = handoverCoveredQty > 0;
       const resolvedByHandover =
-        (effectiveHandoverEnabled && Boolean(effectiveLinkedPlanningId)) || Boolean(incomingHandover);
-      const hasOpenShortage = hasGlobalShortage && !resolvedByHandover && !effectiveHandoverEnabled;
+        (hadShortageBeforeHandover || hasGlobalShortage) &&
+        handoverCoveredQty > 0 &&
+        item.shortageQty <= 0 &&
+        ((effectiveHandoverEnabled && Boolean(effectiveLinkedPlanningId)) || Boolean(incomingHandover));
+      const hasOpenShortage = hasGlobalShortage && !resolvedByHandover;
       const hasResolvedShortage = hasGlobalShortage && resolvedByHandover;
 
       let status: HandoverVisualStatus = 'ok';
@@ -567,6 +584,7 @@ export function PlanningPage({
         affectedPlanningIds: item.affectedPlanningIds,
         linkedPlanningId: effectiveLinkedPlanningId,
         linkedPlanningLabel: effectiveLinkedPlanningLabel,
+        handoverCoveredQty,
       });
     }
 
@@ -1559,7 +1577,8 @@ export function PlanningPage({
                 ) : null}
               </div>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              {false ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Projektkontext</h4>
                 <div className="mt-2 grid gap-3 md:grid-cols-2">
                   <label className="field">
@@ -1604,7 +1623,8 @@ export function PlanningPage({
                     </select>
                   </label>
                 </div>
-              </div>
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Zeitraum und Status</h4>

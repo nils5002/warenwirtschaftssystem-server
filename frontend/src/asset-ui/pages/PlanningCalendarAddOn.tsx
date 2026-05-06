@@ -61,8 +61,22 @@ function buildWeekDays(weekStart: Date): Date[] {
   });
 }
 
+function addDaysIso(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  date.setDate(date.getDate() + days);
+  return toIsoDate(date);
+}
+
+function periodEndExclusiveIso(startDate: string, endDate: string): string {
+  if (endDate > startDate) return endDate;
+  return addDaysIso(startDate, 1);
+}
+
 function projectOverlapsWeek(project: Pick<PlanningListItem, 'startDate' | 'endDate'>, weekStartIso: string, weekEndIso: string): boolean {
-  return project.startDate <= weekEndIso && project.endDate >= weekStartIso;
+  const weekEndExclusive = addDaysIso(weekEndIso, 1);
+  const projectEndExclusive = periodEndExclusiveIso(project.startDate, project.endDate);
+  return project.startDate < weekEndExclusive && weekStartIso < projectEndExclusive;
 }
 
 function buildDemandSummary(items: PlanningResponse['days'][number]['items']): string {
@@ -96,11 +110,14 @@ function getVisualStatus(
   const hasOpenShortage = availability.items.some((item) => {
     const hasGlobalShortage =
       Boolean(item.hasGlobalShortage) || item.shortageQty > 0 || item.remainingAfterAllPlanning < 0;
-    const hasLinkedHandover = Boolean(item.handoverEnabled && item.linkedPlanningId);
-    const knownHandoverState = item.handoverStatus === 'planned';
-    return hasGlobalShortage && !hasLinkedHandover && !knownHandoverState;
+    const handoverCoveredQty = Math.max(0, Number(item.handoverCoveredQty ?? 0));
+    const isFullyCoveredByHandover =
+      Boolean(item.handoverEnabled && item.linkedPlanningId) &&
+      handoverCoveredQty > 0 &&
+      item.shortageQty <= 0;
+    return hasGlobalShortage && !isFullyCoveredByHandover;
   });
-  if (hasOpenShortage && !hasHandover) {
+  if (hasOpenShortage) {
     return { status: 'red', label: 'Offener Engpass' };
   }
 

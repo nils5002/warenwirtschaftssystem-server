@@ -131,6 +131,11 @@ export type BackupImportResponse = {
   imported: Record<string, number>;
 };
 
+export type BackupClearDataResponse = {
+  success: boolean;
+  message: string;
+};
+
 export type PlanningStatus = "Entwurf" | "Geplant" | "Bestätigt" | "Bestaetigt" | "Abgeschlossen" | "Storniert";
 
 export type PlanningItemPayload = {
@@ -241,6 +246,8 @@ export type PlanningAvailabilityItem = {
   linkedPlanningLabel?: string | null;
   handoverNote?: string | null;
   handoverStatus?: "none" | "planned" | "missing_link";
+  handoverCoveredQty?: number;
+  shortageAfterHandoverQty?: number;
 };
 
 export type PlanningAvailabilityCategorySummary = {
@@ -627,6 +634,13 @@ export async function restoreWarehouseBackup(file: File): Promise<BackupImportRe
     body: formData,
   });
   return parseResponse<BackupImportResponse>(response);
+}
+
+export async function clearWarehouseDataForImport(): Promise<BackupClearDataResponse> {
+  const response = await apiFetch('/api/wms/backup/reset-for-import', {
+    method: 'POST',
+  });
+  return parseResponse<BackupClearDataResponse>(response);
 }
 
 export async function listPlannings(filters?: {
