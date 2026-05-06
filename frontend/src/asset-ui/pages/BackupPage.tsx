@@ -1,7 +1,7 @@
 import { Download, RotateCcw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
-import { downloadWarehouseBackup, restoreWarehouseBackup } from '../../services/wmsApi';
+import { clearWarehouseDataForImport, downloadWarehouseBackup, restoreWarehouseBackup } from '../../services/wmsApi';
 
 type BackupPageProps = {
   onRestored: () => Promise<void>;
@@ -13,6 +13,7 @@ export function BackupPage({ onRestored }: BackupPageProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -68,6 +69,36 @@ export function BackupPage({ onRestored }: BackupPageProps) {
       setError(err instanceof Error ? err.message : 'Backup konnte nicht wiederhergestellt werden.');
     } finally {
       setIsRestoring(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    const approved = await confirm({
+      title: 'Systemdaten wirklich bereinigen?',
+      message:
+        'Dabei werden Inventar, Projekte, Einsatzplanung, Defekte, Tickets, Ein-/Auslagerungen, Kategorien und weitere gespeicherte WMS-Daten gelöscht. Der Admin-Zugang bleibt erhalten, damit du dich danach weiter anmelden und ein Backup importieren kannst.',
+      confirmLabel: 'Endgültig bereinigen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!approved) return;
+
+    setError(null);
+    setSuccess(null);
+    setIsClearing(true);
+    try {
+      const result = await clearWarehouseDataForImport();
+      await onRestored();
+      setSelectedFile(null);
+      setSuccess(result.message);
+      await alert({
+        title: 'Bereinigung abgeschlossen',
+        message: result.message,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Systemdaten konnten nicht bereinigt werden.');
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -137,6 +168,31 @@ export function BackupPage({ onRestored }: BackupPageProps) {
 
         {error ? <p className="text-sm text-rose-700">{error}</p> : null}
         {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
+      </article>
+
+      <article className="surface-card animate-fade-up space-y-4 border-rose-200/70">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">Datenbank bereinigen</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Bereinigt alle WMS-Daten, damit anschließend ein Backup sauber importiert werden kann. Der Admin-Zugang
+            bleibt erhalten.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Löscht alle Fach- und Bewegungsdaten, behält aber den Admin-Zugang.
+          </p>
+        </div>
+        <div>
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={isClearing || isRestoring}
+            onClick={() => {
+              void handleClearData();
+            }}
+          >
+            {isClearing ? 'Bereinigung läuft ...' : 'Systemdaten bereinigen'}
+          </button>
+        </div>
       </article>
     </section>
   );

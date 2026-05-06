@@ -755,6 +755,15 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
     item_rows = db.scalars(
         select(PlanningItemRecord).where(PlanningItemRecord.planning_day_id.in_(tuple(day_by_id.keys())))
     ).all()
+    if not item_rows:
+        return PlanningSummaryItem(
+            todayPlannedQty=0,
+            todayShortageCount=0,
+            todayShortageItems=[],
+            upcomingPlannedQty=0,
+            upcomingShortageCount=0,
+            categorySummaries=[],
+        )
 
     usable_by_category: dict[str, int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
@@ -764,16 +773,51 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
 
     demand_today: dict[str, int] = defaultdict(int)
     demand_upcoming: dict[str, int] = defaultdict(int)
+    explicit_qty_map: dict[tuple[int, date, str], int] = defaultdict(int)
+    max_qty_map: dict[tuple[int, str], int] = defaultdict(int)
+    categories_by_planning_id: dict[int, set[str]] = defaultdict(set)
+
     for item in item_rows:
         day = day_by_id.get(item.planning_day_id)
         if day is None:
             continue
         category = category_repository.normalize_category_for_db(db, item.category_key)
         qty = int(item.qty or 0)
-        if day.planning_date == today:
-            demand_today[category] += qty
-        if today <= day.planning_date <= upcoming_end:
-            demand_upcoming[category] += qty
+        planning_id = int(day.planning_id)
+        key = (planning_id, day.planning_date, category)
+        explicit_qty_map[key] += qty
+        max_qty_map[(planning_id, category)] = max(max_qty_map[(planning_id, category)], explicit_qty_map[key])
+        categories_by_planning_id[planning_id].add(category)
+
+    def period_end_exclusive(start_date: date, end_date: date) -> date:
+        if end_date > start_date:
+            return end_date
+        return start_date + timedelta(days=1)
+
+    def iter_bound_dates(start_date: date, end_date: date) -> list[date]:
+        dates: list[date] = []
+        cursor = start_date
+        end_exclusive = period_end_exclusive(start_date, end_date)
+        while cursor < end_exclusive:
+            dates.append(cursor)
+            cursor += timedelta(days=1)
+        return dates
+
+    for planning in planning_rows:
+        bound_dates = [day for day in iter_bound_dates(planning.start_date, planning.end_date) if today <= day <= upcoming_end]
+        if not bound_dates:
+            continue
+        for category in categories_by_planning_id.get(planning.id, set()):
+            default_qty = int(max_qty_map.get((planning.id, category), 0))
+            if default_qty <= 0:
+                continue
+            for planning_date in bound_dates:
+                planned_qty = int(explicit_qty_map.get((planning.id, planning_date, category), default_qty))
+                if planned_qty <= 0:
+                    continue
+                demand_upcoming[category] += planned_qty
+                if planning_date == today:
+                    demand_today[category] += planned_qty
 
     category_keys = sorted(set(demand_today) | set(demand_upcoming))
     category_summaries: list[PlanningSummaryCategoryItem] = []

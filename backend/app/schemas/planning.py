@@ -128,6 +128,8 @@ class PlanningAvailabilityItem(BaseModel):
     linkedPlanningLabel: str | None = None
     handoverNote: str | None = None
     handoverStatus: Literal["none", "planned", "missing_link"] = "none"
+    handoverCoveredQty: int = 0
+    shortageAfterHandoverQty: int = 0
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):

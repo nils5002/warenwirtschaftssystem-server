@@ -129,3 +129,8 @@ class WarehouseBackupPayload(BaseModel):
 
 class BackupImportResponse(BaseModel):
     imported: dict[str, int]
+
+
+class BackupClearDataResponse(BaseModel):
+    success: bool
+    message: str

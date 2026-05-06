@@ -18,9 +18,11 @@ from ..database.models import (
     PlanningRecord,
     ReservationRecord,
     UserRecord,
+    HardwareImportRunRecord,
+    HardwareImportRowErrorRecord,
 )
-from ..schemas.backup import BackupImportResponse, WarehouseBackupPayload
-from .auth_service import hash_password
+from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
+from .auth_service import ROLE_ADMIN, hash_password, normalize_role_for_db
 
 
 def export_backup(db: Session) -> WarehouseBackupPayload:
@@ -354,4 +356,60 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "locations": len(payload.locations),
             "plannings": len(payload.plannings),
         }
+    )
+
+
+def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> BackupClearDataResponse:
+    try:
+        users = db.scalars(select(UserRecord).order_by(UserRecord.id.asc())).all()
+        preserved_admin_ids: set[int] = {
+            user.id for user in users if normalize_role_for_db(user.role) == ROLE_ADMIN and bool(user.is_active)
+        }
+
+        keep_user = None
+        if keep_user_id:
+            keep_user = db.scalar(select(UserRecord).where(UserRecord.external_id == keep_user_id))
+            if keep_user is not None:
+                keep_user.role = ROLE_ADMIN
+                keep_user.is_active = True
+                keep_user.status = "Aktiv"
+                preserved_admin_ids.add(keep_user.id)
+
+        if not preserved_admin_ids:
+            fallback = keep_user or (users[0] if users else None)
+            if fallback is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bereinigung nicht möglich: Es gibt keinen Benutzer, der als Admin erhalten werden kann.",
+                )
+            fallback.role = ROLE_ADMIN
+            fallback.is_active = True
+            fallback.status = "Aktiv"
+            preserved_admin_ids.add(fallback.id)
+
+        db.execute(delete(PlanningItemRecord))
+        db.execute(delete(PlanningDayRecord))
+        db.execute(delete(PlanningRecord))
+        db.execute(delete(MaintenanceRecord))
+        db.execute(delete(ReservationRecord))
+        db.execute(delete(ActivityRecord))
+        db.execute(delete(AssetRecord))
+        db.execute(delete(LocationRecord))
+        db.execute(delete(CategoryRecord))
+        db.execute(delete(HardwareImportRowErrorRecord))
+        db.execute(delete(HardwareImportRunRecord))
+
+        db.execute(delete(UserRecord).where(UserRecord.id.notin_(preserved_admin_ids)))
+
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Systemdaten konnten nicht bereinigt werden.") from exc
+
+    return BackupClearDataResponse(
+        success=True,
+        message="Systemdaten wurden bereinigt. Der Admin-Zugang wurde beibehalten.",
     )
