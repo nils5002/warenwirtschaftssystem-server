@@ -264,6 +264,7 @@ await runStep('Einsatzplanung: Create/Edit/Availability/Duplicate/Delete', async
   await row.getByRole('button', { name: /Öffnen/, exact: false }).click();
 
   await page.locator('label:has-text("Projekt") input').first().fill(entities.planning.updatedProject);
+  await page.getByTestId('planning-item-qty-0-0').fill('5');
   const planningSave2 = page.waitForResponse(
     (response) => response.request().method() === 'PUT' && getPathname(response.url()) === `/api/wms/planning/${created.id}`,
     { timeout: 20000 },
@@ -271,6 +272,21 @@ await runStep('Einsatzplanung: Create/Edit/Availability/Duplicate/Delete', async
   await page.getByTestId('planning-save').click();
   const saveResp2 = await planningSave2;
   assertTrue(saveResp2.ok(), 'Update der Einsatzplanung fehlgeschlagen');
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
+
+  const updatedCalendarCard = page
+    .locator('button')
+    .filter({ hasText: entities.planning.updatedProject })
+    .filter({ hasText: 'Laptop 5' })
+    .first();
+  await updatedCalendarCard.waitFor({ timeout: 10000 });
+  await updatedCalendarCard.click();
+  await page.getByText(`Planung ${entities.planning.customer} · ${entities.planning.updatedProject}`).first().waitFor({
+    timeout: 10000,
+  });
+  const qtyAfterCalendarOpen = await page.getByTestId('planning-item-qty-0-0').inputValue();
+  assertTrue(qtyAfterCalendarOpen === '5', 'Kalender öffnet nicht die aktualisierte Planungsposition');
+  await page.getByRole('button', { name: 'Abbrechen', exact: true }).click();
 
   const duplicateResp = page.waitForResponse(
     (response) =>
