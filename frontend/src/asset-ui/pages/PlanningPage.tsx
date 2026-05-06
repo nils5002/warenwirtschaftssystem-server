@@ -1050,10 +1050,8 @@ export function PlanningPage({
       });
       if (selectId) {
         setSelectedId(selectId);
-      } else if (!selectedId && data[0]) {
-        setSelectedId(data[0].id);
       } else if (selectedId && !data.some((item) => item.id === selectedId)) {
-        setSelectedId(data[0]?.id ?? '');
+        setSelectedId('');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planungen konnten nicht geladen werden.');
@@ -1095,6 +1093,15 @@ export function PlanningPage({
       if (openPlanningRequestSeq.current !== requestSeq) return;
       setDetailLoading(false);
     }
+  };
+
+  const handlePlanningCardClick = (planningId: string) => {
+    if (detailModalOpen) return;
+    if (selectedId === planningId) {
+      setSelectedId('');
+      return;
+    }
+    void openPlanning(planningId);
   };
 
   const requestCalendarPlanningData = (planningIds: string[]) => {
@@ -1216,6 +1223,7 @@ export function PlanningPage({
     setEditor(null);
     setEditorInitial(null);
     setAvailability(null);
+    setSelectedId('');
   };
 
   useEffect(() => {
@@ -1332,9 +1340,11 @@ export function PlanningPage({
     setError(null);
     try {
       await updatePlanningStatus(planningId, status);
-      await loadPlannings(planningId);
       if (detailModalOpen && selectedId === planningId) {
+        await loadPlannings(planningId);
         await openPlanning(planningId, { showModal: false });
+      } else {
+        await loadPlannings();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Status konnte nicht gesetzt werden.');
@@ -1604,7 +1614,14 @@ export function PlanningPage({
             </select>
           </div>
 
-          <div className="soft-scrollbar mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1">
+          <div
+            className="soft-scrollbar mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1"
+            onClick={(event) => {
+              if (event.target === event.currentTarget && !detailModalOpen) {
+                setSelectedId('');
+              }
+            }}
+          >
             {!visiblePlannings.length && !listLoading ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
                 Noch keine passende Planung gefunden.
@@ -1620,15 +1637,26 @@ export function PlanningPage({
                 <div
                   key={item.id}
                   data-testid={`planning-row-${item.id}`}
-                  className={`rounded-xl border p-3 ${
+                  role="button"
+                  tabIndex={0}
+                  className={`cursor-pointer rounded-xl border p-3 ${
                     isActive
                       ? hasHandoverNetwork
                         ? handoverAccent.cardActive
-                        : 'border-brand-200 bg-brand-50/60'
+                        : 'border-brand-300 bg-brand-50/50 ring-1 ring-brand-200/80 dark:border-brand-700 dark:bg-brand-900/20 dark:ring-brand-700/60'
                       : hasHandoverNetwork
                         ? handoverAccent.card
                         : 'border-slate-200 bg-slate-50'
                   }`}
+                  onClick={() => {
+                    handlePlanningCardClick(item.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    handlePlanningCardClick(item.id);
+                  }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -1667,6 +1695,7 @@ export function PlanningPage({
                       value={item.status}
                       className="field-input h-9 text-xs"
                       disabled={!canEdit}
+                      onClick={(event) => event.stopPropagation()}
                       onChange={(event) => {
                         void changeStatus(item.id, event.target.value as PlanningStatus);
                       }}
@@ -1678,20 +1707,12 @@ export function PlanningPage({
                       ))}
                     </select>
                     <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        className="btn-secondary px-2 py-1 text-xs"
-                        onClick={() => {
-                          void openPlanning(item.id);
-                        }}
-                      >
-                        Öffnen
-                      </button>
                       {canEdit ? (
                         <button
                         type="button"
                         className="btn-secondary px-2 py-1 text-xs"
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           void duplicate(item.id);
                         }}
                       >
@@ -1702,7 +1723,8 @@ export function PlanningPage({
                         <button
                         type="button"
                         className="btn-danger px-2 py-1 text-xs"
-                        onClick={() => {
+                        onClick={(event) => {
+                          event.stopPropagation();
                           void deleteCurrent(item.id);
                         }}
                       >
