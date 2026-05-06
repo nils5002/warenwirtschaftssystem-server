@@ -629,7 +629,9 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         .where(PlanningRecord.external_id != planning_id)
         .where(PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES)))
         .where(PlanningRecord.start_date < _period_end_exclusive(planning.start_date, planning.end_date))
-        .where(PlanningRecord.end_date > planning.start_date)
+        # Include single-day plans where end_date == start_date so they participate in
+        # cross-project overlap calculations for that day.
+        .where(PlanningRecord.end_date >= planning.start_date)
     ).all()
     overlap_explicit_qty_map: dict[tuple[str, date, str], int] = defaultdict(int)
     overlap_default_qty_map: dict[tuple[str, str], int] = defaultdict(int)
@@ -736,6 +738,15 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         has_global_shortage = shortage_after_handover_qty > 0
         if shortage_qty > 0 and handover_enabled:
             handover_status = "planned" if linked_planning_id else "missing_link"
+        availability_state = _availability_state_with_handover(
+            remaining_after_all_planning + handover_covered_qty,
+            handover_covered_qty,
+        )
+        # A planned handover should not mask a shortage as green, but should be shown as
+        # "yellow / needs review" instead of "red / unmanaged".
+        if availability_state == "red" and shortage_qty > 0 and handover_enabled:
+            availability_state = "yellow"
+
         availability_items.append(
             PlanningAvailabilityItem(
                 planningDate=planning_date,
@@ -750,10 +761,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 otherPlannedQty=other_planned_qty,
                 totalPlannedQtyForDateCategory=total_planned_qty_for_date_category,
                 remainingAfterAllPlanning=remaining_after_all_planning + handover_covered_qty,
-                availabilityState=_availability_state_with_handover(
-                    remaining_after_all_planning + handover_covered_qty,
-                    handover_covered_qty,
-                ),
+                availabilityState=availability_state,
                 shortageQty=shortage_after_handover_qty,
                 hasGlobalShortage=has_global_shortage,
                 affectedPlanningIds=sorted(overlap_planning_ids_map.get((planning_date, category), set())),

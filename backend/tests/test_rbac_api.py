@@ -338,15 +338,17 @@ def test_last_active_admin_cannot_be_deleted() -> None:
         _set_users_status([payload["id"]], "Inaktiv")
 
 
-def test_planning_permissions_and_project_scope() -> None:
+def test_planning_permissions_and_global_visibility() -> None:
     client = TestClient(app)
     suffix = uuid4().hex[:6]
+    nina_user_id = f"pm-nina-{suffix}"
+    nils_user_id = f"pm-nils-{suffix}"
     today = date.today()
     payload = {
         "customerName": f"Kunde RBAC {suffix}",
         "projectName": f"Projekt RBAC {suffix}",
         "eventName": "E2E RBAC",
-        "projectManagerUserId": f"pm-{suffix}",
+        "projectManagerUserId": nina_user_id,
         "calendarWeek": today.isocalendar().week,
         "startDate": today.isoformat(),
         "endDate": (today + timedelta(days=1)).isoformat(),
@@ -366,18 +368,46 @@ def test_planning_permissions_and_project_scope() -> None:
 
     created = client.post(
         "/api/wms/planning",
-        headers=_headers("Projektmanager", user_id=f"pm-{suffix}"),
+        headers=_headers("Projektmanager", user_id=nina_user_id),
         json=payload,
     )
     assert created.status_code == 200
+    assert created.json()["projectManagerUserId"] == nina_user_id
     planning_id = created.json()["id"]
 
-    no_scope_list = client.get("/api/wms/planning", headers=_headers("Mitarbeiter"))
-    assert no_scope_list.status_code == 403
+    nils_list = client.get("/api/wms/planning", headers=_headers("Projektmanager", user_id=nils_user_id))
+    assert nils_list.status_code == 200
+    assert any(item["id"] == planning_id for item in nils_list.json())
 
-    scoped_list = client.get("/api/wms/planning", headers=_headers("Mitarbeiter", project_context=f"Projekt RBAC {suffix}"))
-    assert scoped_list.status_code == 200
-    assert any(item["id"] == planning_id for item in scoped_list.json())
+    nils_detail = client.get(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Projektmanager", user_id=nils_user_id),
+    )
+    assert nils_detail.status_code == 200
+    assert nils_detail.json()["id"] == planning_id
+
+    nils_availability = client.get(
+        f"/api/wms/planning/{planning_id}/availability",
+        headers=_headers("Projektmanager", user_id=nils_user_id),
+    )
+    assert nils_availability.status_code == 200
+    assert nils_availability.json()["planningId"] == planning_id
+
+    admin_list = client.get("/api/wms/planning", headers=_headers("Admin", user_id=f"admin-{suffix}"))
+    assert admin_list.status_code == 200
+    assert any(item["id"] == planning_id for item in admin_list.json())
+
+    techniker_list = client.get("/api/wms/planning", headers=_headers("Techniker", user_id=f"tech-{suffix}"))
+    assert techniker_list.status_code == 200
+    assert any(item["id"] == planning_id for item in techniker_list.json())
+
+    mitarbeiter_list = client.get("/api/wms/planning", headers=_headers("Mitarbeiter", user_id=f"mit-{suffix}"))
+    assert mitarbeiter_list.status_code == 200
+    assert any(item["id"] == planning_id for item in mitarbeiter_list.json())
+
+    junior_list = client.get("/api/wms/planning", headers=_headers("Junior", user_id=f"junior-{suffix}"))
+    assert junior_list.status_code == 200
+    assert any(item["id"] == planning_id for item in junior_list.json())
 
     cleanup = client.delete(f"/api/wms/planning/{planning_id}", headers=_headers("Admin"))
     assert cleanup.status_code == 200
