@@ -8,7 +8,7 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { PlanningCalendarAddOn } from './PlanningCalendarAddOn';
@@ -395,6 +395,7 @@ export function PlanningPage({
   const [calendarAvailabilitiesByPlanningId, setCalendarAvailabilitiesByPlanningId] = useState<
     Record<string, PlanningAvailabilityResponse>
   >({});
+  const openPlanningRequestSeq = useRef(0);
   const [createForm, setCreateForm] = useState({
     customerName: '',
     projectName: '',
@@ -1029,6 +1030,21 @@ export function PlanningPage({
     try {
       const data = await listPlannings();
       setPlannings(data);
+      const visiblePlanningIds = new Set(data.map((item) => item.id));
+      setPlanningListDetails((current) => {
+        const next: Record<string, PlanningResponse> = {};
+        for (const [planningId, details] of Object.entries(current)) {
+          if (visiblePlanningIds.has(planningId)) next[planningId] = details;
+        }
+        return next;
+      });
+      setCalendarAvailabilitiesByPlanningId((current) => {
+        const next: Record<string, PlanningAvailabilityResponse> = {};
+        for (const [planningId, planningAvailability] of Object.entries(current)) {
+          if (visiblePlanningIds.has(planningId)) next[planningId] = planningAvailability;
+        }
+        return next;
+      });
       if (selectId) {
         setSelectedId(selectId);
       } else if (!selectedId && data[0]) {
@@ -1044,6 +1060,10 @@ export function PlanningPage({
   };
 
   const openPlanning = async (planningId: string, options?: { showModal?: boolean }) => {
+    // Ursache des Bugs: Mehrere schnelle Klicks konnten asynchron in falscher Reihenfolge zurückkommen
+    // und damit Editor/Availability mit Daten eines anderen Projekts überschreiben.
+    const requestSeq = openPlanningRequestSeq.current + 1;
+    openPlanningRequestSeq.current = requestSeq;
     setSelectedId(planningId);
     if (options?.showModal ?? true) {
       setDetailModalOpen(true);
@@ -1056,12 +1076,20 @@ export function PlanningPage({
         getPlanningAvailability(planningId),
       ]);
       const editable = toEditablePlanning(planning);
+      if (openPlanningRequestSeq.current !== requestSeq) return;
       setEditor(editable);
       setEditorInitial(cloneEditablePlanning(editable));
       setAvailability(planningAvailability);
+      setPlanningListDetails((current) => ({ ...current, [planning.id]: planning }));
+      setCalendarAvailabilitiesByPlanningId((current) => ({
+        ...current,
+        [planningAvailability.planningId || planning.id]: planningAvailability,
+      }));
     } catch (err) {
+      if (openPlanningRequestSeq.current !== requestSeq) return;
       setError(err instanceof Error ? err.message : 'Planungsdetail konnte nicht geladen werden.');
     } finally {
+      if (openPlanningRequestSeq.current !== requestSeq) return;
       setDetailLoading(false);
     }
   };
@@ -1105,7 +1133,9 @@ export function PlanningPage({
         setCalendarAvailabilitiesByPlanningId((current) => {
           const next = { ...current };
           for (const result of results) {
-            if (result) next[result.planningId] = result.planningAvailability;
+            if (!result) continue;
+            const responsePlanningId = result.planningAvailability.planningId || result.planningId;
+            next[responsePlanningId] = result.planningAvailability;
           }
           return next;
         });
@@ -1141,6 +1171,11 @@ export function PlanningPage({
       setEditor(savedEditor);
       setEditorInitial(cloneEditablePlanning(savedEditor));
       setAvailability(planningAvailability);
+      setPlanningListDetails((current) => ({ ...current, [freshPlanning.id]: freshPlanning }));
+      setCalendarAvailabilitiesByPlanningId((current) => ({
+        ...current,
+        [planningAvailability.planningId || freshPlanning.id]: planningAvailability,
+      }));
       return savedEditor;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht gespeichert werden.');
@@ -1269,6 +1304,18 @@ export function PlanningPage({
         setEditor(null);
         setAvailability(null);
       }
+      setPlanningListDetails((current) => {
+        if (!current[planningId]) return current;
+        const next = { ...current };
+        delete next[planningId];
+        return next;
+      });
+      setCalendarAvailabilitiesByPlanningId((current) => {
+        if (!current[planningId]) return current;
+        const next = { ...current };
+        delete next[planningId];
+        return next;
+      });
       await loadPlannings();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht gelöscht werden.');
