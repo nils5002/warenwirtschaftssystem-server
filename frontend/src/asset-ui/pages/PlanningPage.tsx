@@ -202,42 +202,44 @@ function getPeriodEndExclusiveIso(startDate: string, endDate: string): string {
   return toIsoDate(start);
 }
 
-function buildDaysInRange(startDate: string, endDate: string): EditablePlanning['days'] {
-  if (!startDate || !endDate) return [];
-  const start = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
-    return [];
+function mergeRangeItemsFromDays(
+  sourceDays: EditablePlanning['days'],
+): EditablePlanning['days'][number]['items'] {
+  const grouped = new Map<string, EditablePlanning['days'][number]['items'][number]>();
+  for (const day of sourceDays) {
+    for (const item of day.items) {
+      const categoryKey = normalizeCategory(item.categoryKey);
+      if (!categoryKey) continue;
+      const current = grouped.get(categoryKey);
+      if (!current) {
+        grouped.set(categoryKey, { ...item, categoryKey });
+        continue;
+      }
+      grouped.set(categoryKey, {
+        ...current,
+        qty: Math.max(current.qty, item.qty),
+        notes: current.notes || item.notes,
+        handoverEnabled: current.handoverEnabled || item.handoverEnabled,
+        linkedPlanningId: current.linkedPlanningId || item.linkedPlanningId,
+        handoverNote: current.handoverNote || item.handoverNote,
+      });
+    }
   }
-  const endExclusive = new Date(`${getPeriodEndExclusiveIso(startDate, endDate)}T00:00:00`);
-  const days: EditablePlanning['days'] = [];
-  const cursor = new Date(start);
-  while (cursor < endExclusive) {
-    const iso = toIsoDate(cursor);
-    days.push({
-      planningDate: iso,
-      weekday: getGermanWeekday(iso),
-      items: [],
-    });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return days;
+  return Array.from(grouped.values()).sort((a, b) => a.categoryKey.localeCompare(b.categoryKey, 'de'));
 }
 
-function alignDaysToProjectRange(
+function buildRangePlanningDays(
   startDate: string,
-  endDate: string,
-  sourceDays: EditablePlanning['days'],
+  sourceDays: EditablePlanning['days'] = [],
 ): EditablePlanning['days'] {
-  const itemsByDate = new Map<string, EditablePlanning['days'][number]['items']>();
-  for (const day of sourceDays) {
-    if (!day.planningDate || itemsByDate.has(day.planningDate)) continue;
-    itemsByDate.set(day.planningDate, day.items);
-  }
-  return buildDaysInRange(startDate, endDate).map((day) => ({
-    ...day,
-    items: itemsByDate.get(day.planningDate) ?? [],
-  }));
+  if (!startDate) return [];
+  return [
+    {
+      planningDate: startDate,
+      weekday: getGermanWeekday(startDate),
+      items: mergeRangeItemsFromDays(sourceDays),
+    },
+  ];
 }
 
 function toEditablePlanning(item: PlanningResponse): EditablePlanning {
@@ -267,7 +269,7 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
     endDate: item.endDate,
     notes: item.notes,
     status: item.status === 'Bestaetigt' ? 'Bestätigt' : item.status,
-    days: alignDaysToProjectRange(item.startDate, item.endDate, normalizedDays),
+    days: buildRangePlanningDays(item.startDate, normalizedDays),
   };
 }
 
@@ -412,10 +414,26 @@ export function PlanningPage({
 
   const planningListItemById = useMemo(() => new Map(plannings.map((item) => [item.id, item])), [plannings]);
 
-  const availabilityByDayCategory = useMemo(() => {
+  const availabilityByCategoryForRange = useMemo(() => {
     const map = new Map<string, PlanningAvailabilityResponse['items'][number]>();
+    const rank = (item: PlanningAvailabilityResponse['items'][number]) => {
+      if (item.hasGlobalShortage || item.shortageQty > 0 || item.remainingAfterAllPlanning < 0) return 3;
+      if (item.handoverStatus === 'missing_link') return 2;
+      if (Number(item.handoverCoveredQty ?? 0) > 0 || item.handoverStatus === 'planned') return 1;
+      return 0;
+    };
     for (const item of availability?.items ?? []) {
-      map.set(`${item.planningDate}|${normalizeCategory(item.categoryKey)}`, item);
+      const key = normalizeCategory(item.categoryKey);
+      const current = map.get(key);
+      if (!current) {
+        map.set(key, item);
+        continue;
+      }
+      const currentRank = rank(current);
+      const nextRank = rank(item);
+      if (nextRank > currentRank || (nextRank === currentRank && item.shortageQty > current.shortageQty)) {
+        map.set(key, item);
+      }
     }
     return map;
   }, [availability]);
@@ -433,8 +451,17 @@ export function PlanningPage({
     if (!editor) return map;
     for (const day of editor.days) {
       for (const item of day.items) {
-        const key = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
+        const category = normalizeCategory(item.categoryKey);
+        const key = `${day.planningDate}|${category}`;
         map.set(key, {
+          handoverEnabled: item.handoverEnabled,
+          linkedPlanningId: item.linkedPlanningId,
+          linkedPlanningLabel: item.linkedPlanningId
+            ? buildPlanningFallbackLabel(item.linkedPlanningId, plannings)
+            : undefined,
+          handoverNote: item.handoverNote,
+        });
+        map.set(`*|${category}`, {
           handoverEnabled: item.handoverEnabled,
           linkedPlanningId: item.linkedPlanningId,
           linkedPlanningLabel: item.linkedPlanningId
@@ -512,6 +539,14 @@ export function PlanningPage({
               note: item.handoverNote ?? '',
             });
           }
+          const anyDayKey = `*|${normalizeCategory(item.categoryKey)}`;
+          if (!map.has(anyDayKey)) {
+            map.set(anyDayKey, {
+              partnerPlanningId: planning.id,
+              partnerLabel: planningLabel,
+              note: item.handoverNote ?? '',
+            });
+          }
         }
       }
     }
@@ -523,9 +558,10 @@ export function PlanningPage({
     const map = new Map<string, AvailabilityVisual>();
 
     for (const item of availability?.items ?? []) {
-      const key = `${item.planningDate}|${normalizeCategory(item.categoryKey)}`;
-      const localHandover = localHandoverByDayCategory.get(key);
-      const incomingHandover = incomingHandoverByDayCategory.get(key);
+      const normalizedCategory = normalizeCategory(item.categoryKey);
+      const key = `${item.planningDate}|${normalizedCategory}`;
+      const localHandover = localHandoverByDayCategory.get(key) ?? localHandoverByDayCategory.get(`*|${normalizedCategory}`);
+      const incomingHandover = incomingHandoverByDayCategory.get(key) ?? incomingHandoverByDayCategory.get(`*|${normalizedCategory}`);
       const effectiveHandoverEnabled = localHandover?.handoverEnabled ?? Boolean(item.handoverEnabled);
       const effectiveLinkedPlanningId = localHandover?.linkedPlanningId ?? (item.linkedPlanningId || '');
       const linkedPlanning =
@@ -624,6 +660,30 @@ export function PlanningPage({
       }),
     [availabilityVisualMap],
   );
+
+  const availabilityVisualByCategoryForRange = useMemo(() => {
+    const map = new Map<string, AvailabilityVisual>();
+    const rank = (item: AvailabilityVisual) => {
+      if (item.status === 'open') return 3;
+      if (item.status === 'review') return 2;
+      if (item.status === 'handover') return 1;
+      return 0;
+    };
+    for (const item of availabilityVisuals) {
+      const key = normalizeCategory(item.categoryKey);
+      const current = map.get(key);
+      if (!current) {
+        map.set(key, item);
+        continue;
+      }
+      const currentRank = rank(current);
+      const nextRank = rank(item);
+      if (nextRank > currentRank || (nextRank === currentRank && item.shortageQty > current.shortageQty)) {
+        map.set(key, item);
+      }
+    }
+    return map;
+  }, [availabilityVisuals]);
 
   const planningStats = useMemo(() => {
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
@@ -1105,7 +1165,7 @@ export function PlanningPage({
         endDate: createForm.endDate,
         notes: createForm.notes,
         status: createForm.status,
-        days: buildDaysInRange(createForm.startDate, createForm.endDate),
+        days: buildRangePlanningDays(createForm.startDate),
       });
       setCreateOpen(false);
       setCreateForm((current) => ({
@@ -1194,13 +1254,18 @@ export function PlanningPage({
 
   const findPlanningItemPosition = (planningDate: string, categoryKey: string) => {
     if (!editor) return null;
+    const normalizedTarget = normalizeCategory(categoryKey);
     for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
-      if (editor.days[dayIndex].planningDate !== planningDate) continue;
+      if (editor.days[dayIndex].planningDate !== planningDate && editor.days[dayIndex].planningDate !== editor.startDate) continue;
       const itemIndex = editor.days[dayIndex].items.findIndex(
-        (item) => normalizeCategory(item.categoryKey) === normalizeCategory(categoryKey),
+        (item) => normalizeCategory(item.categoryKey) === normalizedTarget,
       );
       if (itemIndex >= 0) return { dayIndex, itemIndex };
     }
+    const fallbackIndex = editor.days[0]?.items.findIndex(
+      (item) => normalizeCategory(item.categoryKey) === normalizedTarget,
+    );
+    if (typeof fallbackIndex === 'number' && fallbackIndex >= 0) return { dayIndex: 0, itemIndex: fallbackIndex };
     return null;
   };
 
@@ -1298,7 +1363,7 @@ export function PlanningPage({
           <div>
             <p className="page-kicker">Einsatzplanung</p>
             <h2 className="page-title">Projektbezogene Hardwareplanung</h2>
-            <p className="page-subtitle">Bedarf pro Tag planen, Summen prüfen und Engpässe direkt sehen.</p>
+            <p className="page-subtitle">Bedarf für den gesamten Projektzeitraum planen, Summen prüfen und Engpässe direkt sehen.</p>
           </div>
           {canEdit ? (
             <button type="button" data-testid="planning-create" className="btn-primary" onClick={() => setCreateOpen(true)}>
@@ -1639,7 +1704,7 @@ export function PlanningPage({
                           return {
                             ...current,
                             startDate: nextStartDate,
-                            days: alignDaysToProjectRange(nextStartDate, current.endDate, current.days),
+                            days: buildRangePlanningDays(nextStartDate, current.days),
                           };
                         })
                       }
@@ -1657,7 +1722,7 @@ export function PlanningPage({
                           return {
                             ...current,
                             endDate: nextEndDate,
-                            days: alignDaysToProjectRange(current.startDate, nextEndDate, current.days),
+                            days: buildRangePlanningDays(current.startDate, current.days),
                           };
                         })
                       }
@@ -1723,13 +1788,14 @@ export function PlanningPage({
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <h4 className="font-semibold text-slate-900">Tagesplanung</h4>
+                  <h4 className="font-semibold text-slate-900">Hardwareplanung im Zeitraum</h4>
                   <p className="text-xs text-slate-500">Automatisch aus Start- und Enddatum</p>
                 </div>
 
                 <div className="soft-scrollbar max-h-[560px] space-y-3 overflow-y-auto pr-1">
                   {editor.days.map((day, dayIndex) => {
                     const dayTotal = day.items.reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0)), 0);
+                    const periodLabel = `${formatGermanDate(editor.startDate)} – ${formatGermanDate(editor.endDate)}`;
                     return (
                       <div
                         key={`${day.planningDate}-${dayIndex}`}
@@ -1739,24 +1805,21 @@ export function PlanningPage({
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div className="inline-flex items-center gap-2">
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
-                              {formatGermanDate(day.planningDate)}
-                            </span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
-                              {day.weekday}
+                              {periodLabel}
                             </span>
                           </div>
                           <div className="inline-flex items-center gap-2">
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
-                              Bedarf {dayTotal}
+                              Zeitraum-Bedarf {dayTotal}
                             </span>
                           </div>
                         </div>
 
                         <div className="space-y-2">
                           {day.items.map((item, itemIndex) => {
-                            const availabilityKey = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
-                            const availabilityItem = availabilityByDayCategory.get(availabilityKey);
-                            const visual = availabilityVisualMap.get(availabilityKey);
+                            const normalizedCategory = normalizeCategory(item.categoryKey);
+                            const availabilityItem = availabilityByCategoryForRange.get(normalizedCategory);
+                            const visual = availabilityVisualByCategoryForRange.get(normalizedCategory);
                             const editorKey = handoverKey(dayIndex, itemIndex);
                             const editorOpen = handoverEditorKey === editorKey;
                             return (
@@ -1905,7 +1968,7 @@ export function PlanningPage({
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed text-rose-800 dark:text-rose-100">
-                                          {visual.categoryKey} · {visual.shortageQty} Stück fehlen am {formatGermanDate(day.planningDate)}.
+                                          {visual.categoryKey} · {visual.shortageQty} Stück fehlen im Projektzeitraum.
                                         </p>
                                         <p className="mt-2 leading-relaxed text-rose-800 dark:text-rose-100">
                                           Für diese Position gibt es aktuell keinen erklärten Übergabe-Verbund. Hier besteht Handlungsbedarf.
@@ -2180,7 +2243,7 @@ export function PlanningPage({
                             }
                           >
                             <Plus className="h-3.5 w-3.5" />
-                            Position
+                            + Position
                           </button>
                         </div>
                       </div>
