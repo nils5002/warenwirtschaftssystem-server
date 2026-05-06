@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
 import { printMultipleLabels, type LabelInput, type MassLabelSettings } from '../printLabels';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 
 type MassPrintPageProps = {
   assets: Asset[];
@@ -76,6 +77,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [printError, setPrintError] = useState<string | null>(null);
   const [labelSettings, setLabelSettings] = useState<MassLabelSettings>(() => loadStoredSettings());
   const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>('');
+  const [previewQrLoading, setPreviewQrLoading] = useState(false);
 
   const categories = useMemo(() => {
     return ['Alle Kategorien', ...Array.from(new Set(assets.map((asset) => asset.category).filter(Boolean)))];
@@ -124,19 +126,27 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   useEffect(() => {
     if (!previewAsset) {
       setPreviewQrDataUrl('');
+      setPreviewQrLoading(false);
       return;
     }
     let cancelled = false;
+    setPreviewQrLoading(true);
     void QRCode.toDataURL(getAssetQrCode(previewAsset), {
       width: 360,
       margin: 0,
       color: { dark: '#000000', light: '#ffffff' },
     }).then(
       (url) => {
-        if (!cancelled) setPreviewQrDataUrl(url);
+        if (!cancelled) {
+          setPreviewQrDataUrl(url);
+          setPreviewQrLoading(false);
+        }
       },
       () => {
-        if (!cancelled) setPreviewQrDataUrl('');
+        if (!cancelled) {
+          setPreviewQrDataUrl('');
+          setPreviewQrLoading(false);
+        }
       },
     );
     return () => {
@@ -409,6 +419,8 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
             {printError}
           </div>
         ) : null}
+        {previewQrLoading ? <InlineLoadingState message="QR-Vorschau wird vorbereitet ..." /> : null}
+        {isPrinting ? <InlineLoadingState message="Druckdaten werden erzeugt ..." /> : null}
 
         <div className="soft-scrollbar max-h-[50vh] space-y-2 overflow-y-auto pr-1">
           {filteredAssets.map((asset) => {
@@ -458,17 +470,19 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
         </div>
 
         <div className="flex justify-end">
-          <button
+          <LoadingButton
             type="button"
             className="btn-primary"
             disabled={!selectedIds.length || isPrinting}
             onClick={() => {
               void printSelected();
             }}
+            isLoading={isPrinting}
+            loadingText="Druckdaten werden erzeugt ..."
           >
             <Printer className="h-4 w-4" />
-            {isPrinting ? 'Druckansicht wird erstellt...' : 'Ausgewählte QR-Codes drucken'}
-          </button>
+            Ausgewählte QR-Codes drucken
+          </LoadingButton>
         </div>
       </article>
     </section>

@@ -1,6 +1,7 @@
 import { KeyRound, Shield, Trash2, UserPlus, Users2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { StatusBadge } from '../components/StatusBadge';
 import type { ActivityItem, Asset, UserItem } from '../types';
 
@@ -433,20 +434,22 @@ export function UsersPage({
               >
                 Auswahl aufheben
               </button>
-              <button
+              <LoadingButton
                 type="button"
                 className="btn-danger px-2.5 py-1.5 text-xs"
                 onClick={() => void bulkDeleteSelected()}
-                disabled={bulkDeleting}
+                isLoading={bulkDeleting}
+                loadingText="Lösche ..."
               >
                 <span className="inline-flex items-center gap-1">
                   <Trash2 className="h-3.5 w-3.5" />
-                  {bulkDeleting ? 'Lösche...' : 'Ausgewählte Benutzer löschen'}
+                  Ausgewählte Benutzer löschen
                 </span>
-              </button>
+              </LoadingButton>
             </div>
           </div>
         ) : null}
+        {bulkDeleting ? <InlineLoadingState className="mb-3" message="Benutzer werden gelöscht ..." /> : null}
 
         <div className="soft-scrollbar hidden overflow-x-auto md:block">
           <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-sm">
@@ -513,19 +516,21 @@ export function UsersPage({
                       <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
                         Bearbeiten
                       </button>
-                      <button
+                      <LoadingButton
                         type="button"
                         className="btn-secondary border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                         onClick={() => {
                           void removeUser(user);
                         }}
-                        disabled={deletingUserId === user.id || user.id === currentUserId}
+                        disabled={user.id === currentUserId}
+                        isLoading={deletingUserId === user.id}
+                        loadingText="Lösche ..."
                       >
                         <span className="inline-flex items-center gap-1">
                           <Trash2 className="h-3.5 w-3.5" />
-                          {user.id === currentUserId ? 'Eigener Account' : deletingUserId === user.id ? 'Lösche...' : 'Löschen'}
+                          {user.id === currentUserId ? 'Eigener Account' : 'Löschen'}
                         </span>
-                      </button>
+                      </LoadingButton>
                     </div>
                   </td>
                 </tr>
@@ -573,19 +578,21 @@ export function UsersPage({
               <button type="button" className="btn-secondary mt-3 px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
                 Bearbeiten
               </button>
-              <button
+              <LoadingButton
                 type="button"
                 className="btn-secondary mt-2 border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => {
                   void removeUser(user);
                 }}
-                disabled={deletingUserId === user.id || user.id === currentUserId}
+                disabled={user.id === currentUserId}
+                isLoading={deletingUserId === user.id}
+                loadingText="Lösche ..."
               >
                 <span className="inline-flex items-center gap-1">
                   <Trash2 className="h-3.5 w-3.5" />
-                  {user.id === currentUserId ? 'Eigener Account' : deletingUserId === user.id ? 'Lösche...' : 'Löschen'}
+                  {user.id === currentUserId ? 'Eigener Account' : 'Löschen'}
                 </span>
-              </button>
+              </LoadingButton>
             </article>
             );
           })}
@@ -661,6 +668,7 @@ export function UsersPage({
             {error ? (
               <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
             ) : null}
+            {saving ? <InlineLoadingState className="mb-3" message="Benutzer wird gespeichert ..." /> : null}
 
             <div className="space-y-3">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -756,9 +764,9 @@ export function UsersPage({
               <button type="button" className="btn-secondary" onClick={closeForm}>
                 Abbrechen
               </button>
-              <button type="button" className="btn-primary" onClick={() => void submit()} disabled={saving}>
-                {saving ? 'Speichern...' : 'Speichern'}
-              </button>
+              <LoadingButton type="button" className="btn-primary" onClick={() => void submit()} isLoading={saving} loadingText="Speichern ...">
+                Speichern
+              </LoadingButton>
             </div>
           </div>
         </div>

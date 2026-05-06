@@ -1,6 +1,7 @@
 import { Eye, Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { getAssetQrCode } from '../qr';
@@ -323,17 +324,23 @@ export function AssetsPage({
     }
     setBulkActionBusy(true);
     setBulkActionError(null);
-    for (const assetId of selectedIds) {
-      onAdminUpdateAsset(assetId, {
-        ...(bulkForm.status ? { status: bulkForm.status } : {}),
-        ...(bulkForm.category.trim() ? { category: bulkForm.category.trim() } : {}),
-        ...(bulkForm.location.trim() ? { location: bulkForm.location.trim() } : {}),
-      });
+    try {
+      for (const assetId of selectedIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await onAdminUpdateAsset(assetId, {
+          ...(bulkForm.status ? { status: bulkForm.status } : {}),
+          ...(bulkForm.category.trim() ? { category: bulkForm.category.trim() } : {}),
+          ...(bulkForm.location.trim() ? { location: bulkForm.location.trim() } : {}),
+        });
+      }
+      closeBulkModal();
+      setSelectedIds([]);
+      await alert({ title: 'Bulk-Update', message: 'Die markierten Assets wurden aktualisiert.' });
+    } catch {
+      setBulkActionError('Bulk-Update fehlgeschlagen.');
+    } finally {
+      setBulkActionBusy(false);
     }
-    setBulkActionBusy(false);
-    closeBulkModal();
-    setSelectedIds([]);
-    await alert({ title: 'Bulk-Update', message: 'Die markierten Assets wurden aktualisiert.' });
   };
 
   const applyBulkDelete = async () => {
@@ -364,13 +371,18 @@ export function AssetsPage({
     }
     setBulkActionBusy(true);
     setBulkActionError(null);
-    for (const assetId of selectedIds) {
-      // eslint-disable-next-line no-await-in-loop
-      await onAdminDeleteAsset(assetId);
+    try {
+      for (const assetId of selectedIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await onAdminDeleteAsset(assetId);
+      }
+      closeBulkModal();
+      setSelectedIds([]);
+    } catch {
+      setBulkActionError('Bulk-Löschen fehlgeschlagen.');
+    } finally {
+      setBulkActionBusy(false);
     }
-    setBulkActionBusy(false);
-    closeBulkModal();
-    setSelectedIds([]);
   };
 
   const runAdminDeleteAsset = async (asset: Asset) => {
@@ -1018,6 +1030,7 @@ export function AssetsPage({
                 {adminActionError}
               </div>
             ) : null}
+            {adminActionBusy ? <InlineLoadingState className="mb-3" message="Änderungen werden gespeichert ..." /> : null}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <div className="space-y-3">
@@ -1050,15 +1063,15 @@ export function AssetsPage({
                       />
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" className="btn-secondary text-xs" disabled={adminActionBusy} onClick={() => void applyAdminStatus()}>
+                      <LoadingButton type="button" className="btn-secondary text-xs" isLoading={adminActionBusy} loadingText="Speichert ..." onClick={() => void applyAdminStatus()}>
                         Status speichern
-                      </button>
-                      <button type="button" className="btn-secondary text-xs" disabled={adminActionBusy} onClick={() => void applyAdminSetMaintenance()}>
+                      </LoadingButton>
+                      <LoadingButton type="button" className="btn-secondary text-xs" isLoading={adminActionBusy} loadingText="Setzt ..." onClick={() => void applyAdminSetMaintenance()}>
                         In Wartung setzen
-                      </button>
-                      <button type="button" className="btn-danger text-xs" disabled={adminActionBusy} onClick={() => void applyAdminSetDefect()}>
+                      </LoadingButton>
+                      <LoadingButton type="button" className="btn-danger text-xs" isLoading={adminActionBusy} loadingText="Setzt ..." onClick={() => void applyAdminSetDefect()}>
                         Defekt setzen
-                      </button>
+                      </LoadingButton>
                     </div>
                   </div>
                 </div>
@@ -1108,12 +1121,12 @@ export function AssetsPage({
                       />
                     </label>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" className="btn-secondary text-xs" disabled={adminActionBusy} onClick={() => void applyAdminAssignment()}>
+                      <LoadingButton type="button" className="btn-secondary text-xs" isLoading={adminActionBusy} loadingText="Speichert ..." onClick={() => void applyAdminAssignment()}>
                         Zuordnung speichern
-                      </button>
-                      <button type="button" className="btn-secondary text-xs" disabled={adminActionBusy} onClick={() => void applyAdminReset()}>
+                      </LoadingButton>
+                      <LoadingButton type="button" className="btn-secondary text-xs" isLoading={adminActionBusy} loadingText="Setzt zurück ..." onClick={() => void applyAdminReset()}>
                         Reset auf verfügbar
-                      </button>
+                      </LoadingButton>
                     </div>
                   </div>
                 </div>
@@ -1134,9 +1147,9 @@ export function AssetsPage({
                         }
                       />
                     </label>
-                    <button type="button" className="btn-secondary text-xs" disabled={adminActionBusy} onClick={() => void applyAdminProjectCorrection()}>
+                    <LoadingButton type="button" className="btn-secondary text-xs" isLoading={adminActionBusy} loadingText="Speichert ..." onClick={() => void applyAdminProjectCorrection()}>
                       Projekt/Buchung korrigieren
-                    </button>
+                    </LoadingButton>
                   </div>
                 </div>
 
@@ -1160,10 +1173,10 @@ export function AssetsPage({
                     <button type="button" className="btn-secondary text-xs" onClick={() => onOpenDetail(adminActionAsset.id)}>
                       Asset bearbeiten
                     </button>
-                    <button type="button" className="btn-danger text-xs" disabled={adminActionBusy} onClick={() => void applyAdminDeleteFromModal()}>
+                    <LoadingButton type="button" className="btn-danger text-xs" isLoading={adminActionBusy} loadingText="Löscht ..." onClick={() => void applyAdminDeleteFromModal()}>
                       <Trash2 className="h-3.5 w-3.5" />
                       Asset löschen
-                    </button>
+                    </LoadingButton>
                   </div>
                 </div>
               </div>
@@ -1197,6 +1210,7 @@ export function AssetsPage({
                 {bulkActionError}
               </div>
             ) : null}
+            {bulkActionBusy ? <InlineLoadingState className="mb-3" message="Bulk-Aktion wird ausgeführt ..." /> : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -1218,9 +1232,9 @@ export function AssetsPage({
                       <option value="Defekt">Defekt markieren</option>
                     </select>
                   </label>
-                  <button type="button" className="btn-secondary text-xs" disabled={bulkActionBusy} onClick={() => void applyBulkUpdate()}>
+                  <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
                     Status anwenden
-                  </button>
+                  </LoadingButton>
                 </div>
               </div>
 
@@ -1251,9 +1265,9 @@ export function AssetsPage({
                       onChange={(event) => setBulkForm((current) => ({ ...current, location: event.target.value }))}
                     />
                   </label>
-                  <button type="button" className="btn-secondary text-xs" disabled={bulkActionBusy} onClick={() => void applyBulkUpdate()}>
+                  <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
                     Stammdaten anwenden
-                  </button>
+                  </LoadingButton>
                 </div>
               </div>
 
@@ -1271,10 +1285,10 @@ export function AssetsPage({
                     onChange={(event) => setBulkForm((current) => ({ ...current, deleteConfirm: event.target.value }))}
                   />
                 </label>
-                <button type="button" className="btn-danger mt-2 text-xs" disabled={bulkActionBusy} onClick={() => void applyBulkDelete()}>
+                <LoadingButton type="button" className="btn-danger mt-2 text-xs" isLoading={bulkActionBusy} loadingText="Löscht ..." onClick={() => void applyBulkDelete()}>
                   <Trash2 className="h-3.5 w-3.5" />
                   {selectedIds.length} Geräte löschen
-                </button>
+                </LoadingButton>
               </div>
             </div>
           </div>
@@ -1485,29 +1499,32 @@ export function AssetsPage({
             </div>
 
             <div className="sticky bottom-0 mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pt-3">
+              {onboardingSaving ? <InlineLoadingState className="w-full" message="Gerät wird gespeichert ..." /> : null}
               <button type="button" className="btn-secondary" onClick={closeOnboarding}>
                 Abbrechen
               </button>
-              <button
+              <LoadingButton
                 type="button"
                 className="btn-secondary"
                 onClick={() => {
                   void submitOnboarding(true);
                 }}
-                disabled={onboardingSaving}
+                isLoading={onboardingSaving}
+                loadingText="Speichert ..."
               >
                 Speichern & nächstes Gerät
-              </button>
-              <button
+              </LoadingButton>
+              <LoadingButton
                 type="button"
                 className="btn-primary"
                 onClick={() => {
                   void submitOnboarding(false);
                 }}
-                disabled={onboardingSaving}
+                isLoading={onboardingSaving}
+                loadingText="Speichern ..."
               >
-                {onboardingSaving ? 'Speichern...' : 'Speichern'}
-              </button>
+                Speichern
+              </LoadingButton>
             </div>
           </div>
         </div>

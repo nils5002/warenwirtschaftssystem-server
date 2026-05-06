@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { listPlannings, type PlanningListItem } from '../../services/wmsApi';
 import { resolveAssetByScan } from '../qr';
 import { QrScannerDialog } from '../components/QrScannerDialog';
@@ -21,8 +22,8 @@ type CheckinCheckoutPageProps = {
     projectName?: string;
     dueDate: string;
     note: string;
-  }) => void;
-  onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => void;
+  }) => Promise<void>;
+  onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => Promise<void>;
 };
 
 type Mode = 'checkout' | 'checkin';
@@ -105,6 +106,10 @@ export function CheckinCheckoutPage({
   const [projectPickerSearch, setProjectPickerSearch] = useState('');
   const [planningProjects, setPlanningProjects] = useState<PlanningListItem[]>([]);
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
+  const [planningProjectsLoading, setPlanningProjectsLoading] = useState(false);
+  const [scanBusyMode, setScanBusyMode] = useState<Mode | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkinBusy, setCheckinBusy] = useState(false);
 
   const checkoutScanRef = useRef<HTMLInputElement | null>(null);
   const checkoutRecipientRef = useRef<HTMLInputElement | null>(null);
@@ -125,11 +130,14 @@ export function CheckinCheckoutPage({
 
   useEffect(() => {
     void (async () => {
+      setPlanningProjectsLoading(true);
       try {
         const planning = await listPlannings();
         setPlanningProjects(planning.filter((item) => ['Geplant', 'Bestätigt', 'Entwurf'].includes(item.status)));
       } catch {
         setPlanningProjects([]);
+      } finally {
+        setPlanningProjectsLoading(false);
       }
     })();
   }, []);
@@ -249,103 +257,113 @@ export function CheckinCheckoutPage({
   };
 
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
+    setScanBusyMode('checkout');
     const scanValue = (rawScan ?? checkoutScan).trim();
-    if (!scanValue) {
-      setScannerTarget('checkout');
-      return false;
-    }
+    try {
+      if (!scanValue) {
+        setScannerTarget('checkout');
+        return false;
+      }
 
-    const asset = resolveAssetByScan(scanValue, assets);
-    if (!asset) {
-      setMessage({
-        kind: 'error',
-        text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
-      });
-      await alert({
-        title: 'Unbekannter QR-Code',
-        message: 'Kein passendes Gerät gefunden.',
-      });
-      focusElement(checkoutScanRef.current);
-      return false;
-    }
+      const asset = resolveAssetByScan(scanValue, assets);
+      if (!asset) {
+        setMessage({
+          kind: 'error',
+          text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
+        });
+        await alert({
+          title: 'Unbekannter QR-Code',
+          message: 'Kein passendes Gerät gefunden.',
+        });
+        focusElement(checkoutScanRef.current);
+        return false;
+      }
 
-    setCheckoutScan(scanValue);
-    setCheckoutAssetId(asset.id);
-    setCurrentCheckoutAssetId(asset.id);
-    const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
-    if (parsedProject) {
-      setCheckoutProject(parsedProject);
-    }
+      setCheckoutScan(scanValue);
+      setCheckoutAssetId(asset.id);
+      setCurrentCheckoutAssetId(asset.id);
+      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
+      if (parsedProject) {
+        setCheckoutProject(parsedProject);
+      }
 
-    if (asset.status === 'Verliehen') {
-      setMessage({
-        kind: 'error',
-        text: `Gerät ist bereits verliehen an ${asset.assignedTo}.`,
-      });
-      focusElement(checkoutScanRef.current);
+      if (asset.status === 'Verliehen') {
+        setMessage({
+          kind: 'error',
+          text: `Gerät ist bereits verliehen an ${asset.assignedTo}.`,
+        });
+        focusElement(checkoutScanRef.current);
+        return true;
+      }
+
+      if (asset.status !== 'Verfügbar') {
+        setMessage({
+          kind: 'error',
+          text: `Gerät kann derzeit nicht ausgegeben werden (Status: ${asset.status}).`,
+        });
+        focusElement(checkoutScanRef.current);
+        return true;
+      }
+
+      setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Projekt wählen.` });
+      focusElement(checkoutProjectRef.current);
       return true;
+    } finally {
+      setScanBusyMode((current) => (current === 'checkout' ? null : current));
     }
-
-    if (asset.status !== 'Verfügbar') {
-      setMessage({
-        kind: 'error',
-        text: `Gerät kann derzeit nicht ausgegeben werden (Status: ${asset.status}).`,
-      });
-      focusElement(checkoutScanRef.current);
-      return true;
-    }
-
-    setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Projekt wählen.` });
-    focusElement(checkoutProjectRef.current);
-    return true;
   };
 
   const applyCheckinScan = async (rawScan?: string): Promise<boolean> => {
+    setScanBusyMode('checkin');
     const scanValue = (rawScan ?? checkinScan).trim();
-    if (!scanValue) {
-      setScannerTarget('checkin');
-      return false;
-    }
+    try {
+      if (!scanValue) {
+        setScannerTarget('checkin');
+        return false;
+      }
 
-    const asset = resolveAssetByScan(scanValue, assets);
-    if (!asset) {
-      setMessage({
-        kind: 'error',
-        text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
-      });
-      await alert({
-        title: 'Unbekannter QR-Code',
-        message: 'Kein passendes Gerät gefunden.',
-      });
-      focusElement(checkinScanRef.current);
-      return false;
-    }
+      const asset = resolveAssetByScan(scanValue, assets);
+      if (!asset) {
+        setMessage({
+          kind: 'error',
+          text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
+        });
+        await alert({
+          title: 'Unbekannter QR-Code',
+          message: 'Kein passendes Gerät gefunden.',
+        });
+        focusElement(checkinScanRef.current);
+        return false;
+      }
 
-    setCheckinScan(scanValue);
-    setCheckinAssetId(asset.id);
-    setCurrentCheckinAssetId(asset.id);
+      setCheckinScan(scanValue);
+      setCheckinAssetId(asset.id);
+      setCurrentCheckinAssetId(asset.id);
 
-    if (asset.status === 'Verfügbar') {
-      setMessage({
-        kind: 'error',
-        text: 'Dieses Gerät ist bereits verfügbar und wurde schon zurückgenommen.',
-      });
-      focusElement(checkinScanRef.current);
+      if (asset.status === 'Verfügbar') {
+        setMessage({
+          kind: 'error',
+          text: 'Dieses Gerät ist bereits verfügbar und wurde schon zurückgenommen.',
+        });
+        focusElement(checkinScanRef.current);
+        return true;
+      }
+
+      if (asset.status !== 'Verliehen') {
+        setMessage({
+          kind: 'error',
+          text: `Rücknahme nicht möglich. Gerät ist aktuell im Status "${asset.status}".`,
+        });
+        focusElement(checkinScanRef.current);
+        return true;
+      }
+
+      setMessage({ kind: 'info', text: `${asset.name} erkannt. Rücknahme kann bestätigt werden.` });
+      focusElement(checkinSubmitRef.current);
       return true;
+    } finally {
+      setScanBusyMode((current) => (current === 'checkin' ? null : current));
     }
-
-    if (asset.status !== 'Verliehen') {
-      setMessage({
-        kind: 'error',
-        text: `Rücknahme nicht möglich. Gerät ist aktuell im Status "${asset.status}".`,
-      });
-      focusElement(checkinScanRef.current);
-      return true;
-    }
-
-    setMessage({ kind: 'info', text: `${asset.name} erkannt. Rücknahme kann bestätigt werden.` });
-    focusElement(checkinSubmitRef.current);
-    return true;
   };
 
   const onDetectedByCamera = (value: string) => {
@@ -393,23 +411,30 @@ export function CheckinCheckoutPage({
       'Allgemeiner Einsatz';
 
     const normalizedAssignee = checkoutAssignee.trim() || '-';
-    onCheckout({
-      assetId: checkoutAsset.id,
-      assignee: normalizedAssignee,
-      projectName: normalizedProject,
-      dueDate: checkoutDueDate,
-      note: checkoutNote.trim(),
-    });
+    setCheckoutBusy(true);
+    try {
+      await onCheckout({
+        assetId: checkoutAsset.id,
+        assignee: normalizedAssignee,
+        projectName: normalizedProject,
+        dueDate: checkoutDueDate,
+        note: checkoutNote.trim(),
+      });
 
-    if (checkoutAssignee.trim()) {
-      setLastAssignee(checkoutAssignee.trim());
+      if (checkoutAssignee.trim()) {
+        setLastAssignee(checkoutAssignee.trim());
+      }
+      setLastProject(normalizedProject);
+      setCheckoutProject(normalizedProject);
+      setCheckoutNote('');
+      resetCheckoutState();
+      setMessage({ kind: 'success', text: `${checkoutAsset.name} wurde ausgegeben.` });
+      focusElement(checkoutScanRef.current);
+    } catch {
+      setMessage({ kind: 'error', text: 'Check-out konnte nicht gebucht werden. Bitte erneut versuchen.' });
+    } finally {
+      setCheckoutBusy(false);
     }
-    setLastProject(normalizedProject);
-    setCheckoutProject(normalizedProject);
-    setCheckoutNote('');
-    resetCheckoutState();
-    setMessage({ kind: 'success', text: `${checkoutAsset.name} wurde ausgegeben.` });
-    focusElement(checkoutScanRef.current);
   };
 
   const checkinNow = async () => {
@@ -448,15 +473,22 @@ export function CheckinCheckoutPage({
 
     const resolvedProject = checkinProject.trim() || checkinContextProject;
 
-    onCheckin({
-      assetId: checkinAsset.id,
-      condition: checkinCondition.trim() || 'Zustand geprüft.',
-      projectName: resolvedProject,
-    });
+    setCheckinBusy(true);
+    try {
+      await onCheckin({
+        assetId: checkinAsset.id,
+        condition: checkinCondition.trim() || 'Zustand geprüft.',
+        projectName: resolvedProject,
+      });
 
-    resetCheckinState();
-    setMessage({ kind: 'success', text: `${checkinAsset.name} wurde zurückgenommen.` });
-    focusElement(checkinScanRef.current);
+      resetCheckinState();
+      setMessage({ kind: 'success', text: `${checkinAsset.name} wurde zurückgenommen.` });
+      focusElement(checkinScanRef.current);
+    } catch {
+      setMessage({ kind: 'error', text: 'Check-in konnte nicht gebucht werden. Bitte erneut versuchen.' });
+    } finally {
+      setCheckinBusy(false);
+    }
   };
 
   const messageClass =
@@ -473,6 +505,9 @@ export function CheckinCheckoutPage({
     setProjectPickerOpen(false);
     setProjectPickerSearch('');
   };
+  const isCheckoutScanBusy = scanBusyMode === 'checkout';
+  const isCheckinScanBusy = scanBusyMode === 'checkin';
+  const isAnyBusy = planningProjectsLoading || checkoutBusy || checkinBusy || isCheckoutScanBusy || isCheckinScanBusy;
 
   return (
     <section className={`space-y-5 ${isMobile ? 'pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'pb-24 sm:pb-6'}`}>
@@ -538,6 +573,11 @@ export function CheckinCheckoutPage({
       ) : null}
 
       {message ? <div className={`rounded-xl border px-3 py-2 text-sm ${messageClass}`}>{message.text}</div> : null}
+      {planningProjectsLoading ? <InlineLoadingState message="Projektverfügbarkeiten werden geladen ..." /> : null}
+      {isCheckoutScanBusy ? <InlineLoadingState message="Scan wird geprüft ..." /> : null}
+      {isCheckinScanBusy ? <InlineLoadingState message="Scan wird geprüft ..." /> : null}
+      {checkoutBusy ? <InlineLoadingState message="Check-out wird gebucht ..." /> : null}
+      {checkinBusy ? <InlineLoadingState message="Check-in wird gebucht ..." /> : null}
       {isMobile ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
           {mode === 'checkout'
@@ -571,6 +611,7 @@ export function CheckinCheckoutPage({
                   className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code oder Inventarnummer"
                   value={checkoutScan}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckoutScan(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return;
@@ -578,11 +619,18 @@ export function CheckinCheckoutPage({
                     void applyCheckoutScan();
                   }}
                 />
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => void applyCheckoutScan()}>
+                <LoadingButton
+                  type="button"
+                  className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                  onClick={() => void applyCheckoutScan()}
+                  isLoading={isCheckoutScanBusy}
+                  loadingText="Prüft ..."
+                  disabled={isAnyBusy && !isCheckoutScanBusy}
+                >
                   <ScanLine className="h-4 w-4" />
                   Scannen
-                </button>
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkout')}>
+                </LoadingButton>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkout')} disabled={isAnyBusy}>
                   <QrCode className="h-4 w-4" />
                   Kamera
                 </button>
@@ -613,6 +661,7 @@ export function CheckinCheckoutPage({
                   type="button"
                   className="field-input flex h-12 items-center justify-between text-left"
                   onClick={() => setProjectPickerOpen(true)}
+                  disabled={isAnyBusy}
                 >
                   <span className="truncate text-sm text-slate-800 dark:text-slate-100">
                     {checkoutProject.trim() || 'Projekt auswählen'}
@@ -629,6 +678,7 @@ export function CheckinCheckoutPage({
                   className="field-input"
                   placeholder="Projekt wählen oder eintragen"
                   value={checkoutProject}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckoutProject(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return;
@@ -649,6 +699,7 @@ export function CheckinCheckoutPage({
             type="button"
             className="btn-secondary w-full justify-center"
             onClick={() => setShowCheckoutOptions((prev) => !prev)}
+            disabled={isAnyBusy}
           >
             {showCheckoutOptions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             {showCheckoutOptions ? 'Weniger Optionen' : 'Mehr Optionen'}
@@ -661,6 +712,7 @@ export function CheckinCheckoutPage({
                 <select
                   className="field-input"
                   value={checkoutAssetId}
+                  disabled={isAnyBusy}
                   onChange={(event) => {
                     setCheckoutAssetId(event.target.value);
                     setCurrentCheckoutAssetId(event.target.value || null);
@@ -680,6 +732,7 @@ export function CheckinCheckoutPage({
                     type="date"
                     className="field-input"
                     value={checkoutDueDate}
+                    disabled={isAnyBusy}
                     onChange={(event) => setCheckoutDueDate(event.target.value)}
                   />
                 </label>
@@ -691,6 +744,7 @@ export function CheckinCheckoutPage({
                     className="field-input"
                     placeholder="z. B. Max Mustermann"
                     value={checkoutAssignee}
+                    disabled={isAnyBusy}
                     onChange={(event) => setCheckoutAssignee(event.target.value)}
                   />
                   <datalist id="checkout-person-options">
@@ -709,21 +763,24 @@ export function CheckinCheckoutPage({
                   className="field-input min-h-[96px]"
                   placeholder="Optionaler Hinweis"
                   value={checkoutNote}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckoutNote(event.target.value)}
                 />
               </label>
             </div>
           ) : null}
 
-          <button
+          <LoadingButton
             ref={checkoutSubmitRef}
             className="btn-primary hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
             onClick={() => void checkoutNow()}
-            disabled={!hasCurrentCheckoutSelection}
+            disabled={!hasCurrentCheckoutSelection || isAnyBusy}
+            isLoading={checkoutBusy}
+            loadingText="Check-out wird gebucht ..."
           >
             <Handshake className="h-4 w-4" />
             Jetzt ausgeben
-          </button>
+          </LoadingButton>
         </article>
       ) : (
         <article className="surface-card animate-fade-up space-y-4">
@@ -750,6 +807,7 @@ export function CheckinCheckoutPage({
                   className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code oder Inventarnummer"
                   value={checkinScan}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckinScan(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return;
@@ -757,11 +815,18 @@ export function CheckinCheckoutPage({
                     void applyCheckinScan();
                   }}
                 />
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => void applyCheckinScan()}>
+                <LoadingButton
+                  type="button"
+                  className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                  onClick={() => void applyCheckinScan()}
+                  isLoading={isCheckinScanBusy}
+                  loadingText="Prüft ..."
+                  disabled={isAnyBusy && !isCheckinScanBusy}
+                >
                   <ScanLine className="h-4 w-4" />
                   Scannen
-                </button>
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkin')}>
+                </LoadingButton>
+                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkin')} disabled={isAnyBusy}>
                   <QrCode className="h-4 w-4" />
                   Kamera
                 </button>
@@ -799,6 +864,7 @@ export function CheckinCheckoutPage({
             type="button"
             className="btn-secondary w-full justify-center"
             onClick={() => setShowCheckinOptions((prev) => !prev)}
+            disabled={isAnyBusy}
           >
             {showCheckinOptions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             {showCheckinOptions ? 'Weniger Optionen' : 'Mehr Optionen'}
@@ -811,6 +877,7 @@ export function CheckinCheckoutPage({
                 <select
                   className="field-input"
                   value={checkinAssetId}
+                  disabled={isAnyBusy}
                   onChange={(event) => {
                     setCheckinAssetId(event.target.value);
                     setCurrentCheckinAssetId(event.target.value || null);
@@ -830,6 +897,7 @@ export function CheckinCheckoutPage({
                   className="field-input"
                   placeholder="Projekt bestätigen"
                   value={checkinProject}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckinProject(event.target.value)}
                 />
                 <datalist id="checkin-project-options">
@@ -848,43 +916,50 @@ export function CheckinCheckoutPage({
                   className="field-input min-h-[96px]"
                   placeholder="Optionaler Zustandshinweis"
                   value={checkinCondition}
+                  disabled={isAnyBusy}
                   onChange={(event) => setCheckinCondition(event.target.value)}
                 />
               </label>
             </div>
           ) : null}
 
-          <button
+          <LoadingButton
             ref={checkinSubmitRef}
             className="btn-dark hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
             onClick={() => void checkinNow()}
-            disabled={!checkinAsset}
+            disabled={!checkinAsset || isAnyBusy}
+            isLoading={checkinBusy}
+            loadingText="Check-in wird gebucht ..."
           >
             <ClipboardCheck className="h-4 w-4" />
             Rücknahme bestätigen
-          </button>
+          </LoadingButton>
         </article>
       )}
 
       <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur sm:hidden">
         {mode === 'checkout' ? (
-          <button
+          <LoadingButton
             className="btn-primary w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void checkoutNow()}
-            disabled={!hasCurrentCheckoutSelection}
+            disabled={!hasCurrentCheckoutSelection || isAnyBusy}
+            isLoading={checkoutBusy}
+            loadingText="Check-out wird gebucht ..."
           >
             <Handshake className="h-5 w-5" />
             Jetzt ausgeben
-          </button>
+          </LoadingButton>
         ) : (
-          <button
+          <LoadingButton
             className="btn-dark w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void checkinNow()}
-            disabled={!hasCurrentCheckinSelection}
+            disabled={!hasCurrentCheckinSelection || isAnyBusy}
+            isLoading={checkinBusy}
+            loadingText="Check-in wird gebucht ..."
           >
             <ClipboardCheck className="h-5 w-5" />
             Rücknahme bestätigen
-          </button>
+          </LoadingButton>
         )}
       </div>
 

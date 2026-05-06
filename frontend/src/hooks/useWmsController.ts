@@ -172,6 +172,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [wmsError, setWmsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const currentOperatorName = getAuthSession()?.user.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
@@ -187,7 +188,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
     window.history.pushState(null, '', targetPath);
   }, []);
 
-  const loadWms = async () => {
+  const loadWms = async (options?: { initial?: boolean }) => {
+    if (options?.initial) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
     try {
       const payload = await fetchWmsOverview();
       const normalizedUsers = payload.users.map((user) => ({
@@ -226,6 +232,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       setWmsError('Backend nicht erreichbar oder fehlerhafte API-Antwort.');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -242,7 +249,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
 
     const load = async () => {
       if (cancelled) return;
-      await loadWms();
+      await loadWms({ initial: true });
     };
 
     void load();
@@ -1060,6 +1067,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     projectContext,
     setProjectContext,
     isLoading,
+    isRefreshing,
     wmsError,
     activePage,
     setActivePage,

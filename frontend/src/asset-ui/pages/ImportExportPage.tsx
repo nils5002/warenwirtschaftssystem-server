@@ -1,6 +1,7 @@
 import { Download, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { Asset } from '../types';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import {
   confirmHardwareImport,
   downloadHardwareImportTemplate,
@@ -18,6 +19,7 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isTemplateLoading, setIsTemplateLoading] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isConfirmLoading, setIsConfirmLoading] = useState(false);
   const [previewResult, setPreviewResult] = useState<HardwareImportPreviewResponse | null>(null);
@@ -44,6 +46,7 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
 
   const handleDownloadTemplate = async () => {
     setError(null);
+    setIsTemplateLoading(true);
     try {
       const blob = await downloadHardwareImportTemplate();
       const url = URL.createObjectURL(blob);
@@ -54,6 +57,8 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
       URL.revokeObjectURL(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Vorlage konnte nicht heruntergeladen werden.');
+    } finally {
+      setIsTemplateLoading(false);
     }
   };
 
@@ -183,39 +188,49 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
             <p className="mt-2 text-xs text-slate-500">Unterstützte Formate: .xlsx, .xlsm</p>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
+            <LoadingButton
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
               onClick={handleChooseFile}
+              disabled={isPreviewLoading || isConfirmLoading}
             >
               Excel-Datei auswählen
-            </button>
-            <button
+            </LoadingButton>
+            <LoadingButton
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
               onClick={() => {
                 void handleDownloadTemplate();
               }}
+              isLoading={isTemplateLoading}
+              loadingText="Vorlage wird geladen ..."
+              disabled={isPreviewLoading || isConfirmLoading}
             >
               Beispiel-Excel herunterladen
-            </button>
-            <button
+            </LoadingButton>
+            <LoadingButton
               className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60"
               onClick={() => {
                 void runPreview();
               }}
-              disabled={isPreviewLoading || !selectedFile}
+              disabled={isConfirmLoading || !selectedFile}
+              isLoading={isPreviewLoading}
+              loadingText="Import wird vorbereitet ..."
             >
-              {isPreviewLoading ? 'Prüfung läuft...' : 'Import prüfen'}
-            </button>
-            <button
+              Import prüfen
+            </LoadingButton>
+            <LoadingButton
               className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
               onClick={() => {
                 void confirmImport();
               }}
-              disabled={isConfirmLoading || !previewResult}
+              disabled={isPreviewLoading || !previewResult}
+              isLoading={isConfirmLoading}
+              loadingText="Import läuft ..."
             >
-              {isConfirmLoading ? 'Import läuft...' : 'Import übernehmen'}
-            </button>
+              Import übernehmen
+            </LoadingButton>
           </div>
+          {isPreviewLoading ? <InlineLoadingState className="mt-3" message="Import wird vorbereitet ..." /> : null}
+          {isConfirmLoading ? <InlineLoadingState className="mt-3" message="Import wird verarbeitet ..." /> : null}
           {error ? <p className="mt-3 text-sm text-rose-700">{error}</p> : null}
           {previewResult ? (
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
