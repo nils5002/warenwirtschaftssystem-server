@@ -11,6 +11,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { PlanningCalendarAddOn } from './PlanningCalendarAddOn';
 import {
   createPlanning,
@@ -69,6 +70,7 @@ type EditablePlanning = {
 
 type PlanningSummary = PlanningListItem | PlanningResponse;
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
+type BusyState = 'list' | 'open' | 'save' | 'create' | 'duplicate' | 'delete' | 'status' | null;
 
 type HandoverNetworkAccent = {
   card: string;
@@ -387,6 +389,8 @@ export function PlanningPage({
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [busyState, setBusyState] = useState<BusyState>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
   const [listStatus, setListStatus] = useState<'Alle' | PlanningStatus>('Alle');
@@ -1029,8 +1033,9 @@ export function PlanningPage({
     };
   }, [editor]);
 
-  const loadPlannings = async (selectId?: string) => {
+  const loadPlannings = async (selectId?: string, options?: { silentBusy?: boolean }) => {
     setListLoading(true);
+    if (!options?.silentBusy) setBusyState('list');
     setError(null);
     try {
       const data = await listPlannings();
@@ -1059,10 +1064,11 @@ export function PlanningPage({
       setError(err instanceof Error ? err.message : 'Planungen konnten nicht geladen werden.');
     } finally {
       setListLoading(false);
+      if (!options?.silentBusy) setBusyState(null);
     }
   };
 
-  const openPlanning = async (planningId: string, options?: { showModal?: boolean }) => {
+  const openPlanning = async (planningId: string, options?: { showModal?: boolean; silentBusy?: boolean }) => {
     // Ursache des Bugs: Mehrere schnelle Klicks konnten asynchron in falscher Reihenfolge zurückkommen
     // und damit Editor/Availability mit Daten eines anderen Projekts überschreiben.
     const requestSeq = openPlanningRequestSeq.current + 1;
@@ -1072,6 +1078,7 @@ export function PlanningPage({
       setDetailModalOpen(true);
     }
     setDetailLoading(true);
+    if (!options?.silentBusy) setBusyState('open');
     setError(null);
     try {
       const [planning, planningAvailability] = await Promise.all([
@@ -1094,6 +1101,7 @@ export function PlanningPage({
     } finally {
       if (openPlanningRequestSeq.current !== requestSeq) return;
       setDetailLoading(false);
+      if (!options?.silentBusy) setBusyState(null);
     }
   };
 
@@ -1179,13 +1187,14 @@ export function PlanningPage({
       return null;
     }
     setSaving(true);
+    setBusyState('save');
     setError(null);
     try {
       const saved = await updatePlanning(planning.id, toUpsertPayload(planning));
       const [freshPlanning, planningAvailability] = await Promise.all([
         getPlanning(saved.id),
         getPlanningAvailability(saved.id),
-        loadPlannings(saved.id),
+        loadPlannings(saved.id, { silentBusy: true }),
       ]);
       await refreshOverview();
       const savedEditor = toEditablePlanning(freshPlanning);
@@ -1203,6 +1212,7 @@ export function PlanningPage({
       return null;
     } finally {
       setSaving(false);
+      setBusyState(null);
     }
   };
 
@@ -1263,6 +1273,7 @@ export function PlanningPage({
       return;
     }
     setSaving(true);
+    setBusyState('create');
     setError(null);
     try {
       const created = await createPlanning({
@@ -1286,28 +1297,31 @@ export function PlanningPage({
         projectManagerUserId: '',
         notes: '',
       }));
-      await loadPlannings(created.id);
+      await loadPlannings(created.id, { silentBusy: true });
       await refreshOverview();
-      await openPlanning(created.id);
+      await openPlanning(created.id, { silentBusy: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht angelegt werden.');
     } finally {
       setSaving(false);
+      setBusyState(null);
     }
   };
 
   const duplicate = async (planningId: string) => {
     setSaving(true);
+    setBusyState('duplicate');
     setError(null);
     try {
       const duplicated = await duplicatePlanning(planningId);
-      await loadPlannings(duplicated.id);
+      await loadPlannings(duplicated.id, { silentBusy: true });
       await refreshOverview();
-      await openPlanning(duplicated.id);
+      await openPlanning(duplicated.id, { silentBusy: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht dupliziert werden.');
     } finally {
       setSaving(false);
+      setBusyState(null);
     }
   };
 
@@ -1321,6 +1335,7 @@ export function PlanningPage({
     });
     if (!accepted) return;
     setSaving(true);
+    setBusyState('delete');
     setError(null);
     try {
       await deletePlanning(planningId);
@@ -1340,31 +1355,36 @@ export function PlanningPage({
         delete next[planningId];
         return next;
       });
-      await loadPlannings();
+      await loadPlannings(undefined, { silentBusy: true });
       await refreshOverview();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht gelöscht werden.');
     } finally {
       setSaving(false);
+      setBusyState(null);
     }
   };
 
   const changeStatus = async (planningId: string, status: PlanningStatus) => {
     setSaving(true);
+    setBusyState('status');
+    setStatusUpdatingId(planningId);
     setError(null);
     try {
       await updatePlanningStatus(planningId, status);
       if (detailModalOpen && selectedId === planningId) {
-        await loadPlannings(planningId);
-        await openPlanning(planningId, { showModal: false });
+        await loadPlannings(planningId, { silentBusy: true });
+        await openPlanning(planningId, { showModal: false, silentBusy: true });
       } else {
-        await loadPlannings();
+        await loadPlannings(undefined, { silentBusy: true });
       }
       await refreshOverview();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Status konnte nicht gesetzt werden.');
     } finally {
       setSaving(false);
+      setStatusUpdatingId(null);
+      setBusyState(null);
     }
   };
 
@@ -1483,6 +1503,22 @@ export function PlanningPage({
   const mobileToday = visiblePlannings.filter((item) => item.startDate <= todayIso && item.endDate >= todayIso);
   const mobileTomorrow = visiblePlannings.filter((item) => item.startDate <= tomorrowIso && item.endDate >= tomorrowIso);
   const mobileWeek = visiblePlannings.filter((item) => item.startDate <= weekEndIso && item.endDate >= todayIso);
+  const busyMessage =
+    busyState === 'list'
+      ? 'Planungsliste wird geladen ...'
+      : busyState === 'open'
+        ? 'Planung und Verfügbarkeit werden geladen ...'
+        : busyState === 'save'
+          ? 'Planung wird gespeichert ...'
+          : busyState === 'create'
+            ? 'Planung wird angelegt ...'
+            : busyState === 'duplicate'
+              ? 'Planung wird dupliziert ...'
+              : busyState === 'delete'
+                ? 'Planung wird gelöscht ...'
+                : busyState === 'status'
+                  ? 'Status wird aktualisiert ...'
+                  : null;
 
   return (
     <section className="space-y-5">
@@ -1540,6 +1576,7 @@ export function PlanningPage({
       </div>
 
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
+      {busyMessage ? <InlineLoadingState message={busyMessage} /> : null}
 
       {isMobile ? (
         <article className="surface-card">
@@ -1597,15 +1634,18 @@ export function PlanningPage({
         <article className="surface-card xl:col-span-12">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">Planungsliste</h3>
-            <button
+            <LoadingButton
               type="button"
               className="btn-secondary px-2.5 py-1.5 text-xs"
               onClick={() => {
                 void loadPlannings();
               }}
+              isLoading={listLoading && busyState === 'list'}
+              loadingText="Wird geladen ..."
+              disabled={saving}
             >
               Aktualisieren
-            </button>
+            </LoadingButton>
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2">
@@ -1646,6 +1686,7 @@ export function PlanningPage({
             {visiblePlannings.map((item) => {
               const isActive = selectedId === item.id;
               const handoverSummary = planningListHandoverSummaryById.get(item.id);
+              const rowStatusLoading = statusUpdatingId === item.id && busyState === 'status';
               const hasHandoverNetwork = Boolean(handoverSummary);
               const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
               return (
@@ -1709,7 +1750,7 @@ export function PlanningPage({
                     <select
                       value={item.status}
                       className="field-input h-9 text-xs"
-                      disabled={!canEdit}
+                      disabled={!canEdit || saving}
                       onClick={(event) => event.stopPropagation()}
                       onChange={(event) => {
                         void changeStatus(item.id, event.target.value as PlanningStatus);
@@ -1723,28 +1764,34 @@ export function PlanningPage({
                     </select>
                     <div className="flex items-center justify-end gap-1.5">
                       {canEdit ? (
-                        <button
+                        <LoadingButton
                         type="button"
                         className="btn-secondary px-2 py-1 text-xs"
                         onClick={(event) => {
                           event.stopPropagation();
                           void duplicate(item.id);
                         }}
+                        isLoading={rowStatusLoading}
+                        loadingText="..."
+                        disabled={saving && !rowStatusLoading}
                       >
                         <Copy className="h-3.5 w-3.5" />
-                        </button>
+                        </LoadingButton>
                       ) : null}
                       {canEdit ? (
-                        <button
+                        <LoadingButton
                         type="button"
                         className="btn-danger px-2 py-1 text-xs"
                         onClick={(event) => {
                           event.stopPropagation();
                           void deleteCurrent(item.id);
                         }}
+                        isLoading={rowStatusLoading}
+                        loadingText="..."
+                        disabled={saving && !rowStatusLoading}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        </LoadingButton>
                       ) : null}
                     </div>
                   </div>
@@ -1790,18 +1837,20 @@ export function PlanningPage({
                             Abbrechen
                           </button>
                           {canEdit ? (
-                            <button
+                            <LoadingButton
                               type="button"
                               data-testid="planning-save"
                               className="btn-primary"
                               onClick={() => {
                                 void saveCurrent();
                               }}
-                              disabled={saving}
+                              isLoading={saving && busyState === 'save'}
+                              loadingText="Planung wird gespeichert ..."
+                              disabled={saving && busyState !== 'save'}
                             >
                               <Save className="h-4 w-4" />
                               Speichern
-                            </button>
+                            </LoadingButton>
                           ) : (
                             <button
                               type="button"
@@ -2749,22 +2798,23 @@ export function PlanningPage({
               <button type="button" className="btn-secondary" onClick={() => setCreateOpen(false)} disabled={saving}>
                 Abbrechen
               </button>
-              <button
+              <LoadingButton
                 type="button"
                 className="btn-primary"
                 onClick={() => {
                   void createNewPlanning();
                 }}
-                disabled={saving}
+                isLoading={saving && busyState === 'create'}
+                loadingText="Planung wird angelegt ..."
+                disabled={saving && busyState !== 'create'}
               >
                 Planung anlegen
-              </button>
+              </LoadingButton>
             </div>
           </div>
         </div>
       ) : null}
-
-      {listLoading ? <p className="text-xs text-slate-500">Lade Planungen...</p> : null}
     </section>
   );
 }
+

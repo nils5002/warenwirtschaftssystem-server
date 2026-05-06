@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { InlineLoadingState, LoadingButton } from '../../components/loading';
 
 import { CANONICAL_CATEGORIES, categoryHint, categoryOptionsFromRecords, normalizeCategory } from '../categories';
 import type { Asset, CategoryItem } from '../types';
@@ -108,10 +109,18 @@ export function CategoriesPage({
               onChange={(event) => setCandidate(event.target.value)}
             />
           </label>
-          <button type="button" className="btn-secondary self-end" disabled={!canSubmit} onClick={() => void submitCategory()}>
+          <LoadingButton
+            type="button"
+            className="btn-secondary self-end"
+            disabled={!canSubmit}
+            isLoading={busy}
+            loadingText="Kategorie wird angelegt ..."
+            onClick={() => void submitCategory()}
+          >
             Kategorie anlegen
-          </button>
+          </LoadingButton>
         </div>
+        {busy ? <InlineLoadingState className="mt-3" message="Kategorie wird gespeichert ..." /> : null}
 
         {!canManageCategories ? (
           <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">

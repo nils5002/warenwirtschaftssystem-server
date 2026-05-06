@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './asset-ui/components/Sidebar';
 import { Topbar } from './asset-ui/components/Topbar';
 import { LoginPage } from './components/auth/LoginPage';
+import { InlineLoadingState } from './components/loading';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
 import { useWmsController } from './hooks/useWmsController';
@@ -182,8 +183,9 @@ function App() {
         />
         <main className={`px-3 pt-4 sm:px-4 md:px-8 md:pt-6 ${isMobile ? 'pb-[calc(7.5rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}>
           <div className={`mx-auto w-full ${controller.activePage === 'inventory' ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
-            {controller.isLoading ? (
-              <div className="mb-4 surface-muted px-3 py-2 text-sm text-slate-600">Lade Daten...</div>
+            {controller.isLoading ? <InlineLoadingState className="mb-4" message="Daten werden geladen ..." /> : null}
+            {!controller.isLoading && controller.isRefreshing ? (
+              <InlineLoadingState className="mb-4" message="Listen werden aktualisiert ..." />
             ) : null}
             {controller.wmsError ? (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">

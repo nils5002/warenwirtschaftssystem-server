@@ -294,12 +294,8 @@ export function WmsPageView({
           operatorName={currentUserName}
           projectContext={projectContext}
           onProjectContextChange={onProjectContextChange}
-          onCheckout={(payload) => {
-            void onCheckoutFromForm(payload);
-          }}
-          onCheckin={(payload) => {
-            void onCheckinFromForm(payload);
-          }}
+          onCheckout={(payload) => onCheckoutFromForm(payload)}
+          onCheckin={(payload) => onCheckinFromForm(payload)}
         />
       );
     case 'qrFunctions':

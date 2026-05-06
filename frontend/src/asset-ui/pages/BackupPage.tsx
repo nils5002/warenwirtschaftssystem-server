@@ -1,6 +1,7 @@
 import { Download, RotateCcw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { InlineLoadingState, LoadingButton, LoadingOverlay } from '../../components/loading';
 import { clearWarehouseDataForImport, downloadWarehouseBackup, restoreWarehouseBackup } from '../../services/wmsApi';
 
 type BackupPageProps = {
@@ -16,6 +17,10 @@ export function BackupPage({ onRestored }: BackupPageProps) {
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const showCriticalOverlay = isRestoring || isClearing;
+  const criticalMessage = isRestoring
+    ? 'Backup wird eingespielt. Bitte Fenster nicht schließen.'
+    : 'Systemdaten werden bereinigt. Bitte Fenster nicht schließen.';
 
   const handleDownload = async () => {
     setError(null);
@@ -103,7 +108,8 @@ export function BackupPage({ onRestored }: BackupPageProps) {
   };
 
   return (
-    <section className="space-y-5">
+    <LoadingOverlay show={showCriticalOverlay} message={criticalMessage} fullScreen>
+      <section className="space-y-5">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Backup</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Sicherung & Restore</h2>
@@ -114,39 +120,42 @@ export function BackupPage({ onRestored }: BackupPageProps) {
 
       <article className="surface-card animate-fade-up space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <LoadingButton
             type="button"
             className="btn-secondary"
             onClick={() => {
               void handleDownload();
             }}
-            disabled={isDownloading}
+            isLoading={isDownloading}
+            loadingText="Backup wird erstellt ..."
           >
             <Download className="h-4 w-4" />
-            {isDownloading ? 'Backup wird erstellt ...' : 'Backup herunterladen'}
-          </button>
+            Backup herunterladen
+          </LoadingButton>
 
           <button
             type="button"
             className="btn-secondary"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isRestoring}
+            disabled={isRestoring || isClearing}
           >
             <Upload className="h-4 w-4" />
             Backup-Datei auswählen
           </button>
 
-          <button
+          <LoadingButton
             type="button"
             className="btn-dark"
             onClick={() => {
               void handleRestore();
             }}
-            disabled={isRestoring || !selectedFile}
+            disabled={isClearing || !selectedFile}
+            isLoading={isRestoring}
+            loadingText="Backup wird wiederhergestellt ..."
           >
             <RotateCcw className="h-4 w-4" />
-            {isRestoring ? 'Wiederherstellung läuft ...' : 'Backup wiederherstellen'}
-          </button>
+            Backup wiederherstellen
+          </LoadingButton>
         </div>
 
         <input
@@ -165,6 +174,7 @@ export function BackupPage({ onRestored }: BackupPageProps) {
         <p className="text-sm text-slate-600">
           {selectedFile ? `Ausgewählte Datei: ${selectedFile.name}` : 'Noch keine Backup-Datei ausgewählt.'}
         </p>
+        {isDownloading ? <InlineLoadingState message="Backup wird heruntergeladen ..." /> : null}
 
         {error ? <p className="text-sm text-rose-700">{error}</p> : null}
         {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
@@ -182,18 +192,21 @@ export function BackupPage({ onRestored }: BackupPageProps) {
           </p>
         </div>
         <div>
-          <button
+          <LoadingButton
             type="button"
             className="btn-danger"
-            disabled={isClearing || isRestoring}
+            disabled={isRestoring}
+            isLoading={isClearing}
+            loadingText="Systemdaten werden bereinigt ..."
             onClick={() => {
               void handleClearData();
             }}
           >
-            {isClearing ? 'Bereinigung läuft ...' : 'Systemdaten bereinigen'}
-          </button>
+            Systemdaten bereinigen
+          </LoadingButton>
         </div>
       </article>
     </section>
+    </LoadingOverlay>
   );
 }
