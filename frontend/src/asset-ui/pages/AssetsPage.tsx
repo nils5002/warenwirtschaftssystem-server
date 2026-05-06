@@ -903,19 +903,6 @@ export function AssetsPage({
                     <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
                       <button
                         type="button"
-                        className="btn-danger shrink-0 px-2 py-1 text-xs"
-                        onClick={() =>
-                          onCreateMaintenance({
-                            assetName: asset.name,
-                            issue: 'Gerät defekt',
-                            comment: '',
-                          })
-                        }
-                      >
-                        Defekt
-                      </button>
-                      <button
-                        type="button"
                         className="btn-ghost shrink-0 px-2 py-1 text-xs"
                         onClick={() => setQuickViewId(asset.id)}
                         title="Schnellansicht"
@@ -977,19 +964,6 @@ export function AssetsPage({
               </div>
               <p className="mt-1 text-xs text-slate-500 break-all">SN: {asset.serialNumber || '-'}</p>
               <p className="mt-1 text-xs text-slate-500 break-all">MAC LAN: {asset.macLan || '-'}</p>
-              <button
-                type="button"
-                className="btn-danger mt-2 min-h-[44px] w-full px-3 py-2 text-xs"
-                onClick={() =>
-                  onCreateMaintenance({
-                    assetName: asset.name,
-                    issue: 'Gerät defekt',
-                    comment: '',
-                  })
-                }
-              >
-                Defekt für dieses Asset
-              </button>
               {canManageAssets ? (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
