@@ -275,6 +275,7 @@ export function WmsPageView({
           categories={categories}
           users={users}
           planningSummary={planningSummary}
+          onRefreshOverview={onReloadData}
           onOpenInventoryWithQuery={onOpenInventoryWithQuery}
           canEdit={canEditPlanning}
           isMobile={isMobile}
