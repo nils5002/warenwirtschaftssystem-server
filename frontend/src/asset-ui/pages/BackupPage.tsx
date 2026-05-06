@@ -60,20 +60,30 @@ export function BackupPage({ onRestored }: BackupPageProps) {
     setError(null);
     setSuccess(null);
     setIsRestoring(true);
+    let restoreResult: Awaited<ReturnType<typeof restoreWarehouseBackup>> | null = null;
+    let restoreError: string | null = null;
     try {
-      const result = await restoreWarehouseBackup(selectedFile);
+      restoreResult = await restoreWarehouseBackup(selectedFile);
       await onRestored();
+    } catch (err) {
+      restoreError = err instanceof Error ? err.message : 'Backup konnte nicht wiederhergestellt werden.';
+    } finally {
+      setIsRestoring(false);
+    }
+
+    if (restoreError) {
+      setError(restoreError);
+      return;
+    }
+
+    if (restoreResult) {
       setSuccess(
-        `Wiederherstellung abgeschlossen. Assets: ${result.imported.assets ?? 0}, Benutzer: ${result.imported.users ?? 0}, Planungen: ${result.imported.plannings ?? 0}.`,
+        `Wiederherstellung abgeschlossen. Assets: ${restoreResult.imported.assets ?? 0}, Benutzer: ${restoreResult.imported.users ?? 0}, Planungen: ${restoreResult.imported.plannings ?? 0}.`,
       );
       await alert({
         title: 'Backup wiederhergestellt',
         message: 'Die Daten wurden erfolgreich eingespielt.',
       });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Backup konnte nicht wiederhergestellt werden.');
-    } finally {
-      setIsRestoring(false);
     }
   };
 
@@ -91,19 +101,29 @@ export function BackupPage({ onRestored }: BackupPageProps) {
     setError(null);
     setSuccess(null);
     setIsClearing(true);
+    let clearResult: Awaited<ReturnType<typeof clearWarehouseDataForImport>> | null = null;
+    let clearError: string | null = null;
     try {
-      const result = await clearWarehouseDataForImport();
+      clearResult = await clearWarehouseDataForImport();
       await onRestored();
       setSelectedFile(null);
-      setSuccess(result.message);
-      await alert({
-        title: 'Bereinigung abgeschlossen',
-        message: result.message,
-      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Systemdaten konnten nicht bereinigt werden.');
+      clearError = err instanceof Error ? err.message : 'Systemdaten konnten nicht bereinigt werden.';
     } finally {
       setIsClearing(false);
+    }
+
+    if (clearError) {
+      setError(clearError);
+      return;
+    }
+
+    if (clearResult) {
+      setSuccess(clearResult.message);
+      await alert({
+        title: 'Bereinigung abgeschlossen',
+        message: clearResult.message,
+      });
     }
   };
 
