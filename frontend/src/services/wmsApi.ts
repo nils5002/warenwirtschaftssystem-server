@@ -80,6 +80,7 @@ export type WmsOverview = {
     }>;
     upcomingPlannedQty: number;
     upcomingShortageCount: number;
+    openConflictCount: number;
     categorySummaries: Array<{
       categoryKey: string;
       usableStock: number;
