@@ -224,7 +224,38 @@ function buildDaysInRange(startDate: string, endDate: string): EditablePlanning[
   return days;
 }
 
+function alignDaysToProjectRange(
+  startDate: string,
+  endDate: string,
+  sourceDays: EditablePlanning['days'],
+): EditablePlanning['days'] {
+  const itemsByDate = new Map<string, EditablePlanning['days'][number]['items']>();
+  for (const day of sourceDays) {
+    if (!day.planningDate || itemsByDate.has(day.planningDate)) continue;
+    itemsByDate.set(day.planningDate, day.items);
+  }
+  return buildDaysInRange(startDate, endDate).map((day) => ({
+    ...day,
+    items: itemsByDate.get(day.planningDate) ?? [],
+  }));
+}
+
 function toEditablePlanning(item: PlanningResponse): EditablePlanning {
+  const normalizedDays = [...item.days]
+    .sort((a, b) => a.planningDate.localeCompare(b.planningDate))
+    .map((day) => ({
+      planningDate: day.planningDate,
+      weekday: day.weekday || getGermanWeekday(day.planningDate),
+      items: day.items.map((entry) => ({
+        categoryKey: normalizeCategory(entry.categoryKey),
+        qty: entry.qty,
+        notes: entry.notes ?? '',
+        handoverEnabled: Boolean(entry.handoverEnabled),
+        linkedPlanningId: entry.linkedPlanningId ?? '',
+        handoverNote: entry.handoverNote ?? '',
+      })),
+    }));
+
   return {
     id: item.id,
     customerName: item.customerName,
@@ -236,20 +267,7 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
     endDate: item.endDate,
     notes: item.notes,
     status: item.status === 'Bestaetigt' ? 'Bestätigt' : item.status,
-    days: [...item.days]
-      .sort((a, b) => a.planningDate.localeCompare(b.planningDate))
-      .map((day) => ({
-        planningDate: day.planningDate,
-        weekday: day.weekday,
-        items: day.items.map((entry) => ({
-          categoryKey: normalizeCategory(entry.categoryKey),
-          qty: entry.qty,
-          notes: entry.notes ?? '',
-          handoverEnabled: Boolean(entry.handoverEnabled),
-          linkedPlanningId: entry.linkedPlanningId ?? '',
-          handoverNote: entry.handoverNote ?? '',
-        })),
-      })),
+    days: alignDaysToProjectRange(item.startDate, item.endDate, normalizedDays),
   };
 }
 
@@ -1262,26 +1280,6 @@ export function PlanningPage({
     await removeHandover(position.dayIndex, position.itemIndex);
   };
 
-  const addDay = () => {
-    patchEditor((current) => {
-      const lastDate = current.days[current.days.length - 1]?.planningDate || current.startDate;
-      const next = new Date(`${lastDate}T00:00:00`);
-      next.setDate(next.getDate() + 1);
-      const iso = toIsoDate(next);
-      return {
-        ...current,
-        days: [
-          ...current.days,
-          {
-            planningDate: iso,
-            weekday: getGermanWeekday(iso),
-            items: [],
-          },
-        ],
-      };
-    });
-  };
-
   useEffect(() => {
     void loadPlannings();
   }, []);
@@ -1635,7 +1633,16 @@ export function PlanningPage({
                       type="date"
                       className="field-input"
                       value={editor.startDate}
-                      onChange={(event) => patchEditor((current) => ({ ...current, startDate: event.target.value }))}
+                      onChange={(event) =>
+                        patchEditor((current) => {
+                          const nextStartDate = event.target.value;
+                          return {
+                            ...current,
+                            startDate: nextStartDate,
+                            days: alignDaysToProjectRange(nextStartDate, current.endDate, current.days),
+                          };
+                        })
+                      }
                     />
                   </label>
                   <label className="field">
@@ -1644,7 +1651,16 @@ export function PlanningPage({
                       type="date"
                       className="field-input"
                       value={editor.endDate}
-                      onChange={(event) => patchEditor((current) => ({ ...current, endDate: event.target.value }))}
+                      onChange={(event) =>
+                        patchEditor((current) => {
+                          const nextEndDate = event.target.value;
+                          return {
+                            ...current,
+                            endDate: nextEndDate,
+                            days: alignDaysToProjectRange(current.startDate, nextEndDate, current.days),
+                          };
+                        })
+                      }
                     />
                   </label>
                   <label className="field">
@@ -1708,24 +1724,7 @@ export function PlanningPage({
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-semibold text-slate-900">Tagesplanung</h4>
-                  <div className="inline-flex gap-2">
-                    <button
-                      type="button"
-                      className="btn-secondary px-2.5 py-1.5 text-xs"
-                      onClick={() =>
-                        patchEditor((current) => ({
-                          ...current,
-                          days: buildDaysInRange(current.startDate, current.endDate),
-                        }))
-                      }
-                    >
-                      Tage aus Zeitraum
-                    </button>
-                    <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={addDay}>
-                      <Plus className="h-3.5 w-3.5" />
-                      Tag hinzufügen
-                    </button>
-                  </div>
+                  <p className="text-xs text-slate-500">Automatisch aus Start- und Enddatum</p>
                 </div>
 
                 <div className="soft-scrollbar max-h-[560px] space-y-3 overflow-y-auto pr-1">
@@ -1739,22 +1738,9 @@ export function PlanningPage({
                       >
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div className="inline-flex items-center gap-2">
-                            <input
-                              type="date"
-                              className="field-input h-9"
-                              value={day.planningDate}
-                              onChange={(event) =>
-                                patchEditor((current) => {
-                                  const nextDays = [...current.days];
-                                  nextDays[dayIndex] = {
-                                    ...nextDays[dayIndex],
-                                    planningDate: event.target.value,
-                                    weekday: getGermanWeekday(event.target.value),
-                                  };
-                                  return { ...current, days: nextDays };
-                                })
-                              }
-                            />
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                              {formatGermanDate(day.planningDate)}
+                            </span>
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
                               {day.weekday}
                             </span>
@@ -1763,18 +1749,6 @@ export function PlanningPage({
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
                               Bedarf {dayTotal}
                             </span>
-                            <button
-                              type="button"
-                              className="btn-danger px-2.5 py-1.5 text-xs"
-                              onClick={() =>
-                                patchEditor((current) => ({
-                                  ...current,
-                                  days: current.days.filter((_, index) => index !== dayIndex),
-                                }))
-                              }
-                            >
-                              Tag entfernen
-                            </button>
                           </div>
                         </div>
 
