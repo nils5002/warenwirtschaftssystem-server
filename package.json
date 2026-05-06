@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "postinstall": "npm --prefix frontend install",
-    "dev": "npm --prefix frontend run dev"
+    "dev": "npm --prefix frontend run dev",
+    "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-local.ps1",
+    "dev:local:fresh": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-local-fresh.ps1"
   }
 }

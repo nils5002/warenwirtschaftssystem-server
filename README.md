@@ -39,6 +39,22 @@ npm install
 npm run dev
 ```
 
+Einfacher Local-Modus (ein Befehl, fester Local-Admin, eigene lokale DB):
+
+```powershell
+npm run dev:local
+```
+
+Local-Login:
+- E-Mail: `admin@example.com`
+- Passwort: `Admin123!`
+
+Falls der lokale Datenstand zurückgesetzt werden soll:
+
+```powershell
+npm run dev:local:fresh
+```
+
 Alternativ getrennt:
 
 ```powershell
