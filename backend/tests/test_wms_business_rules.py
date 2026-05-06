@@ -818,6 +818,7 @@ def test_overview_contains_planning_summary_separate_from_inventory_status() -> 
     assert isinstance(summary, dict)
     assert "todayPlannedQty" in summary
     assert "todayShortageCount" in summary
+    assert "openConflictCount" in summary
     assert "categorySummaries" in summary
 
 

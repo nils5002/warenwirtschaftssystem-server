@@ -23,7 +23,7 @@ from ..database.models import (
     PlanningItemRecord,
 )
 from ..domain.categories import normalize_category
-from . import category_repository
+from . import category_repository, planning_repository
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
@@ -726,7 +726,6 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
     planning_rows = db.scalars(
         select(PlanningRecord)
         .where(PlanningRecord.status.in_(planning_statuses))
-        .where(PlanningRecord.end_date >= today)
     ).all()
     if not planning_rows:
         return PlanningSummaryItem(
@@ -735,7 +734,20 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             todayShortageItems=[],
             upcomingPlannedQty=0,
             upcomingShortageCount=0,
+            openConflictCount=0,
             categorySummaries=[],
+        )
+
+    planning_external_ids = [row.external_id for row in planning_rows if row.external_id]
+    open_conflict_count = 0
+    for planning_external_id in planning_external_ids:
+        availability = planning_repository.get_planning_availability(db, planning_external_id)
+        if availability is None:
+            continue
+        open_conflict_count += sum(
+            1
+            for item in availability.items
+            if bool(item.hasGlobalShortage) or int(item.shortageQty or 0) > 0
         )
 
     planning_ids = [row.id for row in planning_rows]
@@ -749,6 +761,7 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             todayShortageItems=[],
             upcomingPlannedQty=0,
             upcomingShortageCount=0,
+            openConflictCount=open_conflict_count,
             categorySummaries=[],
         )
     day_by_id = {row.id: row for row in day_rows}
@@ -762,6 +775,7 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             todayShortageItems=[],
             upcomingPlannedQty=0,
             upcomingShortageCount=0,
+            openConflictCount=open_conflict_count,
             categorySummaries=[],
         )
 
@@ -850,6 +864,7 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
         todayShortageItems=today_shortage_items,
         upcomingPlannedQty=sum(demand_upcoming.values()),
         upcomingShortageCount=upcoming_shortage_count,
+        openConflictCount=open_conflict_count,
         categorySummaries=category_summaries,
     )
 

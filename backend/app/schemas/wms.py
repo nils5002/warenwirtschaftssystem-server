@@ -161,6 +161,7 @@ class PlanningSummaryItem(BaseModel):
     todayShortageItems: list[PlanningSummaryCategoryItem] = Field(default_factory=list)
     upcomingPlannedQty: int
     upcomingShortageCount: int
+    openConflictCount: int = 0
     categorySummaries: list[PlanningSummaryCategoryItem] = Field(default_factory=list)
 
 

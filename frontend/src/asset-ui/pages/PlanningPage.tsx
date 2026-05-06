@@ -26,6 +26,7 @@ import {
   type PlanningStatus,
   type PlanningResponse,
   type PlanningUpsertPayload,
+  type WmsOverview,
 } from '../../services/wmsApi';
 import { categoryOptionsFromRecords, normalizeCategory } from '../categories';
 import type { Asset, CategoryItem, UserItem } from '../types';
@@ -34,6 +35,7 @@ type PlanningPageProps = {
   assets: Asset[];
   categories: CategoryItem[];
   users: UserItem[];
+  planningSummary: WmsOverview['planningSummary'];
   onOpenInventoryWithQuery: (query: string) => void;
   canEdit?: boolean;
   isMobile?: boolean;
@@ -370,6 +372,7 @@ export function PlanningPage({
   assets: _assets,
   categories,
   users,
+  planningSummary,
   onOpenInventoryWithQuery,
   canEdit = true,
   isMobile = false,
@@ -702,14 +705,14 @@ export function PlanningPage({
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
     const openCount = plannings.filter((item) => openStatuses.includes(item.status)).length;
     const doneCount = plannings.filter((item) => item.status === 'Abgeschlossen').length;
-    const redCount = availabilityVisuals.filter((item) => item.status === 'open').length;
+    const redCount = planningSummary?.openConflictCount ?? 0;
     return {
       total: plannings.length,
       openCount,
       doneCount,
       redCount,
     };
-  }, [availabilityVisuals, plannings]);
+  }, [planningSummary, plannings]);
 
   const networkVisuals = useMemo(
     () => availabilityVisuals.filter((item) => item.status === 'handover'),
