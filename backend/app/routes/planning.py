@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
-from ..routes.dependencies import AccessContext, get_access_context, require_project_scope, require_roles
+from ..routes.dependencies import AccessContext, get_access_context, require_roles
 from ..schemas.planning import (
     PlanningAvailabilityResponse,
     PlanningListItem,
@@ -19,7 +19,7 @@ from ..services.planning_service import PlanningService
 router = APIRouter(prefix="/api/wms/planning", tags=["Planning"])
 
 
-def _matches_project_scope(context: AccessContext, planning: PlanningListItem | PlanningResponse) -> bool:
+def _matches_planning_write_scope(context: AccessContext, planning: PlanningListItem | PlanningResponse) -> bool:
     if context.role == "admin":
         return True
     if context.role == "projektmanager":
@@ -31,8 +31,12 @@ def _matches_project_scope(context: AccessContext, planning: PlanningListItem | 
     return any(scope.lower() in haystack for scope in context.project_contexts)
 
 
-def _ensure_planning_access(context: AccessContext, planning: PlanningResponse) -> None:
-    if _matches_project_scope(context, planning):
+def _ensure_planning_read_access(context: AccessContext) -> None:
+    require_roles(context, "admin", "projektmanager", "mitarbeiter")
+
+
+def _ensure_planning_write_access(context: AccessContext, planning: PlanningResponse) -> None:
+    if _matches_planning_write_scope(context, planning):
         return
     raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Planung.")
 
@@ -45,11 +49,9 @@ def list_plannings(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> list[PlanningListItem]:
+    _ensure_planning_read_access(context)
     items = PlanningService.list_plannings(db, status=status, from_date=from_date, to_date=to_date)
-    if context.role == "admin":
-        return items
-    require_project_scope(context)
-    return [item for item in items if _matches_project_scope(context, item)]
+    return items
 
 
 @router.post("", response_model=PlanningResponse)
@@ -70,10 +72,10 @@ def get_planning(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> PlanningResponse:
+    _ensure_planning_read_access(context)
     item = PlanningService.get_planning(db, planning_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, item)
     return item
 
 
@@ -88,7 +90,7 @@ def update_planning(
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
+    _ensure_planning_write_access(context, existing)
     if context.role == "projektmanager" and context.user_id:
         payload.projectManagerUserId = context.user_id
     return PlanningService.update_planning(db, planning_id, payload)
@@ -105,7 +107,7 @@ def update_planning_post(
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
+    _ensure_planning_write_access(context, existing)
     if context.role == "projektmanager" and context.user_id:
         payload.projectManagerUserId = context.user_id
     return PlanningService.update_planning(db, planning_id, payload)
@@ -121,7 +123,7 @@ def duplicate_planning(
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
+    _ensure_planning_write_access(context, existing)
     duplicated = PlanningService.duplicate_planning(db, planning_id)
     if duplicated is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
@@ -175,7 +177,7 @@ def update_planning_status(
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
+    _ensure_planning_write_access(context, existing)
     updated = PlanningService.update_status(db, planning_id, payload.status)
     if updated is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
@@ -188,10 +190,10 @@ def get_planning_availability(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> PlanningAvailabilityResponse:
+    _ensure_planning_read_access(context)
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
     response = PlanningService.get_availability(db, planning_id)
     if response is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
@@ -208,7 +210,7 @@ def delete_planning(
     existing = PlanningService.get_planning(db, planning_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
-    _ensure_planning_access(context, existing)
+    _ensure_planning_write_access(context, existing)
     deleted = PlanningService.delete_planning(db, planning_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
