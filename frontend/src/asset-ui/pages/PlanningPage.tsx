@@ -273,6 +273,16 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
   };
 }
 
+function cloneEditablePlanning(item: EditablePlanning): EditablePlanning {
+  return {
+    ...item,
+    days: item.days.map((day) => ({
+      ...day,
+      items: day.items.map((entry) => ({ ...entry })),
+    })),
+  };
+}
+
 function toUpsertPayload(item: EditablePlanning): PlanningUpsertPayload {
   return {
     id: item.id,
@@ -376,6 +386,8 @@ export function PlanningPage({
   const [listSearch, setListSearch] = useState('');
   const [listStatus, setListStatus] = useState<'Alle' | PlanningStatus>('Alle');
   const [createOpen, setCreateOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [editorInitial, setEditorInitial] = useState<EditablePlanning | null>(null);
   const [handoverEditorKey, setHandoverEditorKey] = useState<string | null>(null);
   const [handoverSnapshot, setHandoverSnapshot] = useState<Record<string, EditablePlanning['days'][number]['items'][number]>>({});
   const [relatedPlannings, setRelatedPlannings] = useState<Record<string, PlanningResponse>>({});
@@ -1031,8 +1043,11 @@ export function PlanningPage({
     }
   };
 
-  const openPlanning = async (planningId: string) => {
+  const openPlanning = async (planningId: string, options?: { showModal?: boolean }) => {
     setSelectedId(planningId);
+    if (options?.showModal ?? true) {
+      setDetailModalOpen(true);
+    }
     setDetailLoading(true);
     setError(null);
     try {
@@ -1040,7 +1055,9 @@ export function PlanningPage({
         getPlanning(planningId),
         getPlanningAvailability(planningId),
       ]);
-      setEditor(toEditablePlanning(planning));
+      const editable = toEditablePlanning(planning);
+      setEditor(editable);
+      setEditorInitial(cloneEditablePlanning(editable));
       setAvailability(planningAvailability);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planungsdetail konnte nicht geladen werden.');
@@ -1122,6 +1139,7 @@ export function PlanningPage({
       ]);
       const savedEditor = toEditablePlanning(freshPlanning);
       setEditor(savedEditor);
+      setEditorInitial(cloneEditablePlanning(savedEditor));
       setAvailability(planningAvailability);
       return savedEditor;
     } catch (err) {
@@ -1136,6 +1154,41 @@ export function PlanningPage({
     if (!editor) return;
     await persistPlanning(editor);
   };
+
+  const isEditorDirty = useMemo(() => {
+    if (!editor || !editorInitial) return false;
+    return JSON.stringify(editor) !== JSON.stringify(editorInitial);
+  }, [editor, editorInitial]);
+
+  const closeDetailModal = async () => {
+    if (!detailModalOpen) return;
+    if (canEdit && isEditorDirty) {
+      const accepted = await confirm({
+        title: 'Änderungen verwerfen?',
+        message: 'Nicht gespeicherte Änderungen gehen verloren. Modal wirklich schließen?',
+        confirmLabel: 'Verwerfen',
+        cancelLabel: 'Weiter bearbeiten',
+        tone: 'default',
+      });
+      if (!accepted) return;
+    }
+    setDetailModalOpen(false);
+    setHandoverEditorKey(null);
+    setHandoverSnapshot({});
+    setEditor(null);
+    setEditorInitial(null);
+    setAvailability(null);
+  };
+
+  useEffect(() => {
+    if (!detailModalOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || saving) return;
+      void closeDetailModal();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [detailModalOpen, saving, closeDetailModal]);
 
   const createNewPlanning = async () => {
     if (!createForm.customerName.trim() || !createForm.projectName.trim()) {
@@ -1230,8 +1283,8 @@ export function PlanningPage({
     try {
       await updatePlanningStatus(planningId, status);
       await loadPlannings(planningId);
-      if (selectedId === planningId) {
-        await openPlanning(planningId);
+      if (detailModalOpen && selectedId === planningId) {
+        await openPlanning(planningId, { showModal: false });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Status konnte nicht gesetzt werden.');
@@ -1466,7 +1519,7 @@ export function PlanningPage({
       ) : null}
 
       {!isMobile ? <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card xl:col-span-4">
+        <article className="surface-card xl:col-span-12">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">Planungsliste</h3>
             <button
@@ -1613,81 +1666,68 @@ export function PlanningPage({
             })}
           </div>
         </article>
+      </div> : null}
 
-        <article className="surface-card xl:col-span-8">
-          {editor ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">
-                    Planung {editor.customerName} · {editor.projectName}
-                  </h3>
-                  <p className="text-xs text-slate-500">ID {editor.id}</p>
-                </div>
-                {canEdit ? (
-                  <button
-                  type="button"
-                  data-testid="planning-save"
-                  className="btn-primary"
-                  onClick={() => {
-                    void saveCurrent();
-                  }}
-                  disabled={saving}
-                >
-                  <Save className="h-4 w-4" />
-                  Speichern
-                  </button>
-                ) : null}
-              </div>
-
-              {false ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h4 className="text-sm font-semibold text-slate-900">Projektkontext</h4>
-                <div className="mt-2 grid gap-3 md:grid-cols-2">
-                  <label className="field">
-                    Kunde
-                    <input
-                      className="field-input"
-                      value={editor.customerName}
-                      onChange={(event) => patchEditor((current) => ({ ...current, customerName: event.target.value }))}
-                    />
-                  </label>
-                  <label className="field">
-                    Projekt
-                    <input
-                      className="field-input"
-                      value={editor.projectName}
-                      onChange={(event) => patchEditor((current) => ({ ...current, projectName: event.target.value }))}
-                    />
-                  </label>
-                  <label className="field">
-                    Veranstaltung
-                    <input
-                      className="field-input"
-                      value={editor.eventName}
-                      onChange={(event) => patchEditor((current) => ({ ...current, eventName: event.target.value }))}
-                    />
-                  </label>
-                  <label className="field">
-                    Projektmanager
-                    <select
-                      className="field-input"
-                      value={editor.projectManagerUserId}
-                      onChange={(event) =>
-                        patchEditor((current) => ({ ...current, projectManagerUserId: event.target.value }))
-                      }
-                    >
-                      <option value="">Nicht gesetzt</option>
-                      {selectableProjectManagers.map((user) => (
-                        <option key={user.id} value={user.id}>
-                          {user.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                </div>
-              ) : null}
+      {detailModalOpen ? (
+          <div
+            className="fixed inset-0 z-[80] bg-slate-900/60 p-0 sm:p-4"
+            onClick={() => {
+              if (saving) return;
+              void closeDetailModal();
+            }}
+          >
+            <div className="flex h-full items-end justify-center sm:items-center">
+              <article
+                className="surface-card w-full max-h-full overflow-hidden rounded-t-2xl border-0 sm:max-h-[92vh] sm:max-w-6xl sm:rounded-2xl sm:border"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="soft-scrollbar h-[92vh] overflow-y-auto p-4 sm:h-auto sm:max-h-[92vh] sm:p-5">
+                  {editor ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900">
+                            Planung {editor.customerName} · {editor.projectName}
+                          </h3>
+                          <p className="text-xs text-slate-500">ID {editor.id}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => {
+                              void closeDetailModal();
+                            }}
+                            disabled={saving}
+                          >
+                            Abbrechen
+                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              data-testid="planning-save"
+                              className="btn-primary"
+                              onClick={() => {
+                                void saveCurrent();
+                              }}
+                              disabled={saving}
+                            >
+                              <Save className="h-4 w-4" />
+                              Speichern
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => {
+                                void closeDetailModal();
+                              }}
+                            >
+                              Schließen
+                            </button>
+                          )}
+                        </div>
+                      </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Zeitraum und Status</h4>
@@ -2497,18 +2537,35 @@ export function PlanningPage({
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="flex h-full min-h-[420px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-              {detailLoading ? 'Planung wird geladen...' : 'Wähle links eine Planung aus oder lege eine neue an.'}
+                  ) : (
+                    <div className="flex h-full min-h-[420px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                      {detailLoading ? 'Planung wird geladen...' : 'Wähle links eine Planung aus oder lege eine neue an.'}
+                    </div>
+                  )}
+                </div>
+              </article>
             </div>
-          )}
-        </article>
-      </div> : null}
+          </div>
+      ) : null}
 
       {createOpen && canEdit ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4">
-          <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
-            <h3 className="text-lg font-semibold text-slate-900">Neue Einsatzplanung</h3>
+        <div
+          className="fixed inset-0 z-[70] bg-slate-900/55 p-0 sm:flex sm:items-center sm:justify-center sm:p-4"
+          onClick={() => {
+            if (saving) return;
+            setCreateOpen(false);
+          }}
+        >
+          <div
+            className="soft-scrollbar mt-12 h-[calc(100vh-3rem)] w-full overflow-y-auto rounded-t-2xl border border-slate-200 bg-white p-5 shadow-panel sm:mt-0 sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-slate-900">Neue Einsatzplanung</h3>
+              <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => setCreateOpen(false)} disabled={saving}>
+                Schließen
+              </button>
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="field">
                 Kunde
@@ -2602,7 +2659,7 @@ export function PlanningPage({
               />
             </label>
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="btn-secondary" onClick={() => setCreateOpen(false)}>
+              <button type="button" className="btn-secondary" onClick={() => setCreateOpen(false)} disabled={saving}>
                 Abbrechen
               </button>
               <button
@@ -2611,6 +2668,7 @@ export function PlanningPage({
                 onClick={() => {
                   void createNewPlanning();
                 }}
+                disabled={saving}
               >
                 Planung anlegen
               </button>
