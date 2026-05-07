@@ -92,6 +92,191 @@ def count_open_conflicts(availability: PlanningAvailabilityResponse | None) -> i
     )
 
 
+def get_open_conflict_counts_for_plannings(
+    db: Session,
+    external_ids: list[str] | None = None,
+) -> dict[str, int]:
+    """Batch-Berechnung der offenen Konflikte pro Planung.
+
+    Vermeidet das N+1-Problem von ``list_plannings`` und
+    ``_build_planning_summary``: statt ``get_planning_availability(...)`` pro
+    Planung (jeweils mit komplettem Asset-Scan und mehreren Joins) lädt diese
+    Funktion einmalig alle aktiven Planungen, deren Tage und Items sowie die
+    Bestandszahlen und berechnet daraus die Konfliktzahlen aller Planungen
+    in einem Durchlauf.
+
+    Die Konflikt-Definition ist identisch zu
+    ``count_open_conflicts(get_planning_availability(...))``:
+    ein Konflikt zählt, wenn an einem Tag/Kategorie nach Verrechnung mit
+    geplanter Übergabe noch eine echte Knappheit bleibt
+    (``shortage_after_handover_qty > 0``).
+
+    ``external_ids=None`` liefert die Counts aller aktiven Planungen.
+    Stornierte/abgeschlossene Planungen werden – wie bisher – ausgeklammert.
+    """
+
+    all_active_records = db.scalars(
+        select(PlanningRecord).where(
+            PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES))
+        )
+    ).all()
+    if not all_active_records:
+        if external_ids is None:
+            return {}
+        return {ext_id: 0 for ext_id in external_ids}
+
+    active_external_ids = {
+        record.external_id for record in all_active_records if record.external_id
+    }
+
+    if external_ids is None:
+        target_external_ids = set(active_external_ids)
+    else:
+        target_external_ids = set(external_ids)
+
+    planning_pk_to_external = {
+        record.id: record.external_id
+        for record in all_active_records
+        if record.external_id
+    }
+    planning_records_by_external = {
+        record.external_id: record
+        for record in all_active_records
+        if record.external_id
+    }
+
+    if not planning_pk_to_external:
+        return {ext_id: 0 for ext_id in target_external_ids}
+
+    day_rows = db.scalars(
+        select(PlanningDayRecord).where(
+            PlanningDayRecord.planning_id.in_(tuple(planning_pk_to_external.keys()))
+        )
+    ).all()
+    if not day_rows:
+        return {ext_id: 0 for ext_id in target_external_ids}
+
+    day_by_id = {day.id: day for day in day_rows}
+    item_rows = db.scalars(
+        select(PlanningItemRecord).where(
+            PlanningItemRecord.planning_day_id.in_(tuple(day_by_id.keys()))
+        )
+    ).all()
+    if not item_rows:
+        return {ext_id: 0 for ext_id in target_external_ids}
+
+    explicit_qty: dict[tuple[str, date, str], int] = defaultdict(int)
+    max_qty_by_planning_category: dict[tuple[str, str], int] = defaultdict(int)
+    handover_meta_by_planning_category: dict[tuple[str, str], dict[str, object]] = {}
+    categories_seen: set[str] = set()
+
+    for item in item_rows:
+        day = day_by_id.get(item.planning_day_id)
+        if day is None:
+            continue
+        ext_id = planning_pk_to_external.get(day.planning_id)
+        if not ext_id:
+            continue
+        category = category_repository.normalize_category_for_db(db, item.category_key)
+        categories_seen.add(category)
+        qty = int(item.qty or 0)
+        explicit_key = (ext_id, day.planning_date, category)
+        explicit_qty[explicit_key] += qty
+        max_qty_by_planning_category[(ext_id, category)] = max(
+            max_qty_by_planning_category[(ext_id, category)],
+            explicit_qty[explicit_key],
+        )
+
+        meta_key = (ext_id, category)
+        linked_planning_id = str(item.linked_planning_external_id or "").strip() or None
+        existing_meta = handover_meta_by_planning_category.get(meta_key)
+        if existing_meta is None:
+            handover_meta_by_planning_category[meta_key] = {
+                "source_date": day.planning_date,
+                "handover_enabled": bool(item.handover_enabled),
+                "linked_planning_id": linked_planning_id,
+            }
+        else:
+            current_source_date = existing_meta["source_date"]
+            if isinstance(current_source_date, date) and day.planning_date < current_source_date:
+                existing_meta["source_date"] = day.planning_date
+                existing_meta["handover_enabled"] = bool(item.handover_enabled)
+                existing_meta["linked_planning_id"] = linked_planning_id
+            else:
+                existing_meta["handover_enabled"] = bool(existing_meta["handover_enabled"]) or bool(
+                    item.handover_enabled
+                )
+                if not existing_meta.get("linked_planning_id") and linked_planning_id:
+                    existing_meta["linked_planning_id"] = linked_planning_id
+
+    if not categories_seen:
+        return {ext_id: 0 for ext_id in target_external_ids}
+
+    stock_usable: dict[str, int] = defaultdict(int)
+    for asset in db.scalars(select(AssetRecord)).all():
+        category = category_repository.normalize_category_for_db(db, asset.category)
+        if category not in categories_seen:
+            continue
+        if str(asset.status).strip().lower() in {"verfuegbar", "verfügbar"}:
+            stock_usable[category] += 1
+
+    # Effektive Tagesmenge je (Planung, Datum, Kategorie). Spiegelt die
+    # gleiche Logik wie ``get_planning_availability`` wider: explizite
+    # Mengen haben Vorrang, ansonsten gilt das Maximum als Default.
+    effective_qty: dict[tuple[str, date, str], int] = {}
+    planning_categories: dict[str, set[str]] = defaultdict(set)
+
+    for (ext_id, category), default_qty in max_qty_by_planning_category.items():
+        if default_qty <= 0:
+            continue
+        record = planning_records_by_external.get(ext_id)
+        if record is None:
+            continue
+        for bound_date in _iter_bound_dates(record.start_date, record.end_date):
+            qty = int(explicit_qty.get((ext_id, bound_date, category), default_qty))
+            if qty <= 0:
+                continue
+            effective_qty[(ext_id, bound_date, category)] = qty
+            planning_categories[ext_id].add(category)
+
+    total_demand: dict[tuple[date, str], int] = defaultdict(int)
+    for (ext_id, bound_date, category), qty in effective_qty.items():
+        total_demand[(bound_date, category)] += qty
+
+    result: dict[str, int] = {ext_id: 0 for ext_id in target_external_ids}
+
+    for (ext_id, bound_date, category), this_qty in effective_qty.items():
+        if ext_id not in target_external_ids:
+            continue
+        usable = stock_usable.get(category, 0)
+        total_qty = total_demand.get((bound_date, category), 0)
+        shortage_qty = max(0, total_qty - usable)
+        if shortage_qty <= 0:
+            continue
+
+        handover_meta = handover_meta_by_planning_category.get((ext_id, category)) or {}
+        handover_enabled = bool(handover_meta.get("handover_enabled"))
+        linked_planning_id = handover_meta.get("linked_planning_id")
+        handover_covered_qty = 0
+        if (
+            handover_enabled
+            and isinstance(linked_planning_id, str)
+            and linked_planning_id
+            and linked_planning_id in active_external_ids
+        ):
+            previous_day = bound_date - timedelta(days=1)
+            source_capacity = effective_qty.get(
+                (linked_planning_id, previous_day, category), 0
+            )
+            handover_covered_qty = min(shortage_qty, max(0, source_capacity))
+
+        shortage_after_handover_qty = max(0, shortage_qty - handover_covered_qty)
+        if shortage_after_handover_qty > 0:
+            result[ext_id] += 1
+
+    return result
+
+
 def _build_handover_list_summary_map(
     db: Session,
     records: list[PlanningRecord],
@@ -287,14 +472,19 @@ def list_plannings(
         stmt = stmt.where(PlanningRecord.start_date <= to_date)
     records = db.scalars(stmt).all()
     handover_summary_map = _build_handover_list_summary_map(db, records)
-    open_conflict_map: dict[str, int] = {}
-    for record in records:
-        if _normalize_status(record.status) not in ACTIVE_PLANNING_STATUSES:
-            continue
-        if not record.external_id:
-            continue
-        availability = get_planning_availability(db, record.external_id)
-        open_conflict_map[record.external_id] = count_open_conflicts(availability)
+    # Konfliktzahlen in einem einzigen Batch-Durchlauf berechnen, statt pro
+    # Planung erneut die volle Verfügbarkeit zu rechnen. Spart pro List-Aufruf
+    # N-1 Asset-Tabellenscans und N×Joins für Overlap/Handover.
+    active_target_ids = [
+        record.external_id
+        for record in records
+        if record.external_id and _normalize_status(record.status) in ACTIVE_PLANNING_STATUSES
+    ]
+    open_conflict_map: dict[str, int] = (
+        get_open_conflict_counts_for_plannings(db, active_target_ids)
+        if active_target_ids
+        else {}
+    )
     return [
         _planning_to_list_item(
             item,

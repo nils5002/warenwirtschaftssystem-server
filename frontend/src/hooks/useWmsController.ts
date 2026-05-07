@@ -188,7 +188,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
     window.history.pushState(null, '', targetPath);
   }, []);
 
-  const loadWms = async (options?: { initial?: boolean }) => {
+  // loadWms ist als useCallback ausgeführt, damit untergeordnete Komponenten
+  // (z. B. PlanningPage) nicht bei jedem Render eine neue Funktionsreferenz
+  // erhalten und damit unnötig erneut Effekte feuern.
+  const loadWms = useCallback(async (options?: { initial?: boolean }) => {
     if (options?.initial) {
       setIsLoading(true);
     } else {
@@ -234,7 +237,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     setApiAccessContext({ projectContext });
@@ -247,21 +250,31 @@ export function useWmsController(options: UseWmsControllerOptions) {
     }
     let cancelled = false;
 
-    const load = async () => {
+    // Initial-Load setzt explizit isLoading=true, damit der globale Banner
+    // wirklich nur beim ersten Aufruf erscheint.
+    const initial = async () => {
       if (cancelled) return;
       await loadWms({ initial: true });
     };
 
-    void load();
+    // Hintergrund-Polling DARF KEIN isLoading auslösen, sonst flackert der
+    // globale "Daten werden geladen ..."-Hinweis alle 15 Sekunden und das
+    // Layout springt (was z. B. die Backup-Seite optisch leerziehen lässt).
+    const refresh = async () => {
+      if (cancelled) return;
+      await loadWms();
+    };
+
+    void initial();
     const intervalId = window.setInterval(() => {
-      void load();
+      void refresh();
     }, 15000);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loadWms]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !isAuthenticated) return;

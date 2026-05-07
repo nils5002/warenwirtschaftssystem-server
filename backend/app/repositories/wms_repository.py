@@ -739,10 +739,16 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
         )
 
     planning_external_ids = [row.external_id for row in planning_rows if row.external_id]
-    open_conflict_count = 0
-    for planning_external_id in planning_external_ids:
-        availability = planning_repository.get_planning_availability(db, planning_external_id)
-        open_conflict_count += planning_repository.count_open_conflicts(availability)
+    # Globale offene Konflikte über die Batch-Funktion berechnen. So teilen sich
+    # Overview (planningSummary.openConflictCount) und PlanungsListe
+    # (PlanningListItem.openConflictCount) eine einzige, performante Berechnung
+    # ohne wiederholte Verfügbarkeits-Joins pro Planung.
+    open_conflict_map = (
+        planning_repository.get_open_conflict_counts_for_plannings(db, planning_external_ids)
+        if planning_external_ids
+        else {}
+    )
+    open_conflict_count = sum(open_conflict_map.values())
 
     planning_ids = [row.id for row in planning_rows]
     day_rows = db.scalars(
