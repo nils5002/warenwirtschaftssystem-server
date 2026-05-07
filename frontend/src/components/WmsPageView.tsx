@@ -177,6 +177,11 @@ export function WmsPageView({
 }: WmsPageViewProps) {
   const isAdmin = activeRole === 'Admin';
   const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
+  // QR-Scan-Aktionen sind in der Sidebar nur für Admin und Mitarbeiter
+  // sichtbar (App.tsx visibleNavigation). Bisher konnte Projektmanager
+  // die Seite per direktem URL-Aufruf trotzdem öffnen — der Page-Guard
+  // wird hier auf die gleichen Rollen wie das Menü beschränkt.
+  const canUseQrFunctions = activeRole === 'Admin' || activeRole === 'Mitarbeiter';
   const canEditPlanning = activeRole === 'Admin' || activeRole === 'Projektmanager';
 
   switch (activePage) {
@@ -299,7 +304,7 @@ export function WmsPageView({
         />
       );
     case 'qrFunctions':
-      if (!canOperateCheckout) {
+      if (!canUseQrFunctions) {
         return <div className="surface-card p-6 text-sm text-slate-600">Keine Berechtigung für QR-Buchungen.</div>;
       }
       return (

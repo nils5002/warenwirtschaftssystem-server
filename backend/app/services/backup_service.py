@@ -21,6 +21,11 @@ from ..database.models import (
     HardwareImportRunRecord,
     HardwareImportRowErrorRecord,
 )
+from ..repositories.wms_repository import (
+    _normalize_asset_status,
+    _normalize_maintenance_status,
+)
+from ..repositories.planning_repository import _normalize_status as _normalize_planning_status
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
 from .auth_service import ROLE_ADMIN, hash_password, normalize_role_for_db
 
@@ -228,7 +233,12 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     name=item.name,
                     category=item.category,
                     location=item.location,
-                    status=item.status,
+                    # Status auf die kanonische Form normalisieren, damit
+                    # ältere Backups (z. B. "Verfügbar" mit Umlaut) nach
+                    # Restore identisch zu neu erstellten Assets gespeichert
+                    # sind und Availability-/Konflikt-Berechnungen
+                    # konsistent funktionieren.
+                    status=_normalize_asset_status(item.status),
                     assigned_to=item.assignedTo,
                     next_return=item.nextReturn,
                     tag_number=item.tagNumber,
@@ -279,7 +289,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     reported_at=item.reportedAt,
                     due_date=item.dueDate,
                     priority=item.priority,
-                    status=item.status,
+                    status=_normalize_maintenance_status(item.status),
                     comment=item.comment,
                     location=item.location,
                 )
@@ -307,7 +317,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 start_date=item.startDate,
                 end_date=item.endDate,
                 notes=item.notes,
-                status=item.status,
+                status=_normalize_planning_status(item.status),
                 template_source_planning_id=item.templateSourcePlanningId,
             )
             db.add(planning)

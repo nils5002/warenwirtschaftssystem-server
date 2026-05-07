@@ -8,7 +8,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from ..database.models import (
@@ -280,12 +280,24 @@ def _sync_asset_maintenance_status(db: Session, maintenance: MaintenanceRecord) 
     if status not in {"Erledigt", "Abgeschlossen"}:
         return
 
+    # Vorfilter direkt in SQL: nur Maintenance-Sätze mit aktivem Status
+    # und passender Asset-Zuordnung holen, statt die komplette Tabelle zu
+    # laden und in Python zu filtern. Der zusätzliche Substring-Match auf
+    # tag_number bleibt in Python, weil er kein simples Equals ist.
+    asset_match_clauses = [MaintenanceRecord.asset_name == asset.name]
+    if asset.tag_number:
+        asset_match_clauses.append(MaintenanceRecord.asset_name.contains(asset.tag_number))
+    candidate_stmt = (
+        select(MaintenanceRecord)
+        .where(MaintenanceRecord.external_id != maintenance.external_id)
+        .where(or_(*asset_match_clauses))
+    )
     active_items = [
         item
-        for item in db.scalars(select(MaintenanceRecord)).all()
-        if item.external_id != maintenance.external_id
-        and _maintenance_matches_asset(item, asset)
-        and _normalize_maintenance_status(item.status) in {"Offen", "In Bearbeitung", "In Arbeit", "Wartet auf Teile"}
+        for item in db.scalars(candidate_stmt).all()
+        if _maintenance_matches_asset(item, asset)
+        and _normalize_maintenance_status(item.status)
+        in {"Offen", "In Bearbeitung", "In Arbeit", "Wartet auf Teile"}
     ]
     active_statuses = {_normalize_maintenance_status(item.status) for item in active_items}
     if active_statuses & {"In Bearbeitung", "In Arbeit", "Wartet auf Teile"}:
