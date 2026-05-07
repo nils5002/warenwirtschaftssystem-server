@@ -13,6 +13,10 @@ type AssetsPageProps = {
   isMobile?: boolean;
   canManageAssets?: boolean;
   initialSearch?: string;
+  // True solange der erste Overview-Call noch läuft. Wenn true, zeigt die
+  // Seite Skeleton-Platzhalter ("—") in den Statuskacheln an, statt
+  // irreführend "0" auszugeben.
+  isInitialLoading?: boolean;
   onOpenDetail: (assetId: string) => void;
   onCreateAsset: () => void;
   onCreateAssetFromInput: (payload: {
@@ -112,6 +116,7 @@ export function AssetsPage({
   isMobile = false,
   canManageAssets = true,
   initialSearch,
+  isInitialLoading = false,
   onOpenDetail,
   onCreateAsset,
   onCreateAssetFromInput,
@@ -675,18 +680,46 @@ export function AssetsPage({
           </div>
         </div>
 
+        {/* Stat-Kacheln: solange der erste Overview-Call läuft, zeigen wir
+            "—" statt "0", damit das Inventar nicht fälschlich leer wirkt.
+            Sobald hasLoadedOnce → isInitialLoading=false, springen die
+            echten Werte rein. */}
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <div className="surface-muted px-3 py-2.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{assets.length}</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">
+              {isInitialLoading && assets.length === 0 ? (
+                <span className="text-slate-400" aria-label="Wird geladen">
+                  …
+                </span>
+              ) : (
+                assets.length
+              )}
+            </p>
           </div>
           <div className="surface-muted px-3 py-2.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Verfügbar</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{availableCount}</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">
+              {isInitialLoading && assets.length === 0 ? (
+                <span className="text-slate-400" aria-label="Wird geladen">
+                  …
+                </span>
+              ) : (
+                availableCount
+              )}
+            </p>
           </div>
           <div className="surface-muted px-3 py-2.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Verliehen / Wartung</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{loanedCount + attentionCount}</p>
+            <p className="mt-1 text-xl font-semibold text-slate-900">
+              {isInitialLoading && assets.length === 0 ? (
+                <span className="text-slate-400" aria-label="Wird geladen">
+                  …
+                </span>
+              ) : (
+                loanedCount + attentionCount
+              )}
+            </p>
           </div>
         </div>
       </div>
@@ -760,7 +793,9 @@ export function AssetsPage({
           >
             {showTechnicalColumns ? 'Technische Daten ausblenden' : 'Technische Daten anzeigen'}
           </button>
-          <p className="text-slate-500">{filteredAssets.length} Treffer</p>
+          <p className="text-slate-500">
+            {isInitialLoading && assets.length === 0 ? 'Lädt …' : `${filteredAssets.length} Treffer`}
+          </p>
         </div>
 
         {canManageAssets ? (

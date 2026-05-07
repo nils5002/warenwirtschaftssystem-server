@@ -173,6 +173,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [wmsError, setWmsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // hasLoadedOnce flippt von false → true beim ersten erfolgreichen
+  // /api/wms/overview-Response. Pages nutzen den davon abgeleiteten
+  // isInitialLoading-Flag, um statt irreführender 0-Werte (z. B.
+  // "Gerätebestand: 0") Skeleton/„—"-Platzhalter anzuzeigen, solange
+  // echte Daten noch nicht eingetroffen sind.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const currentOperatorName = getAuthSession()?.user.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
@@ -197,6 +203,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
     } else {
       setIsRefreshing(true);
     }
+    // Slow-Request-Log nur im Dev-Modus, damit Performance-Regressionen
+    // beim Overview-Endpoint sofort auffallen, ohne Production-Logs zu
+    // verschmutzen. import.meta.env.DEV ist von Vite zur Build-Zeit auf
+    // false gesetzt → kein Code-Path in der Production-Bundle.
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
       const payload = await fetchWmsOverview();
       const normalizedUsers = payload.users.map((user) => ({
@@ -231,6 +242,17 @@ export function useWmsController(options: UseWmsControllerOptions) {
         return payload.assets[0]?.id ?? null;
       });
       setWmsError(null);
+      setHasLoadedOnce(true);
+      if (import.meta.env.DEV) {
+        const elapsedMs =
+          typeof performance !== 'undefined' ? performance.now() - startedAt : 0;
+        if (elapsedMs > 1500) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[wms] /api/wms/overview dauerte ${Math.round(elapsedMs)} ms — Performance prüfen.`,
+          );
+        }
+      }
     } catch {
       setWmsError('Backend nicht erreichbar oder fehlerhafte API-Antwort.');
     } finally {
@@ -1081,6 +1103,9 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setProjectContext,
     isLoading,
     isRefreshing,
+    // True solange der erste Overview-Call noch läuft / fehlgeschlagen ist.
+    // Pages nutzen das, um Skeleton/Platzhalter statt 0-Werten anzuzeigen.
+    isInitialLoading: !hasLoadedOnce,
     wmsError,
     activePage,
     setActivePage,

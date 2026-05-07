@@ -214,6 +214,7 @@ function App() {
               planningSummary={controller.planningSummary}
               selectedAsset={controller.selectedAsset}
               search={controller.search}
+              isInitialLoading={controller.isInitialLoading}
               onOpenAssetDetail={controller.openAssetDetail}
               onCreateAsset={controller.createAsset}
               onCreateAssetFromInput={controller.createAssetFromInput}

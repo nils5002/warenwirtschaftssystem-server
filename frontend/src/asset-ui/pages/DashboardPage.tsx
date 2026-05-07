@@ -13,6 +13,9 @@ type DashboardPageProps = {
   planningSummary: WmsOverview['planningSummary'];
   theme: Theme;
   onNavigate: (page: AppPage) => void;
+  // True solange der erste Overview-Call noch läuft. KPI-Kacheln zeigen
+  // dann "—" statt "0", damit der Bestand nicht fälschlich leer wirkt.
+  isInitialLoading?: boolean;
 };
 
 const ASSET_ACCENTS_LIGHT = [
@@ -126,7 +129,13 @@ export function DashboardPage({
   planningSummary,
   theme,
   onNavigate,
+  isInitialLoading = false,
 }: DashboardPageProps) {
+  // Solange der erste Overview-Call läuft, zeigen wir einen Em-Dash
+  // statt "0" — sonst wirkt das Inventar fälschlich leer. Sobald echte
+  // Werte da sind, springen die Zahlen ein.
+  const showPlaceholders = isInitialLoading && assets.length === 0;
+  const formatCount = (value: number): string => (showPlaceholders ? '—' : String(value));
   const totalAssets = assets.length;
   const available = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loaned = assets.filter((asset) => asset.status === 'Verliehen').length;
@@ -164,9 +173,9 @@ export function DashboardPage({
               Bestand, Planung und Rückgaben auf einen Blick.
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verfügbar: {available}</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verliehen: {loaned}</span>
-              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Offene Tickets: {maintenanceOpen}</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verfügbar: {formatCount(available)}</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Verliehen: {formatCount(loaned)}</span>
+              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-slate-100">Offene Tickets: {showPlaceholders ? '—' : maintenanceOpen}</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2.5 text-xs sm:text-sm">
@@ -193,44 +202,44 @@ export function DashboardPage({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <KpiCard
           title="Gesamtanzahl Assets"
-          value={String(totalAssets)}
-          trend="Aktiver Bestand"
+          value={formatCount(totalAssets)}
+          trend={showPlaceholders ? 'Wird geladen …' : 'Aktiver Bestand'}
           tone="neutral"
           icon={Boxes}
         />
         <KpiCard
           title="Verfügbar"
-          value={String(available)}
-          trend="Direkt ausleihbar"
+          value={formatCount(available)}
+          trend={showPlaceholders ? 'Wird geladen …' : 'Direkt ausleihbar'}
           tone="positive"
           icon={CheckCircle2}
         />
         <KpiCard
           title="Verliehen"
-          value={String(loaned)}
-          trend="Aktuell ausgegeben"
+          value={formatCount(loaned)}
+          trend={showPlaceholders ? 'Wird geladen …' : 'Aktuell ausgegeben'}
           tone="warning"
           icon={Handshake}
         />
         <KpiCard
           title="Defekte Geräte"
-          value={String(defective)}
-          trend="Benötigen Bearbeitung"
+          value={formatCount(defective)}
+          trend={showPlaceholders ? 'Wird geladen …' : 'Benötigen Bearbeitung'}
           tone="critical"
           icon={TriangleAlert}
         />
         <KpiCard
           title="In Wartung"
-          value={String(inMaintenance)}
-          trend="Technikprüfung"
+          value={formatCount(inMaintenance)}
+          trend={showPlaceholders ? 'Wird geladen …' : 'Technikprüfung'}
           tone="warning"
           icon={Wrench}
         />
         <KpiCard
           title="Engpass-Kategorien"
-          value={String(bottleneckCount)}
-          trend="<= 1 verfügbar"
-          tone={bottleneckCount > 0 ? 'critical' : 'neutral'}
+          value={formatCount(bottleneckCount)}
+          trend={showPlaceholders ? 'Wird geladen …' : '<= 1 verfügbar'}
+          tone={!showPlaceholders && bottleneckCount > 0 ? 'critical' : 'neutral'}
           icon={TriangleAlert}
         />
       </div>
