@@ -64,6 +64,7 @@ def _build_planning_short_label(record: PlanningRecord) -> str:
 def _planning_to_list_item(
     record: PlanningRecord,
     handover_summary: PlanningListHandoverSummary | None = None,
+    open_conflict_count: int = 0,
 ) -> PlanningListItem:
     return PlanningListItem(
         id=record.external_id,
@@ -77,6 +78,17 @@ def _planning_to_list_item(
         status=_normalize_status(record.status),
         updatedAt=record.updated_at,
         handoverSummary=handover_summary,
+        openConflictCount=int(open_conflict_count),
+    )
+
+
+def count_open_conflicts(availability: PlanningAvailabilityResponse | None) -> int:
+    if availability is None:
+        return 0
+    return sum(
+        1
+        for item in availability.items
+        if bool(item.hasGlobalShortage) or int(item.shortageQty or 0) > 0
     )
 
 
@@ -275,7 +287,22 @@ def list_plannings(
         stmt = stmt.where(PlanningRecord.start_date <= to_date)
     records = db.scalars(stmt).all()
     handover_summary_map = _build_handover_list_summary_map(db, records)
-    return [_planning_to_list_item(item, handover_summary_map.get(item.external_id)) for item in records]
+    open_conflict_map: dict[str, int] = {}
+    for record in records:
+        if _normalize_status(record.status) not in ACTIVE_PLANNING_STATUSES:
+            continue
+        if not record.external_id:
+            continue
+        availability = get_planning_availability(db, record.external_id)
+        open_conflict_map[record.external_id] = count_open_conflicts(availability)
+    return [
+        _planning_to_list_item(
+            item,
+            handover_summary_map.get(item.external_id),
+            open_conflict_map.get(item.external_id, 0),
+        )
+        for item in records
+    ]
 
 
 def get_planning(db: Session, planning_id: str) -> PlanningResponse | None:

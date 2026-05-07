@@ -394,6 +394,7 @@ export function PlanningPage({
   const [error, setError] = useState<string | null>(null);
   const [listSearch, setListSearch] = useState('');
   const [listStatus, setListStatus] = useState<'Alle' | PlanningStatus>('Alle');
+  const [conflictFilterActive, setConflictFilterActive] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [editorInitial, setEditorInitial] = useState<EditablePlanning | null>(null);
@@ -756,14 +757,22 @@ export function PlanningPage({
   }, [editor]);
 
   const visiblePlannings = useMemo(() => {
-    return plannings.filter((item) => {
+    const filtered = plannings.filter((item) => {
       const matchesStatus = listStatus === 'Alle' || item.status === listStatus;
       const needle = listSearch.trim().toLowerCase();
       const haystack = `${item.customerName} ${item.projectName} ${item.eventName ?? ''}`.toLowerCase();
       const matchesSearch = !needle || haystack.includes(needle);
-      return matchesStatus && matchesSearch;
+      const matchesConflict = !conflictFilterActive || (item.openConflictCount ?? 0) > 0;
+      return matchesStatus && matchesSearch && matchesConflict;
     });
-  }, [listSearch, listStatus, plannings]);
+    if (!conflictFilterActive) return filtered;
+    return [...filtered].sort((a, b) => {
+      if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+      const customer = a.customerName.localeCompare(b.customerName, 'de', { sensitivity: 'base' });
+      if (customer !== 0) return customer;
+      return a.projectName.localeCompare(b.projectName, 'de', { sensitivity: 'base' });
+    });
+  }, [conflictFilterActive, listSearch, listStatus, plannings]);
 
   useEffect(() => {
     const candidateIds = visiblePlannings
@@ -1120,6 +1129,28 @@ export function PlanningPage({
       return;
     }
     void openPlanning(planningId);
+  };
+
+  const activateConflictFilter = () => {
+    if ((planningSummary?.openConflictCount ?? 0) <= 0) return;
+    setListSearch('');
+    setListStatus('Alle');
+    setConflictFilterActive(true);
+    const firstWithConflict = [...plannings]
+      .filter((item) => (item.openConflictCount ?? 0) > 0)
+      .sort((a, b) => {
+        if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+        const customer = a.customerName.localeCompare(b.customerName, 'de', { sensitivity: 'base' });
+        if (customer !== 0) return customer;
+        return a.projectName.localeCompare(b.projectName, 'de', { sensitivity: 'base' });
+      })[0];
+    if (firstWithConflict) {
+      setSelectedId(firstWithConflict.id);
+    }
+  };
+
+  const clearConflictFilter = () => {
+    setConflictFilterActive(false);
   };
 
   const requestCalendarPlanningData = (planningIds: string[]) => {
@@ -1554,10 +1585,29 @@ export function PlanningPage({
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Abgeschlossen</p>
             <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.doneCount}</p>
           </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
-          </div>
+          {planningStats.redCount > 0 ? (
+            <button
+              type="button"
+              data-testid="planning-conflicts-card"
+              className={`surface-muted px-3 py-2.5 text-left transition hover:border-rose-300 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 ${
+                conflictFilterActive ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : ''
+              }`}
+              onClick={activateConflictFilter}
+              aria-pressed={conflictFilterActive}
+              aria-label={`${planningStats.redCount} offene Konflikte anzeigen`}
+            >
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
+              <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
+              <p className="mt-0.5 text-[11px] text-rose-700">
+                {conflictFilterActive ? 'Filter aktiv' : 'Klicken, um zu filtern'}
+              </p>
+            </button>
+          ) : (
+            <div className="surface-muted px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
+              <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
+            </div>
+          )}
         </div>
 
         <div className="mt-4">
@@ -1669,6 +1719,23 @@ export function PlanningPage({
             </select>
           </div>
 
+          {conflictFilterActive ? (
+            <div
+              className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+              data-testid="planning-conflict-filter-banner"
+            >
+              <span>Es werden nur Planungen mit offenen Konflikten angezeigt.</span>
+              <button
+                type="button"
+                data-testid="planning-conflict-filter-reset"
+                className="rounded-full border border-rose-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                onClick={clearConflictFilter}
+              >
+                Filter zurücksetzen
+              </button>
+            </div>
+          ) : null}
+
           <div
             className="soft-scrollbar mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1"
             onClick={(event) => {
@@ -1689,6 +1756,8 @@ export function PlanningPage({
               const rowStatusLoading = statusUpdatingId === item.id && busyState === 'status';
               const hasHandoverNetwork = Boolean(handoverSummary);
               const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
+              const itemConflictCount = item.openConflictCount ?? 0;
+              const hasOpenConflict = itemConflictCount > 0;
               return (
                 <div
                   key={item.id}
@@ -1696,7 +1765,11 @@ export function PlanningPage({
                   role="button"
                   tabIndex={0}
                   className={`cursor-pointer rounded-xl border p-3 ${
-                    isActive
+                    hasOpenConflict
+                      ? isActive
+                        ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300'
+                        : 'border-rose-200 bg-rose-50/60'
+                      : isActive
                       ? hasHandoverNetwork
                         ? handoverAccent.cardActive
                         : 'border-brand-300 bg-brand-50/50 ring-1 ring-brand-200/80 dark:border-brand-700 dark:bg-brand-900/20 dark:ring-brand-700/60'
@@ -1720,10 +1793,23 @@ export function PlanningPage({
                       <p className="text-xs text-slate-600">{item.projectName}</p>
                       {item.eventName ? <p className="text-xs text-slate-500">{item.eventName}</p> : null}
                     </div>
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
-                      KW {item.calendarWeek ?? '-'}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
+                        KW {item.calendarWeek ?? '-'}
+                      </span>
+                      {hasOpenConflict ? (
+                        <span
+                          data-testid={`planning-conflict-badge-${item.id}`}
+                          className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700"
+                        >
+                          Konflikt{itemConflictCount > 1 ? ` · ${itemConflictCount}` : ''}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
+                  {hasOpenConflict ? (
+                    <p className="mt-1 text-[11px] font-medium text-rose-700">Offener Konflikt</p>
+                  ) : null}
 
                   <p className="mt-2 text-xs text-slate-500">{formatPeriod(item.startDate, item.endDate)}</p>
                   <p className="mt-1 text-xs text-slate-500">
