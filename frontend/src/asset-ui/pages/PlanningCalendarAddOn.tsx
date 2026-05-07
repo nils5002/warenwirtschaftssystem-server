@@ -153,6 +153,18 @@ function networkToneClasses(tone: NetworkTone, active: boolean): string {
   return `rounded-2xl border p-3 text-left transition shadow-sm hover:shadow border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-100${ring}`;
 }
 
+// Sekundärer Verbund-Akzent als schmaler Top-Streifen / Punkt.
+// Bewusst NUR als Akzentfarbe (background-color) — die fachliche
+// Statusfarbe der Karte (grün/blau/gelb/rot) wird dadurch NIE überdeckt.
+function networkRibbonClasses(tone: NetworkTone): string {
+  if (tone === 'teal') return 'bg-teal-500 dark:bg-teal-400';
+  if (tone === 'indigo') return 'bg-indigo-500 dark:bg-indigo-400';
+  if (tone === 'violet') return 'bg-violet-500 dark:bg-violet-400';
+  if (tone === 'cyan') return 'bg-cyan-500 dark:bg-cyan-400';
+  if (tone === 'amber') return 'bg-amber-500 dark:bg-amber-400';
+  return 'bg-sky-500 dark:bg-sky-400';
+}
+
 function networkBadgeClasses(tone: NetworkTone): string {
   if (tone === 'teal') return 'border-teal-200 bg-white/80 text-teal-700 dark:border-teal-700 dark:bg-slate-950/40 dark:text-teal-100';
   if (tone === 'indigo') return 'border-indigo-200 bg-white/80 text-indigo-700 dark:border-indigo-700 dark:bg-slate-950/40 dark:text-indigo-100';
@@ -330,6 +342,9 @@ export function PlanningCalendarAddOn({
             <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sky-700 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-200">Blau: Übergabe/Verbund</span>
             <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-200">Gelb: Prüfung</span>
             <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-rose-700 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-200">Rot: Handlungsbedarf</span>
+            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              Farbiger Marker = Verbundgruppe
+            </span>
           </div>
 
           <div className="hidden min-w-[920px] space-y-3 overflow-x-auto pb-1 md:block">
@@ -344,15 +359,39 @@ export function PlanningCalendarAddOn({
               const handoverSummary = handoverSummaryById.get(planning.id);
               const visual = getVisualStatus(planning, handoverSummary, availabilityByPlanningId[planning.id]);
               const networkMeta = networkMetaByPlanningId.get(planning.id);
-              const wrapperClass = networkMeta
-                ? networkToneClasses(networkMeta.tone, planning.id === selectedId)
-                : barClasses(visual.status, planning.id === selectedId);
+              // Wrapper-Farbe MUSS dem fachlichen Availability-/Konflikt-
+              // status folgen (grün/blau/gelb/rot/grau) — exakt der bereits
+              // vorhandenen Kalender-Legende und der Logik der Planungsliste.
+              // Frühere Variante hat hier bei Verbund-Mitgliedern den
+              // Status mit einer rotierenden Verbund-Tone-Palette
+              // überschrieben, wodurch z. B. rote Konflikte unsichtbar
+              // wurden. Die Verbund-Information bleibt weiter über das
+              // separate "Verbund aktiv (n)"-Badge sichtbar.
+              const wrapperClass = barClasses(visual.status, planning.id === selectedId);
               return (
                 <button key={planning.id} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
+                  {/* Sekundärer Verbund-Akzent: schmaler Top-Streifen in der
+                      Verbund-Tone. Macht verschiedene Verbundgruppen
+                      unterscheidbar, OHNE die fachliche Statusfarbe
+                      (grün/blau/gelb/rot) der Karte zu überschreiben. */}
+                  {networkMeta ? (
+                    <div
+                      aria-hidden
+                      className={`-mx-3 -mt-3 mb-2 h-1.5 rounded-t-2xl ${networkRibbonClasses(networkMeta.tone)}`}
+                    />
+                  ) : null}
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-base font-semibold">{planning.projectName}</p>
-                      <p className="text-sm opacity-90">{planning.customerName}{planning.eventName ? ` · ${planning.eventName}` : ''}</p>
+                    <div className="flex items-start gap-2">
+                      {networkMeta ? (
+                        <span
+                          aria-hidden
+                          className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${networkRibbonClasses(networkMeta.tone)}`}
+                        />
+                      ) : null}
+                      <div>
+                        <p className="text-base font-semibold">{planning.projectName}</p>
+                        <p className="text-sm opacity-90">{planning.customerName}{planning.eventName ? ` · ${planning.eventName}` : ''}</p>
+                      </div>
                     </div>
                     <span className="rounded-full border border-white/70 bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide dark:border-slate-700 dark:bg-slate-950/35">
                       {visual.label}
@@ -399,14 +438,37 @@ export function PlanningCalendarAddOn({
               const handoverSummary = handoverSummaryById.get(planning.id);
               const visual = getVisualStatus(planning, handoverSummary, availabilityByPlanningId[planning.id]);
               const networkMeta = networkMetaByPlanningId.get(planning.id);
-              const wrapperClass = networkMeta
-                ? networkToneClasses(networkMeta.tone, planning.id === selectedId)
-                : barClasses(visual.status, planning.id === selectedId);
+              // Wrapper-Farbe MUSS dem fachlichen Availability-/Konflikt-
+              // status folgen (grün/blau/gelb/rot/grau) — exakt der bereits
+              // vorhandenen Kalender-Legende und der Logik der Planungsliste.
+              // Frühere Variante hat hier bei Verbund-Mitgliedern den
+              // Status mit einer rotierenden Verbund-Tone-Palette
+              // überschrieben, wodurch z. B. rote Konflikte unsichtbar
+              // wurden. Die Verbund-Information bleibt weiter über das
+              // separate "Verbund aktiv (n)"-Badge sichtbar.
+              const wrapperClass = barClasses(visual.status, planning.id === selectedId);
               return (
                 <button key={`mobile-${planning.id}`} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
+                  {/* Sekundärer Verbund-Akzent (mobile): dünner Top-Streifen
+                      in der Verbund-Tone. Statusfarbe (grün/blau/gelb/rot)
+                      der Karte bleibt unverändert. */}
+                  {networkMeta ? (
+                    <div
+                      aria-hidden
+                      className={`-mx-3 -mt-3 mb-2 h-1 rounded-t-2xl ${networkRibbonClasses(networkMeta.tone)}`}
+                    />
+                  ) : null}
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{planning.projectName}</p>
-                    <Calendar className="h-4 w-4 opacity-70" />
+                    <div className="flex items-center gap-2 min-w-0">
+                      {networkMeta ? (
+                        <span
+                          aria-hidden
+                          className={`inline-block h-2 w-2 shrink-0 rounded-full ${networkRibbonClasses(networkMeta.tone)}`}
+                        />
+                      ) : null}
+                      <p className="text-sm font-semibold truncate">{planning.projectName}</p>
+                    </div>
+                    <Calendar className="h-4 w-4 opacity-70 shrink-0" />
                   </div>
                   <p className="mt-1 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
                   <p className="mt-1 text-[11px]">{visual.label}</p>
