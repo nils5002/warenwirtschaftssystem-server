@@ -103,7 +103,19 @@ function getVisualStatus(
   }
 
   const hasHandover = Boolean(handoverSummary);
+  // Wichtig: Die Planungsliste vom Backend liefert pro Planung bereits
+  // einen vorberechneten openConflictCount. Wir nutzen das als robusten
+  // Fallback und als Kurzschluss — so zeigt der Kalender denselben Status
+  // wie die Liste, AUCH BEVOR die detaillierte Availability per
+  // requestPlanningData() asynchron nachgeladen wurde. Vorher defaultete
+  // eine Karte mit echtem Konflikt fälschlich auf "grün", solange
+  // availability noch nicht im State war.
+  const openConflictCount = Number(planning.openConflictCount ?? 0);
+
   if (!availability) {
+    if (openConflictCount > 0) {
+      return { status: 'red', label: 'Offener Engpass' };
+    }
     return hasHandover ? { status: 'sky', label: 'Übergabe geplant' } : { status: 'green', label: 'Alles verfügbar' };
   }
 
@@ -117,7 +129,7 @@ function getVisualStatus(
       item.shortageQty <= 0;
     return hasGlobalShortage && !isFullyCoveredByHandover;
   });
-  if (hasOpenShortage) {
+  if (hasOpenShortage || openConflictCount > 0) {
     return { status: 'red', label: 'Offener Engpass' };
   }
 
@@ -134,13 +146,28 @@ function getVisualStatus(
 }
 
 function barClasses(status: CalendarVisualStatus, active: boolean): string {
-  const base = 'rounded-2xl border p-3 text-left transition shadow-sm hover:shadow';
+  // 'relative overflow-hidden' damit der absolut positionierte Verbund-Top-
+  // Streifen sauber an die Kartenkanten andockt. 'border-l-4' + farbiger
+  // border-l-{color}-500 macht die Statusfarbe deutlich erkennbar — auch
+  // wenn der Pastell-Hintergrund optisch dezent wirkt.
+  const base = 'relative overflow-hidden rounded-2xl border border-l-4 p-3 text-left transition shadow-sm hover:shadow';
   const ring = active ? ' ring-2 ring-brand-300 dark:ring-brand-700' : '';
-  if (status === 'red') return `${base} border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-700 dark:bg-rose-950/35 dark:text-rose-100${ring}`;
-  if (status === 'amber') return `${base} border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-950/35 dark:text-amber-100${ring}`;
-  if (status === 'sky') return `${base} border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-950/35 dark:text-sky-100${ring}`;
-  if (status === 'gray') return `${base} border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-900/55 dark:text-slate-200${ring}`;
-  return `${base} border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-100${ring}`;
+  if (status === 'red') return `${base} border-rose-300 border-l-rose-500 bg-rose-50 text-rose-900 dark:border-rose-700 dark:border-l-rose-400 dark:bg-rose-950/40 dark:text-rose-100${ring}`;
+  if (status === 'amber') return `${base} border-amber-300 border-l-amber-500 bg-amber-50 text-amber-900 dark:border-amber-700 dark:border-l-amber-400 dark:bg-amber-950/40 dark:text-amber-100${ring}`;
+  if (status === 'sky') return `${base} border-sky-300 border-l-sky-500 bg-sky-50 text-sky-900 dark:border-sky-700 dark:border-l-sky-400 dark:bg-sky-950/40 dark:text-sky-100${ring}`;
+  if (status === 'gray') return `${base} border-slate-300 border-l-slate-500 bg-slate-100 text-slate-700 dark:border-slate-700 dark:border-l-slate-400 dark:bg-slate-900/55 dark:text-slate-200${ring}`;
+  return `${base} border-emerald-300 border-l-emerald-500 bg-emerald-50 text-emerald-900 dark:border-emerald-700 dark:border-l-emerald-400 dark:bg-emerald-950/40 dark:text-emerald-100${ring}`;
+}
+
+// Status-Badge in Statusfarbe (statt blasses Weiß) — dritter Verstärker
+// neben Hintergrund und linkem Rand. Tailwind-Klassen sind explizit
+// pro Status, damit JIT sie zuverlässig im Build erkennt.
+function statusBadgeClasses(status: CalendarVisualStatus): string {
+  if (status === 'red') return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-700 dark:bg-rose-950/60 dark:text-rose-100';
+  if (status === 'amber') return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100';
+  if (status === 'sky') return 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-700 dark:bg-sky-950/60 dark:text-sky-100';
+  if (status === 'gray') return 'border-slate-300 bg-slate-200 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100';
+  return 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-100';
 }
 
 function networkToneClasses(tone: NetworkTone, active: boolean): string {
@@ -370,22 +397,25 @@ export function PlanningCalendarAddOn({
               const wrapperClass = barClasses(visual.status, planning.id === selectedId);
               return (
                 <button key={planning.id} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
-                  {/* Sekundärer Verbund-Akzent: schmaler Top-Streifen in der
-                      Verbund-Tone. Macht verschiedene Verbundgruppen
-                      unterscheidbar, OHNE die fachliche Statusfarbe
-                      (grün/blau/gelb/rot) der Karte zu überschreiben. */}
+                  {/* Sekundärer Verbund-Akzent: absolut positionierter Top-
+                      Streifen in der Verbund-Tone. Macht verschiedene
+                      Verbundgruppen unterscheidbar, ohne die fachliche
+                      Statusfarbe (linker Rand + Hintergrund + Status-Badge)
+                      zu überschreiben. Absolute Positionierung statt
+                      negativer Margins ist robust gegenüber Padding/
+                      Border-Änderungen am Wrapper. */}
                   {networkMeta ? (
                     <div
                       aria-hidden
-                      className={`-mx-3 -mt-3 mb-2 h-1.5 rounded-t-2xl ${networkRibbonClasses(networkMeta.tone)}`}
+                      className={`absolute inset-x-0 top-0 h-1.5 ${networkRibbonClasses(networkMeta.tone)}`}
                     />
                   ) : null}
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className={`flex flex-wrap items-start justify-between gap-2 ${networkMeta ? 'pt-1.5' : ''}`}>
                     <div className="flex items-start gap-2">
                       {networkMeta ? (
                         <span
                           aria-hidden
-                          className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${networkRibbonClasses(networkMeta.tone)}`}
+                          className={`mt-1.5 inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/70 dark:ring-slate-900/70 ${networkRibbonClasses(networkMeta.tone)}`}
                         />
                       ) : null}
                       <div>
@@ -393,7 +423,9 @@ export function PlanningCalendarAddOn({
                         <p className="text-sm opacity-90">{planning.customerName}{planning.eventName ? ` · ${planning.eventName}` : ''}</p>
                       </div>
                     </div>
-                    <span className="rounded-full border border-white/70 bg-white/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide dark:border-slate-700 dark:bg-slate-950/35">
+                    {/* Status-Badge in der Statusfarbe — dritter visueller
+                        Verstärker neben linkem Rand und Hintergrund. */}
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClasses(visual.status)}`}>
                       {visual.label}
                     </span>
                   </div>
@@ -449,21 +481,22 @@ export function PlanningCalendarAddOn({
               const wrapperClass = barClasses(visual.status, planning.id === selectedId);
               return (
                 <button key={`mobile-${planning.id}`} type="button" className={wrapperClass} onClick={() => onSelectPlanning(planning.id)}>
-                  {/* Sekundärer Verbund-Akzent (mobile): dünner Top-Streifen
-                      in der Verbund-Tone. Statusfarbe (grün/blau/gelb/rot)
-                      der Karte bleibt unverändert. */}
+                  {/* Sekundärer Verbund-Akzent (mobile): absolut
+                      positionierter dünner Top-Streifen in der Verbund-Tone.
+                      Statusfarbe (linker Rand + Hintergrund + Status-Badge)
+                      bleibt dominant. */}
                   {networkMeta ? (
                     <div
                       aria-hidden
-                      className={`-mx-3 -mt-3 mb-2 h-1 rounded-t-2xl ${networkRibbonClasses(networkMeta.tone)}`}
+                      className={`absolute inset-x-0 top-0 h-1 ${networkRibbonClasses(networkMeta.tone)}`}
                     />
                   ) : null}
-                  <div className="flex items-center justify-between gap-2">
+                  <div className={`flex items-center justify-between gap-2 ${networkMeta ? 'pt-1' : ''}`}>
                     <div className="flex items-center gap-2 min-w-0">
                       {networkMeta ? (
                         <span
                           aria-hidden
-                          className={`inline-block h-2 w-2 shrink-0 rounded-full ${networkRibbonClasses(networkMeta.tone)}`}
+                          className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/70 dark:ring-slate-900/70 ${networkRibbonClasses(networkMeta.tone)}`}
                         />
                       ) : null}
                       <p className="text-sm font-semibold truncate">{planning.projectName}</p>
@@ -471,13 +504,19 @@ export function PlanningCalendarAddOn({
                     <Calendar className="h-4 w-4 opacity-70 shrink-0" />
                   </div>
                   <p className="mt-1 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
-                  <p className="mt-1 text-[11px]">{visual.label}</p>
-                  {networkMeta ? (
-                    <p className="mt-1 inline-flex items-center gap-1 text-[11px]">
-                      <Link2 className="h-3 w-3" />
-                      Verbund aktiv
-                    </p>
-                  ) : null}
+                  {/* Status-Badge in Statusfarbe (mobile) — auch hier
+                      sichtbar in rot/blau/gelb/grün/grau. */}
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusBadgeClasses(visual.status)}`}>
+                      {visual.label}
+                    </span>
+                    {networkMeta ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] opacity-90">
+                        <Link2 className="h-3 w-3" />
+                        Verbund
+                      </span>
+                    ) : null}
+                  </div>
                 </button>
               );
             })}
