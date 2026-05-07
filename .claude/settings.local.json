@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --prefix frontend run build)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_wms_business_rules.py -k \"open_conflict or planning_list_reports\" -x)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_wms_business_rules.py)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/test_wms_business_rules.py)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -k \"planning\")",
+      "Bash(./.venv/Scripts/python.exe -m compileall app)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -k planning)",
+      "Bash(.venv/Scripts/python.exe -m compileall app)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests)"
+    ]
+  }
+}
