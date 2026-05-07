@@ -411,3 +411,110 @@ def test_planning_permissions_and_global_visibility() -> None:
 
     cleanup = client.delete(f"/api/wms/planning/{planning_id}", headers=_headers("Admin"))
     assert cleanup.status_code == 200
+
+
+def test_planning_update_is_role_based_not_owner_based() -> None:
+    """Schreibrechte sind rein rollenbasiert.
+
+    Ein zweiter Projektmanager (nicht der zugewiesene projectManagerUserId)
+    muss eine fremde Planung bearbeiten dürfen. Ein Mitarbeiter darf nicht.
+    Admin/Techniker dürfen weiterhin alles korrigieren. Außerdem darf ein
+    Update durch einen anderen PM die ursprüngliche projectManagerUserId-
+    Zuordnung NICHT still überschreiben.
+    """
+
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    pm_creator_id = f"pm-creator-{suffix}"
+    pm_other_id = f"pm-other-{suffix}"
+    today = date.today()
+
+    create_payload = {
+        "customerName": f"Kunde Update {suffix}",
+        "projectName": f"Projekt Update {suffix}",
+        "eventName": "RBAC Update",
+        "projectManagerUserId": pm_creator_id,
+        "calendarWeek": today.isocalendar().week,
+        "startDate": today.isoformat(),
+        "endDate": (today + timedelta(days=1)).isoformat(),
+        "notes": "Originalnotiz",
+        "status": "Entwurf",
+        "days": [
+            {
+                "planningDate": today.isoformat(),
+                "weekday": "Montag",
+                "items": [{"categoryKey": "Laptop", "qty": 1, "notes": None}],
+            }
+        ],
+    }
+
+    created = client.post(
+        "/api/wms/planning",
+        headers=_headers("Projektmanager", user_id=pm_creator_id),
+        json=create_payload,
+    )
+    assert created.status_code == 200
+    planning_id = created.json()["id"]
+    assert created.json()["projectManagerUserId"] == pm_creator_id
+
+    # Anderer Projektmanager darf bearbeiten — Akzeptanzkriterium 2 + 3.
+    other_pm_payload = dict(create_payload, notes="Bearbeitet durch zweiten PM")
+    other_pm_update = client.put(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Projektmanager", user_id=pm_other_id),
+        json=other_pm_payload,
+    )
+    assert other_pm_update.status_code == 200
+    assert other_pm_update.json()["notes"] == "Bearbeitet durch zweiten PM"
+    # Owner-Zuordnung darf durch Update eines anderen PM NICHT still
+    # überschrieben werden — sie bleibt beim ursprünglichen PM.
+    assert other_pm_update.json()["projectManagerUserId"] == pm_creator_id
+
+    # Status-Update durch zweiten PM ebenfalls erlaubt.
+    other_pm_status = client.post(
+        f"/api/wms/planning/{planning_id}/status",
+        headers=_headers("Projektmanager", user_id=pm_other_id),
+        json={"status": "Geplant"},
+    )
+    assert other_pm_status.status_code == 200
+    assert other_pm_status.json()["status"] == "Geplant"
+
+    # Admin darf weiterhin bearbeiten — Akzeptanzkriterium 4.
+    admin_payload = dict(create_payload, notes="Admin-Korrektur")
+    admin_update = client.put(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Admin", user_id=f"admin-{suffix}"),
+        json=admin_payload,
+    )
+    assert admin_update.status_code == 200
+    assert admin_update.json()["notes"] == "Admin-Korrektur"
+
+    # Techniker (Admin-Äquivalent) darf ebenfalls bearbeiten.
+    techniker_payload = dict(create_payload, notes="Techniker-Korrektur")
+    techniker_update = client.put(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Techniker", user_id=f"tech-{suffix}"),
+        json=techniker_payload,
+    )
+    assert techniker_update.status_code == 200
+    assert techniker_update.json()["notes"] == "Techniker-Korrektur"
+
+    # Mitarbeiter darf nicht bearbeiten — Akzeptanzkriterium 5.
+    mitarbeiter_payload = dict(create_payload, notes="Sollte abgelehnt werden")
+    mitarbeiter_update = client.put(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Mitarbeiter", user_id=f"mit-{suffix}"),
+        json=mitarbeiter_payload,
+    )
+    assert mitarbeiter_update.status_code == 403
+
+    # Junior darf ebenfalls nicht bearbeiten.
+    junior_update = client.put(
+        f"/api/wms/planning/{planning_id}",
+        headers=_headers("Junior", user_id=f"junior-{suffix}"),
+        json=mitarbeiter_payload,
+    )
+    assert junior_update.status_code == 403
+
+    cleanup = client.delete(f"/api/wms/planning/{planning_id}", headers=_headers("Admin"))
+    assert cleanup.status_code == 200
