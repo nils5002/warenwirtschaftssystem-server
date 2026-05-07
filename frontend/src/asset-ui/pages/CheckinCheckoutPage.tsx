@@ -102,7 +102,12 @@ export function CheckinCheckoutPage({
   const [scannerTarget, setScannerTarget] = useState<Mode | null>(null);
   const [showCheckoutOptions, setShowCheckoutOptions] = useState(false);
   const [showCheckinOptions, setShowCheckinOptions] = useState(false);
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  // projectPickerMode steuert das Bottom-Sheet für die mobile Projekt-
+  // auswahl. 'checkout' / 'checkin' = offen für den jeweiligen Modus,
+  // null = geschlossen. Das gleiche Sheet wird so für Ausgabe und
+  // Rücknahme wiederverwendet, ohne dass sich beide States gegenseitig
+  // überschreiben.
+  const [projectPickerMode, setProjectPickerMode] = useState<Mode | null>(null);
   const [projectPickerSearch, setProjectPickerSearch] = useState('');
   const [planningProjects, setPlanningProjects] = useState<PlanningListItem[]>([]);
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
@@ -201,11 +206,21 @@ export function CheckinCheckoutPage({
     return [...new Set(options)];
   }, [projectOptions, lastProject]);
 
+  // Beim Check-in wollen wir nicht den "lastProject"-Vorschlag aus dem
+  // letzten Checkout reinmischen — die Rücknahme bezieht sich auf das
+  // Projekt, aus dem das Gerät zurückkommt. Deshalb: Checkout nutzt die
+  // angereicherte Liste (mit lastProject), Check-in die schlichte
+  // Projektliste aus aktiven Planungen + aktuellem Projektkontext.
+  const checkinProjectOptions = projectOptions;
+
+  const projectPickerSourceOptions =
+    projectPickerMode === 'checkin' ? checkinProjectOptions : checkoutProjectOptions;
+
   const filteredProjectOptions = useMemo(() => {
     const needle = projectPickerSearch.trim().toLowerCase();
-    if (!needle) return checkoutProjectOptions;
-    return checkoutProjectOptions.filter((item) => item.toLowerCase().includes(needle));
-  }, [checkoutProjectOptions, projectPickerSearch]);
+    if (!needle) return projectPickerSourceOptions;
+    return projectPickerSourceOptions.filter((item) => item.toLowerCase().includes(needle));
+  }, [projectPickerSourceOptions, projectPickerSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -501,8 +516,14 @@ export function CheckinCheckoutPage({
   const applyProjectSelection = (value: string) => {
     const normalized = value.trim();
     if (!normalized) return;
-    setCheckoutProject(normalized);
-    setProjectPickerOpen(false);
+    // Schreibt das ausgewählte Projekt in den jeweils aktiven Modus,
+    // damit Checkout- und Check-in-State nicht überlappen.
+    if (projectPickerMode === 'checkin') {
+      setCheckinProject(normalized);
+    } else {
+      setCheckoutProject(normalized);
+    }
+    setProjectPickerMode(null);
     setProjectPickerSearch('');
   };
   const isCheckoutScanBusy = scanBusyMode === 'checkout';
@@ -687,7 +708,7 @@ export function CheckinCheckoutPage({
                 <button
                   type="button"
                   className="field-input flex h-12 items-center justify-between text-left"
-                  onClick={() => setProjectPickerOpen(true)}
+                  onClick={() => setProjectPickerMode('checkout')}
                   disabled={isAnyBusy}
                 >
                   <span className="truncate text-sm text-slate-800 dark:text-slate-100">
@@ -913,6 +934,37 @@ export function CheckinCheckoutPage({
                   : 'Noch kein Gerät gescannt.'}
               </p>
             )}
+            {/* Mobile-Projektauswahl auch beim Check-in: gleicher Bottom-
+                Sheet wie beim Checkout, geöffnet via projectPickerMode='checkin'.
+                Das Feld ist optional — wenn gesetzt, fließt es in onCheckin
+                als projectName ein und steuert den vorhandenen Plausibilitäts-
+                check gegen das aktuell verbuchte Projekt. */}
+            {isMobile ? (
+              <label className="field mt-2">
+                <span className="sr-only">Projekt (optional)</span>
+                <button
+                  type="button"
+                  className="field-input flex h-12 items-center justify-between text-left"
+                  onClick={() => setProjectPickerMode('checkin')}
+                  disabled={isAnyBusy}
+                >
+                  <span className="truncate text-sm text-slate-800 dark:text-slate-100">
+                    {checkinProject.trim() || checkinContextProject || 'Projekt auswählen (optional)'}
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
+                </button>
+                {checkinProject.trim() ? (
+                  <button
+                    type="button"
+                    className="mt-1.5 self-start text-[11px] font-semibold text-slate-500 underline-offset-2 hover:underline"
+                    onClick={() => setCheckinProject('')}
+                    disabled={isAnyBusy}
+                  >
+                    Auswahl entfernen
+                  </button>
+                ) : null}
+              </label>
+            ) : null}
           </div>
 
           <button
@@ -1026,15 +1078,17 @@ export function CheckinCheckoutPage({
         />
       ) : null}
 
-      {isMobile && projectPickerOpen ? (
-        <div className="fixed inset-0 z-40 bg-slate-900/45" onClick={() => setProjectPickerOpen(false)}>
+      {isMobile && projectPickerMode !== null ? (
+        <div className="fixed inset-0 z-40 bg-slate-900/45" onClick={() => setProjectPickerMode(null)}>
           <div
             className="absolute inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-h-[70vh] rounded-t-2xl border border-slate-200 bg-white p-3 shadow-panel dark:border-slate-700 dark:bg-slate-950"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Projekt auswählen</h4>
-              <button type="button" className="btn-ghost h-10 w-10 p-0" onClick={() => setProjectPickerOpen(false)}>
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {projectPickerMode === 'checkin' ? 'Projekt auswählen (Rücknahme)' : 'Projekt auswählen'}
+              </h4>
+              <button type="button" className="btn-ghost h-10 w-10 p-0" onClick={() => setProjectPickerMode(null)}>
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -1079,7 +1133,7 @@ export function CheckinCheckoutPage({
               >
                 Manuell übernehmen
               </button>
-              <button type="button" className="btn-secondary h-11" onClick={() => setProjectPickerOpen(false)}>
+              <button type="button" className="btn-secondary h-11" onClick={() => setProjectPickerMode(null)}>
                 Abbrechen
               </button>
             </div>
