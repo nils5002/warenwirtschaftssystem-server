@@ -510,14 +510,21 @@ export function CheckinCheckoutPage({
   const isAnyBusy = planningProjectsLoading || checkoutBusy || checkinBusy || isCheckoutScanBusy || isCheckinScanBusy;
 
   return (
-    <section className={`space-y-5 ${isMobile ? 'pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'pb-24 sm:pb-6'}`}>
-      <div>
-        <p className="page-kicker">Ein-/Auslagerung</p>
-        <h2 className="page-title">Schnellflow mit QR</h2>
-        <p className="page-subtitle">Klare Trennung: Ausgabe und Rücknahme als eigene Modi.</p>
-      </div>
+    <section
+      className={`${isMobile ? 'space-y-2.5' : 'space-y-5'} ${
+        isMobile ? 'pb-[calc(9rem+env(safe-area-inset-bottom))]' : 'pb-24 sm:pb-6'
+      }`}
+    >
+      {/* Page-Header nur auf Desktop. Auf Mobile direkt zur Aktion. */}
+      {!isMobile ? (
+        <div>
+          <p className="page-kicker">Ein-/Auslagerung</p>
+          <h2 className="page-title">Schnellflow mit QR</h2>
+          <p className="page-subtitle">Klare Trennung: Ausgabe und Rücknahme als eigene Modi.</p>
+        </div>
+      ) : null}
 
-      <div className="surface-card">
+      <div className={`surface-card ${isMobile ? '!p-2' : ''}`}>
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -573,38 +580,51 @@ export function CheckinCheckoutPage({
       ) : null}
 
       {message ? <div className={`rounded-xl border px-3 py-2 text-sm ${messageClass}`}>{message.text}</div> : null}
-      {planningProjectsLoading ? <InlineLoadingState message="Projektverfügbarkeiten werden geladen ..." /> : null}
+      {/* "Projektverfügbarkeiten werden geladen" auf Mobile unterdrücken
+          (silentes Hintergrundladen, blockiert sonst nur den Scan-Bereich). */}
+      {!isMobile && planningProjectsLoading ? (
+        <InlineLoadingState message="Projektverfügbarkeiten werden geladen ..." />
+      ) : null}
       {isCheckoutScanBusy ? <InlineLoadingState message="Scan wird geprüft ..." /> : null}
       {isCheckinScanBusy ? <InlineLoadingState message="Scan wird geprüft ..." /> : null}
       {checkoutBusy ? <InlineLoadingState message="Check-out wird gebucht ..." /> : null}
       {checkinBusy ? <InlineLoadingState message="Check-in wird gebucht ..." /> : null}
-      {isMobile ? (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
-          {mode === 'checkout'
-            ? 'Ablauf: 1) Scannen  2) Projekt  3) Ausgabe bestätigen'
-            : 'Ablauf: 1) Scannen  2) Rücknahme bestätigen'}
-        </div>
-      ) : null}
+      {/* Ablauf-Hint auf Mobile entfernt: die Schritte werden bereits in den
+          Karten ("Schritt 1", "Schritt 2") direkt am Ort der Aktion angezeigt. */}
 
       {mode === 'checkout' ? (
-        <article className="surface-card animate-fade-up space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Handshake className="h-4 w-4 text-brand-700" />
-              Ausgabe in 3 Schritten
-            </h3>
-            <span className="status-chip border-brand-200 bg-brand-50 text-brand-700">
-              <span className="status-dot bg-brand-600" />
-              Scan zuerst
-            </span>
-          </div>
-          <p className="text-sm text-slate-600">Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span></p>
+        <article
+          className={`surface-card animate-fade-up ${isMobile ? 'space-y-2.5 !p-3' : 'space-y-4'}`}
+        >
+          {/* Article-Header und Operator-Zeile sind auf Mobile redundant zu
+              den Mode-Tabs darüber und werden ausgeblendet. */}
+          {!isMobile ? (
+            <>
+              <div className="flex items-center justify-between">
+                <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <Handshake className="h-4 w-4 text-brand-700" />
+                  Ausgabe in 3 Schritten
+                </h3>
+                <span className="status-chip border-brand-200 bg-brand-50 text-brand-700">
+                  <span className="status-dot bg-brand-600" />
+                  Scan zuerst
+                </span>
+              </div>
+              <p className="text-sm text-slate-600">
+                Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span>
+              </p>
+            </>
+          ) : null}
 
-          <div className="rounded-xl border border-brand-100 bg-brand-50/70 p-3">
+          <div
+            className={`rounded-xl border border-brand-100 bg-brand-50/70 ${isMobile ? 'p-2.5' : 'p-3'}`}
+          >
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Schritt 1</p>
-            <label className="field mt-1">
-              Gerät scannen
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+            <label className={`field ${isMobile ? 'mt-1' : 'mt-1'}`}>
+              <span className={isMobile ? 'sr-only' : ''}>Gerät scannen</span>
+              {/* Mobile: Input über zwei Buttons in einer Zeile (2 Reihen total).
+                  Desktop: Input + Scannen + Kamera in einer Zeile (3 Spalten). */}
+              <div className="space-y-2 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-2 sm:space-y-0">
                 <input
                   ref={checkoutScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkout'}
@@ -619,21 +639,28 @@ export function CheckinCheckoutPage({
                     void applyCheckoutScan();
                   }}
                 />
-                <LoadingButton
-                  type="button"
-                  className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
-                  onClick={() => void applyCheckoutScan()}
-                  isLoading={isCheckoutScanBusy}
-                  loadingText="Prüft ..."
-                  disabled={isAnyBusy && !isCheckoutScanBusy}
-                >
-                  <ScanLine className="h-4 w-4" />
-                  Scannen
-                </LoadingButton>
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkout')} disabled={isAnyBusy}>
-                  <QrCode className="h-4 w-4" />
-                  Kamera
-                </button>
+                <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <LoadingButton
+                    type="button"
+                    className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                    onClick={() => void applyCheckoutScan()}
+                    isLoading={isCheckoutScanBusy}
+                    loadingText="Prüft ..."
+                    disabled={isAnyBusy && !isCheckoutScanBusy}
+                  >
+                    <ScanLine className="h-4 w-4" />
+                    Scannen
+                  </LoadingButton>
+                  <button
+                    type="button"
+                    className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                    onClick={() => setScannerTarget('checkout')}
+                    disabled={isAnyBusy}
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Kamera
+                  </button>
+                </div>
               </div>
             </label>
           </div>
@@ -652,11 +679,11 @@ export function CheckinCheckoutPage({
             </div>
           ) : null}
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className={`rounded-xl border border-slate-200 bg-slate-50 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 2</p>
             {isMobile ? (
               <label className="field mt-1">
-                Projekt
+                <span className="sr-only">Projekt</span>
                 <button
                   type="button"
                   className="field-input flex h-12 items-center justify-between text-left"
@@ -697,7 +724,7 @@ export function CheckinCheckoutPage({
 
           <button
             type="button"
-            className="btn-secondary w-full justify-center"
+            className={`btn-secondary w-full justify-center ${isMobile ? '!py-2 text-xs' : ''}`}
             onClick={() => setShowCheckoutOptions((prev) => !prev)}
             disabled={isAnyBusy}
           >
@@ -783,24 +810,32 @@ export function CheckinCheckoutPage({
           </LoadingButton>
         </article>
       ) : (
-        <article className="surface-card animate-fade-up space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
-              <Undo2 className="h-4 w-4 text-slate-700" />
-              Rücknahme in 2 Schritten
-            </h3>
-            <span className="status-chip border-slate-200 bg-slate-50 text-slate-700">
-              <span className="status-dot bg-slate-600" />
-              Schnellmodus
-            </span>
-          </div>
-          <p className="text-sm text-slate-600">Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span></p>
+        <article
+          className={`surface-card animate-fade-up ${isMobile ? 'space-y-2.5 !p-3' : 'space-y-4'}`}
+        >
+          {!isMobile ? (
+            <>
+              <div className="flex items-center justify-between">
+                <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <Undo2 className="h-4 w-4 text-slate-700" />
+                  Rücknahme in 2 Schritten
+                </h3>
+                <span className="status-chip border-slate-200 bg-slate-50 text-slate-700">
+                  <span className="status-dot bg-slate-600" />
+                  Schnellmodus
+                </span>
+              </div>
+              <p className="text-sm text-slate-600">
+                Du buchst als: <span className="font-semibold text-slate-900">{operatorName}</span>
+              </p>
+            </>
+          ) : null}
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className={`rounded-xl border border-slate-200 bg-slate-50 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Schritt 1</p>
             <label className="field mt-1">
-              Gerät scannen
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+              <span className={isMobile ? 'sr-only' : ''}>Gerät scannen</span>
+              <div className="space-y-2 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-2 sm:space-y-0">
                 <input
                   ref={checkinScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkin'}
@@ -815,21 +850,28 @@ export function CheckinCheckoutPage({
                     void applyCheckinScan();
                   }}
                 />
-                <LoadingButton
-                  type="button"
-                  className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
-                  onClick={() => void applyCheckinScan()}
-                  isLoading={isCheckinScanBusy}
-                  loadingText="Prüft ..."
-                  disabled={isAnyBusy && !isCheckinScanBusy}
-                >
-                  <ScanLine className="h-4 w-4" />
-                  Scannen
-                </LoadingButton>
-                <button type="button" className="btn-secondary h-11 w-full sm:h-10 sm:w-auto" onClick={() => setScannerTarget('checkin')} disabled={isAnyBusy}>
-                  <QrCode className="h-4 w-4" />
-                  Kamera
-                </button>
+                <div className="grid grid-cols-2 gap-2 sm:contents">
+                  <LoadingButton
+                    type="button"
+                    className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                    onClick={() => void applyCheckinScan()}
+                    isLoading={isCheckinScanBusy}
+                    loadingText="Prüft ..."
+                    disabled={isAnyBusy && !isCheckinScanBusy}
+                  >
+                    <ScanLine className="h-4 w-4" />
+                    Scannen
+                  </LoadingButton>
+                  <button
+                    type="button"
+                    className="btn-secondary h-11 w-full sm:h-10 sm:w-auto"
+                    onClick={() => setScannerTarget('checkin')}
+                    disabled={isAnyBusy}
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Kamera
+                  </button>
+                </div>
               </div>
             </label>
           </div>
@@ -846,23 +888,36 @@ export function CheckinCheckoutPage({
             </div>
           ) : null}
 
-          <div className="rounded-xl border border-brand-100 bg-brand-50/60 p-3 text-sm">
+          {/* Schritt 2 Panel: auf Mobile sehr kompakt (Asset ist schon oben in
+              der Auswahl-Karte sichtbar, daher kein "Erkannt: ..." doppelt).
+              Auf Desktop bleibt die volle Anzeige erhalten. */}
+          <div
+            className={`rounded-xl border border-brand-100 bg-brand-50/60 ${isMobile ? 'p-2.5' : 'p-3'} text-sm`}
+          >
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Schritt 2</p>
-            {checkinAsset ? (
+            {!isMobile ? (
               <>
-                <p className="mt-1 font-semibold text-slate-900">
-                  Erkannt: {checkinAsset.tagNumber} · {checkinAsset.name}
-                </p>
+                {checkinAsset ? (
+                  <p className="mt-1 font-semibold text-slate-900">
+                    Erkannt: {checkinAsset.tagNumber} · {checkinAsset.name}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-slate-600">Noch kein Gerät gescannt.</p>
+                )}
+                <p className="mt-2 text-xs text-slate-500">Rückgabedatum: {today}</p>
               </>
             ) : (
-              <p className="mt-1 text-slate-600">Noch kein Gerät gescannt.</p>
+              <p className="mt-1 text-xs text-slate-600">
+                {checkinAsset
+                  ? 'Rücknahme unten bestätigen.'
+                  : 'Noch kein Gerät gescannt.'}
+              </p>
             )}
-            <p className="mt-2 text-xs text-slate-500">Rückgabedatum: {today}</p>
           </div>
 
           <button
             type="button"
-            className="btn-secondary w-full justify-center"
+            className={`btn-secondary w-full justify-center ${isMobile ? '!py-2 text-xs' : ''}`}
             onClick={() => setShowCheckinOptions((prev) => !prev)}
             disabled={isAnyBusy}
           >
