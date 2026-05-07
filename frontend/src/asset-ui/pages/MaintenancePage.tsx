@@ -27,8 +27,6 @@ const columns: StatusColumn[] = [
   { title: 'Erledigt', tone: 'border-emerald-200 bg-emerald-50/75' },
 ];
 
-const defectPresets = ['Displaybruch', 'Display beschädigt', 'Gerät defekt', 'Gerät startet nicht', 'Akku defekt', 'Sonstiger Defekt'];
-
 const nextStatusMap: Partial<Record<BoardStatus, BoardStatus>> = {
   Offen: 'In Bearbeitung',
   'In Bearbeitung': 'Erledigt',
@@ -228,14 +226,6 @@ export function MaintenancePage({
                 onChange={(event) => setIssue(event.target.value)}
               />
             </label>
-
-            <div className="flex flex-wrap gap-1.5">
-              {defectPresets.map((preset) => (
-                <button key={preset} type="button" className="btn-secondary px-2 py-1 text-xs" onClick={() => setIssue(preset)}>
-                  {preset}
-                </button>
-              ))}
-            </div>
 
             <label className="field">
               Notiz (optional)
