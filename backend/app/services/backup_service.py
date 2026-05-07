@@ -98,6 +98,16 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "lastCheckout": item.last_checkout,
                     "nextReservation": item.next_reservation,
                     "sourceFile": item.source_file,
+                    # Fremdbestand-Felder mit ausgeben, damit Mietgeräte
+                    # nach Restore weiter im richtigen Zeitraum verfügbar
+                    # sind und das Bestandsart-Badge erhalten bleibt.
+                    "ownershipType": (item.ownership_type or "owned"),
+                    "sourceName": item.source_name,
+                    "availableFrom": item.available_from,
+                    "availableUntil": item.available_until,
+                    "returnDueDate": item.return_due_date,
+                    "returnedAt": item.returned_at,
+                    "externalNote": item.external_note,
                 }
                 for item in assets
             ],
@@ -253,6 +263,17 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     last_checkout=item.lastCheckout,
                     next_reservation=item.nextReservation,
                     source_file=item.sourceFile,
+                    # Fremdbestand-Felder beim Restore weitergeben.
+                    # Defaults im BackupAsset-Schema (ownershipType="owned",
+                    # rest = None) sorgen dafür, dass alte Backups OHNE
+                    # diese Felder weiter problemlos importierbar bleiben.
+                    ownership_type=(item.ownershipType or "owned"),
+                    source_name=item.sourceName,
+                    available_from=item.availableFrom,
+                    available_until=item.availableUntil,
+                    return_due_date=item.returnDueDate,
+                    returned_at=item.returnedAt,
+                    external_note=item.externalNote,
                 )
             )
 

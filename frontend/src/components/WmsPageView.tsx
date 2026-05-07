@@ -4,6 +4,7 @@ import { BackupPage } from '../asset-ui/pages/BackupPage';
 import { CategoriesPage } from '../asset-ui/pages/CategoriesPage';
 import { CheckinCheckoutPage } from '../asset-ui/pages/CheckinCheckoutPage';
 import { DashboardPage } from '../asset-ui/pages/DashboardPage';
+import { ExternalPoolPage } from '../asset-ui/pages/ExternalPoolPage';
 import { ImportExportPage } from '../asset-ui/pages/ImportExportPage';
 import { MaintenancePage } from '../asset-ui/pages/MaintenancePage';
 import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
@@ -203,6 +204,22 @@ export function WmsPageView({
           theme={theme}
           onNavigate={onNavigate}
           isInitialLoading={isInitialLoading}
+        />
+      );
+    case 'externalPool':
+      if (!isAdmin) {
+        return (
+          <div className="surface-card p-6 text-sm text-slate-600">
+            Fremdbestand-Verwaltung nur für Admin / Techniker.
+          </div>
+        );
+      }
+      return (
+        <ExternalPoolPage
+          assets={assets}
+          categories={categories}
+          isMobile={isMobile}
+          onReloadData={onReloadData}
         />
       );
     case 'inventory':

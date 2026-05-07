@@ -153,7 +153,31 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         lastCheckout=record.last_checkout,
         nextReservation=record.next_reservation,
         sourceFile=record.source_file,
+        ownershipType=_normalize_ownership_type(record.ownership_type),
+        sourceName=record.source_name,
+        availableFrom=record.available_from,
+        availableUntil=record.available_until,
+        returnDueDate=record.return_due_date,
+        returnedAt=record.returned_at,
+        externalNote=record.external_note,
     )
+
+
+def _normalize_ownership_type(value: str | None) -> str:
+    """Mappt eingehende Ownership-Werte auf die kanonischen Literale.
+
+    Bestehende Daten ohne ownership_type-Spalte (Legacy-Restore, Backups vor
+    diesem Feature) werden als ``owned`` interpretiert. Damit verhalten sich
+    alle vorhandenen Geräte unverändert wie Eigenbestand.
+    """
+    raw = (value or "").strip().lower()
+    if raw in {"rented", "miete", "mietgerät", "mietgeraet"}:
+        return "rented"
+    if raw in {"borrowed", "leihe", "leihgerät", "leihgeraet"}:
+        return "borrowed"
+    if raw in {"external", "extern", "externes gerät", "externes geraet"}:
+        return "external"
+    return "owned"
 
 
 def _activity_to_schema(record: ActivityRecord) -> ActivityItem:
@@ -334,6 +358,16 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         "last_checkout": item.lastCheckout,
         "next_reservation": item.nextReservation,
         "source_file": item.sourceFile,
+        # Fremdbestand-Felder. Bei fehlenden Werten bleibt das Default greifen
+        # (ownership_type='owned'), so dass bestehende Updates ohne diese
+        # Felder weiter wie bisher funktionieren.
+        "ownership_type": _normalize_ownership_type(item.ownershipType),
+        "source_name": item.sourceName,
+        "available_from": item.availableFrom,
+        "available_until": item.availableUntil,
+        "return_due_date": item.returnDueDate,
+        "returned_at": item.returnedAt,
+        "external_note": item.externalNote,
     }
     if record:
         for key, value in payload.items():
@@ -406,6 +440,115 @@ def delete_asset(db: Session, external_id: str) -> bool:
     db.delete(record)
     db.commit()
     return True
+
+
+def create_external_pool(
+    db: Session,
+    *,
+    category: str,
+    ownership_type: str,
+    count: int,
+    name_prefix: str,
+    location: str,
+    available_from: date | None,
+    available_until: date | None,
+    return_due_date: date | None,
+    source_name: str | None,
+    external_note: str | None,
+) -> list[str]:
+    """Legt mehrere Fremdbestand-Geräte in einem Aufruf an.
+
+    Erzeugt nummerierte Assets ("Miet-iPad 01", "Miet-iPad 02", ...) mit
+    eindeutigen tag_number / serial_number / qr_code je Stück. Damit
+    funktionieren sie im bestehenden Inventar-, QR-, Ausgabe- und
+    Rücknahme-Pfad ohne Sonderlogik.
+    """
+    if count < 1 or count > 200:
+        raise HTTPException(status_code=400, detail="count muss zwischen 1 und 200 liegen.")
+    normalized_ownership = _normalize_ownership_type(ownership_type)
+    if normalized_ownership == "owned":
+        raise HTTPException(
+            status_code=400,
+            detail="Fremdbestand erfordert ownershipType rented, borrowed oder external.",
+        )
+    canonical_category = category_repository.normalize_category_for_db(db, category)
+    prefix = (name_prefix or canonical_category).strip() or "Fremdbestand"
+    pad = max(2, len(str(count)))
+    suffix_base = secrets.token_hex(4)
+    created_ids: list[str] = []
+    for index in range(1, count + 1):
+        number = str(index).zfill(pad)
+        # Asset-ID, Tag und Seriennummer werden mit gemeinsamem Suffix
+        # generiert, damit alle Stück eines Anlage-Vorgangs zusammenhängen,
+        # aber jeder QR-Code unverwechselbar bleibt.
+        external_id = f"asset-ext-{suffix_base}-{number}"
+        tag_number = f"EXT-{suffix_base.upper()}-{number}"
+        serial_number = f"EXT-{suffix_base.upper()}-SN-{number}"
+        record = AssetRecord(
+            external_id=external_id,
+            name=f"{prefix} {number}",
+            category=canonical_category,
+            location=location.strip() or "Fremdbestand",
+            status="Verfuegbar",
+            assigned_to="-",
+            next_return="-",
+            tag_number=tag_number,
+            serial_number=serial_number,
+            device_model=None,
+            ip_address=None,
+            mac_lan=None,
+            mac_wlan=None,
+            qr_code=_build_qr_code(external_id, tag_number),
+            maintenance_state="",
+            notes="",
+            last_checkout="-",
+            next_reservation="-",
+            source_file=None,
+            ownership_type=normalized_ownership,
+            source_name=source_name,
+            available_from=available_from,
+            available_until=available_until,
+            return_due_date=return_due_date,
+            returned_at=None,
+            external_note=external_note,
+        )
+        db.add(record)
+        created_ids.append(external_id)
+    db.commit()
+    return created_ids
+
+
+def mark_asset_returned(
+    db: Session,
+    external_id: str,
+    *,
+    returned_at: date | None = None,
+) -> AssetItem:
+    """Markiert ein Fremdbestand-Gerät als zurückgegeben.
+
+    Verweigert die Aktion, wenn das Gerät aktuell verliehen ist — der
+    Workflow muss erst regulär per Check-in zurückgenommen werden.
+    """
+    record = db.scalar(select(AssetRecord).where(AssetRecord.external_id == external_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Asset nicht gefunden.")
+    if _normalize_ownership_type(record.ownership_type) == "owned":
+        raise HTTPException(
+            status_code=400,
+            detail="Eigenbestand kann nicht als zurückgegeben markiert werden.",
+        )
+    if _normalize_asset_status(record.status) == "Verliehen":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Dieses Gerät ist aktuell noch ausgegeben und kann erst nach "
+                "Rücknahme als zurückgegeben markiert werden."
+            ),
+        )
+    record.returned_at = returned_at or date.today()
+    db.commit()
+    db.refresh(record)
+    return _asset_to_schema(record, category_repository.active_category_names(db))
 
 
 def list_activities(db: Session) -> list[ActivityItem]:
@@ -791,10 +934,13 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             categorySummaries=[],
         )
 
+    # Bestand für die "heute"-Ansicht: nur Geräte mitzählen, die HEUTE
+    # tatsächlich verfügbar sind (Eigenbestand immer, Fremdbestand nur wenn
+    # innerhalb available_from / available_until und nicht returned_at).
     usable_by_category: dict[str, int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_for_db(db, asset.category)
-        if _normalize_asset_status(asset.status) == "Verfuegbar":
+        if planning_repository._is_asset_usable_on_date(asset, today):
             usable_by_category[category] += 1
 
     demand_today: dict[str, int] = defaultdict(int)

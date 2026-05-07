@@ -8,10 +8,13 @@ from ..routes.dependencies import AccessContext, get_access_context, require_rol
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
+    AssetMarkReturnedPayload,
     BulkUserDeletePayload,
     BulkUserDeleteResponse,
     CategoryCreatePayload,
     CategoryItem,
+    ExternalPoolCreatePayload,
+    ExternalPoolCreateResponse,
     LocationItem,
     MaintenanceItem,
     ReservationItem,
@@ -107,6 +110,38 @@ def delete_asset(
 ) -> dict[str, bool]:
     require_roles(context, "admin")
     return {"deleted": WmsService.delete_asset(db, asset_id)}
+
+
+@router.post("/assets/external-pool", response_model=ExternalPoolCreateResponse)
+def create_external_pool(
+    payload: ExternalPoolCreatePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> ExternalPoolCreateResponse:
+    """Legt mehrere Fremdbestand-Geräte (Miet-/Leih-/Externe Geräte) an.
+
+    Nur Admin/Techniker. Die erzeugten Assets nutzen den vorhandenen
+    Inventar-/QR-/Checkout-Pfad — es entsteht kein paralleles Modell.
+    """
+    require_roles(context, "admin")
+    created_ids = WmsService.create_external_pool(db, payload)
+    return ExternalPoolCreateResponse(createdAssetIds=created_ids)
+
+
+@router.post("/assets/{asset_id}/mark-returned", response_model=AssetItem)
+def mark_asset_returned(
+    asset_id: str,
+    payload: AssetMarkReturnedPayload | None = None,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> AssetItem:
+    """Markiert ein Fremdbestand-Gerät als zurückgegeben.
+
+    Nur Admin/Techniker. Schlägt fehl, wenn das Gerät aktuell verliehen ist.
+    """
+    require_roles(context, "admin")
+    returned_at = payload.returnedAt if payload else None
+    return WmsService.mark_asset_returned(db, asset_id, returned_at=returned_at)
 
 
 @router.get("/reservations", response_model=list[ReservationItem])

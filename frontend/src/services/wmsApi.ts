@@ -527,6 +527,39 @@ export async function deleteAsset(assetId: string): Promise<{ deleted: boolean }
   return parseResponse<{ deleted: boolean }>(response);
 }
 
+// --- Fremdbestand: Bulk-Anlage und "Als zurückgegeben markieren" ---
+export type ExternalPoolCreatePayload = {
+  category: string;
+  ownershipType: 'rented' | 'borrowed' | 'external';
+  count: number;
+  namePrefix: string;
+  location?: string;
+  availableFrom?: string | null;
+  availableUntil?: string | null;
+  returnDueDate?: string | null;
+  sourceName?: string | null;
+  externalNote?: string | null;
+};
+
+export type ExternalPoolCreateResponse = {
+  createdAssetIds: string[];
+};
+
+export function createExternalPool(
+  payload: ExternalPoolCreatePayload,
+): Promise<ExternalPoolCreateResponse> {
+  return postJson<ExternalPoolCreateResponse>('/api/wms/assets/external-pool', payload);
+}
+
+export function markAssetReturned(
+  assetId: string,
+  returnedAt?: string | null,
+): Promise<Asset> {
+  return postJson<Asset>(`/api/wms/assets/${assetId}/mark-returned`, {
+    returnedAt: returnedAt ?? null,
+  });
+}
+
 export function upsertReservation(reservation: ReservationItem): Promise<ReservationItem> {
   return postJson<ReservationItem>('/api/wms/reservations', reservation);
 }

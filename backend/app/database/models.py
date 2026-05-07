@@ -45,6 +45,24 @@ class AssetRecord(TimestampMixin, Base):
     next_reservation: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # --- Fremdbestand-Felder ---
+    # Bestandsart: owned (Eigenbestand, Default) oder rented / borrowed /
+    # external. Bestehende Geräte werden durch den Default automatisch als
+    # owned behandelt — keine Datenmigration nötig.
+    ownership_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="owned", index=True
+    )
+    # Optionale Quelle (Vermieter / Verleiher / Kunde) — nur für nicht-owned.
+    source_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    # Verfügbarkeitsfenster für Fremdbestand. Bei owned IGNORIERT.
+    available_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    available_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    return_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Wenn gesetzt, gilt das Gerät als "zurückgegeben" und zählt nicht mehr
+    # als verfügbarer Bestand in Planungen.
+    returned_at: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
+    external_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"

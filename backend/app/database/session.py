@@ -47,11 +47,46 @@ def _ensure_hot_path_indexes() -> None:
             connection.execute(statement)
 
 
+# Spalten, die im Lauf neuer Features zu bestehenden Tabellen hinzukommen.
+# ``Base.metadata.create_all(checkfirst=True)`` legt nur fehlende TABELLEN
+# an — Spalten in bereits bestehenden Tabellen bleiben ohne diesen Schritt
+# auf einer Production-DB unverändert. Wir prüfen daher pro Spalte via
+# ``PRAGMA table_info`` und setzen sie via ``ALTER TABLE ADD COLUMN``,
+# wenn sie fehlt. Das ist für SQLite und Postgres unkritisch und berührt
+# keine bestehenden Daten.
+_NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    # (table_name, column_name, sql_definition)
+    ("assets", "ownership_type", "VARCHAR(16) NOT NULL DEFAULT 'owned'"),
+    ("assets", "source_name", "VARCHAR(180)"),
+    ("assets", "available_from", "DATE"),
+    ("assets", "available_until", "DATE"),
+    ("assets", "return_due_date", "DATE"),
+    ("assets", "returned_at", "DATE"),
+    ("assets", "external_note", "TEXT"),
+)
+
+
+def _ensure_new_columns() -> None:
+    """Idempotente Migration: ergänzt fehlende Spalten in bestehenden Tabellen."""
+    with engine.begin() as connection:
+        for table_name, column_name, definition in _NEW_COLUMNS:
+            existing = connection.execute(
+                text(f"PRAGMA table_info({table_name})")
+            ).fetchall()
+            existing_names = {row[1] for row in existing}
+            if column_name in existing_names:
+                continue
+            connection.execute(
+                text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}")
+            )
+
+
 def init_db() -> None:
     # Import models lazily so metadata is populated before create_all.
     from . import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_new_columns()
     _ensure_hot_path_indexes()
 
 

@@ -7,12 +7,15 @@ from sqlalchemy.orm import Session
 
 from fastapi import HTTPException
 
+from datetime import date
+
 from ..repositories import category_repository, wms_repository
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
     BulkUserDeleteResponse,
     BulkUserDeleteResultItem,
+    ExternalPoolCreatePayload,
     LocationItem,
     CategoryItem,
     MaintenanceItem,
@@ -48,6 +51,33 @@ class WmsService:
     @staticmethod
     def delete_asset(db: Session, asset_id: str) -> bool:
         return wms_repository.delete_asset(db, asset_id)
+
+    @staticmethod
+    def create_external_pool(db: Session, payload: ExternalPoolCreatePayload) -> list[str]:
+        """Erzeugt eine Charge Fremdbestand-Geräte (Miet/Leih/Extern)."""
+        return wms_repository.create_external_pool(
+            db,
+            category=payload.category,
+            ownership_type=payload.ownershipType,
+            count=payload.count,
+            name_prefix=payload.namePrefix,
+            location=payload.location,
+            available_from=payload.availableFrom,
+            available_until=payload.availableUntil,
+            return_due_date=payload.returnDueDate,
+            source_name=payload.sourceName,
+            external_note=payload.externalNote,
+        )
+
+    @staticmethod
+    def mark_asset_returned(
+        db: Session,
+        asset_id: str,
+        *,
+        returned_at: date | None = None,
+    ) -> AssetItem:
+        """Markiert ein Fremdbestand-Gerät als zurückgegeben."""
+        return wms_repository.mark_asset_returned(db, asset_id, returned_at=returned_at)
 
     @staticmethod
     def list_reservations(db: Session) -> list[ReservationItem]:

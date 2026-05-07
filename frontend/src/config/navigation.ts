@@ -4,6 +4,7 @@ import {
   CalendarRange,
   Download,
   LayoutDashboard,
+  PackagePlus,
   QrCode,
   Printer,
   Shapes,
@@ -35,6 +36,13 @@ export const navigation: NavItem[] = [
     icon: Boxes,
     group: 'operations',
     hint: 'Assets & Verfügbarkeit',
+  },
+  {
+    key: 'externalPool',
+    label: 'Fremdbestand',
+    icon: PackagePlus,
+    group: 'operations',
+    hint: 'Miet-, Leih- & Externgeräte',
   },
   {
     key: 'checkinCheckout',
