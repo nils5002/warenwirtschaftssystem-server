@@ -6,12 +6,18 @@
 
 :root {
   color-scheme: light;
-  --app-bg: #eef2f7;
-  --app-bg-soft: #f8fafc;
+  /* Hintergrund leicht kühl/grau getönt, NICHT reinweiß. Sorgt zusammen mit
+     den weißen Surface-Cards für eine klare visuelle Hierarchie ohne harte
+     Farbkanten. */
+  --app-bg: #e9eef5;
+  --app-bg-soft: #f3f6fb;
   --app-surface: #ffffff;
-  --app-border: #d7e0eb;
+  /* Etwas kräftigere Border, damit Cards/Inputs auf hellem Hintergrund
+     wirklich abgesetzt sind, ohne hart zu wirken. */
+  --app-border: #c8d2e0;
   --app-text: #0f172a;
-  --app-muted: #5b6472;
+  /* Sekundärer Text deutlich lesbarer (vorher zu blass). */
+  --app-muted: #475569;
 }
 
 :root.dark {
@@ -29,9 +35,13 @@ body {
   min-height: 100vh;
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   color: var(--app-text);
+  /* Radial-Highlights deutlich gedämpft (vorher sehr saturierte Pastell-
+     blautöne wirkten "grell"). Jetzt gibt es nur noch einen sehr leisen
+     kühlen Schimmer, damit der Hintergrund ruhig bleibt und Cards den
+     Fokus tragen. */
   background:
-    radial-gradient(circle at 4% -10%, #d9f1ff 0%, transparent 38%),
-    radial-gradient(circle at 92% 4%, #dbeafe 0%, transparent 32%),
+    radial-gradient(circle at 4% -12%, rgb(186 219 248 / 0.45) 0%, transparent 40%),
+    radial-gradient(circle at 96% 6%, rgb(199 220 246 / 0.40) 0%, transparent 36%),
     linear-gradient(180deg, var(--app-bg-soft) 0%, var(--app-bg) 100%);
   transition: background 200ms ease, color 200ms ease;
 }
@@ -54,12 +64,17 @@ h3 {
 }
 
 @layer components {
+  /* Vollopaque weiße Karte mit klarer (aber nicht harter) Border und
+     dezent weicherem Schatten. Hebt sich auf dem leicht getönten Body
+     deutlich ab, ohne wie ein gleißender Block zu wirken. */
   .surface-card {
-    @apply rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-soft backdrop-blur md:p-5;
+    @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-soft backdrop-blur md:p-5;
   }
 
+  /* Zweite Surface-Stufe für eingebettete Sub-Cards — sichtbar abgesetzt
+     gegenüber surface-card (vorher waren beide fast identisch). */
   .surface-muted {
-    @apply rounded-2xl border border-slate-200/80 bg-slate-50/90;
+    @apply rounded-2xl border border-slate-200 bg-slate-100/70;
   }
 
   .page-kicker {
@@ -70,36 +85,45 @@ h3 {
     @apply mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl;
   }
 
+  /* Sekundärer Text spürbar lesbarer (slate-500 → slate-600) bei
+     identischer Hierarchie zur Page-Title. */
   .page-subtitle {
-    @apply mt-1 text-sm text-slate-500;
+    @apply mt-1 text-sm text-slate-600;
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
+  /* btn-secondary: kräftigere Border + leichter Shadow, damit Buttons im
+     Light Mode auf weißen Cards nicht "verschwinden". Hover bekommt einen
+     etwas dunkleren Slate, der wirklich erkennbar ist. */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-dark {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
+  /* btn-ghost: Hover-Kontrast etwas verstärkt (slate-100 → slate-200) so
+     dass die Aktion auf weißen Cards spürbar ist. */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .field {
     @apply flex flex-col gap-1.5 text-sm font-semibold text-slate-700;
   }
 
+  /* Inputs mit kräftigerer Resting-Border für klare Eingabefelder im
+     Light Mode. Fokuszustand bleibt unverändert (Brand-Ring). */
   .field-input {
-    @apply h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none ring-brand-300 transition placeholder:text-slate-400 focus:border-brand-200 focus:ring-2;
+    @apply h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none ring-brand-300 transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2;
   }
 
   textarea.field-input {
@@ -148,12 +172,15 @@ h3 {
     background-clip: padding-box;
   }
 
+  /* Etwas opakere Card (95 %) für klarere Kanten auf dem Dark-Body. */
   .dark .surface-card {
-    @apply border-slate-700/80 bg-slate-900/90;
+    @apply border-slate-700/80 bg-slate-900/95;
   }
 
+  /* Surface-Muted im Dark Mode wie im Light Mode jetzt klar differenzierbar
+     vom übergeordneten surface-card (vorher fast identische Helligkeit). */
   .dark .surface-muted {
-    @apply border-slate-700 bg-slate-900/60;
+    @apply border-slate-700/80 bg-slate-950/55;
   }
 
   .dark .page-kicker {
@@ -218,8 +245,39 @@ h3 {
     background-color: #0f172a;
   }
 
+  /* Volle Coverage für die in Pages benutzten bg-white/<opacity>-Varianten,
+     damit sie im Dark Mode nicht als gleißend-weiße Fläche durchschlagen.
+     Die Werte mappen auf slate-900-Töne mit identischer Transparenz. */
+  .dark .bg-white\/95 {
+    background-color: rgb(15 23 42 / 0.95);
+  }
+
   .dark .bg-white\/90 {
     background-color: rgb(15 23 42 / 0.9);
+  }
+
+  .dark .bg-white\/85 {
+    background-color: rgb(15 23 42 / 0.85);
+  }
+
+  .dark .bg-white\/80 {
+    background-color: rgb(15 23 42 / 0.8);
+  }
+
+  .dark .bg-white\/75 {
+    background-color: rgb(15 23 42 / 0.75);
+  }
+
+  .dark .bg-white\/70 {
+    background-color: rgb(15 23 42 / 0.7);
+  }
+
+  .dark .bg-white\/65 {
+    background-color: rgb(15 23 42 / 0.65);
+  }
+
+  .dark .bg-white\/40 {
+    background-color: rgb(15 23 42 / 0.4);
   }
 
   .dark .bg-slate-50 {
@@ -275,6 +333,12 @@ h3 {
   }
 
   .dark .border-slate-300 {
+    border-color: #475569;
+  }
+
+  /* Hover-Border-Override damit der Light-Mode-Hover (slate-400) im
+     Dark Mode nicht als helle Linie aufpoppt. */
+  .dark .hover\:border-slate-400:hover {
     border-color: #475569;
   }
 
