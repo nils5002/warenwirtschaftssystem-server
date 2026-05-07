@@ -184,9 +184,14 @@ function App() {
         <main className={`px-3 pt-4 sm:px-4 md:px-8 md:pt-6 ${isMobile ? 'pb-[calc(7.5rem+env(safe-area-inset-bottom))]' : 'pb-[calc(1.25rem+env(safe-area-inset-bottom))]'}`}>
           <div className={`mx-auto w-full ${controller.activePage === 'inventory' ? 'max-w-[1920px]' : 'max-w-[1600px]'}`}>
             {controller.isLoading ? <InlineLoadingState className="mb-4" message="Daten werden geladen ..." /> : null}
-            {!controller.isLoading && controller.isRefreshing ? (
-              <InlineLoadingState className="mb-4" message="Listen werden aktualisiert ..." />
-            ) : null}
+            {/*
+              Bewusst KEIN globaler Banner für isRefreshing:
+              Hintergrund-Polling und gezielte Reloads (z. B. nach Planungs-
+              Aktionen) sollen den Seiteninhalt nicht visuell verschieben oder
+              "leerziehen". Lokale Aktions-Indikatoren der Seiten (z. B.
+              busyState in PlanningPage, LoadingButton in BackupPage) zeigen
+              die Aktivität fokussiert dort, wo sie stattfindet.
+            */}
             {controller.wmsError ? (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
                 {controller.wmsError}
