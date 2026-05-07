@@ -113,8 +113,8 @@ export function MaintenancePage({
     setComment('');
 
     await alert({
-      title: 'Defekt gemeldet',
-      message: 'Die Karte erscheint in der Spalte "Offen".',
+      title: 'Defekt wurde gemeldet',
+      message: 'Der Defekt wurde erfolgreich erfasst.',
     });
   };
 
@@ -238,7 +238,7 @@ export function MaintenancePage({
             </label>
 
             <button className="btn-primary w-full" onClick={() => void submitDefect()}>
-              Als Offen speichern
+              Defekt melden
             </button>
           </div>
         </article>
