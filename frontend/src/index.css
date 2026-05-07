@@ -71,10 +71,12 @@ h3 {
     @apply rounded-2xl border border-slate-200 bg-white p-4 shadow-soft backdrop-blur md:p-5;
   }
 
-  /* Zweite Surface-Stufe für eingebettete Sub-Cards — sichtbar abgesetzt
-     gegenüber surface-card (vorher waren beide fast identisch). */
+  /* Zweite Surface-Stufe für eingebettete Sub-Cards. Im Light Mode klar
+     gegen die weiße surface-card abgesetzt (slate-50 mit voller Border),
+     ohne durch eine zu graue Fläche schwer zu wirken. Dark-Mode-Variante
+     unten in den .dark-Overrides definiert. */
   .surface-muted {
-    @apply rounded-2xl border border-slate-200 bg-slate-100/70;
+    @apply rounded-2xl border border-slate-200 bg-slate-50;
   }
 
   .page-kicker {

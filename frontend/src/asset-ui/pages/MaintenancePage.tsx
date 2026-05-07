@@ -349,7 +349,10 @@ export function MaintenancePage({
               completedHistory.map((item) => {
                 const linkedAsset = assets.find((asset) => asset.name === item.assetName);
                 return (
-                  <article key={item.id} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                  <article
+                    key={item.id}
+                    className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:border-emerald-200 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-emerald-700/50"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-slate-900">{item.assetName}</p>
                       <StatusBadge value={item.status} />

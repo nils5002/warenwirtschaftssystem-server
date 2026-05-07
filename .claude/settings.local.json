@@ -18,7 +18,9 @@
       "Bash(npm --prefix /d/DEV/warenwirtschaftssystem-server/frontend run build)",
       "Bash(/d/DEV/warenwirtschaftssystem-server/backend/.venv/Scripts/python.exe -m compileall /d/DEV/warenwirtschaftssystem-server/backend/app)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -v)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_backup_clear_data_api.py -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_backup_clear_data_api.py -v)",
+      "Bash(sed -i 's|rounded-xl border border-slate-200/80 bg-white/40 dark:border-slate-700/70 dark:bg-slate-950/30|rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30|g' src/asset-ui/pages/CheckinCheckoutPage.tsx)",
+      "Read(//d/d/DEV/warenwirtschaftssystem-server/frontend/src/asset-ui/pages/**)"
     ]
   }
 }
