@@ -884,7 +884,26 @@ export function AssetsPage({
                     </td>
                   ) : null}
                   <td className="px-3 py-3">
-                    <p className="max-w-[220px] truncate font-semibold text-slate-900 dark:text-slate-100" title={asset.name}>{asset.name}</p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p
+                        className="max-w-[220px] truncate font-semibold text-slate-900 dark:text-slate-100"
+                        title={asset.name}
+                      >
+                        {asset.name}
+                      </p>
+                      {asset.ownershipType && asset.ownershipType !== 'owned' ? (
+                        <span
+                          className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:border-sky-700/50 dark:bg-sky-950/40 dark:text-sky-200"
+                          title={`Bestandsart: ${asset.ownershipType === 'rented' ? 'Mietgerät' : asset.ownershipType === 'borrowed' ? 'Leihgerät' : 'Extern'}`}
+                        >
+                          {asset.ownershipType === 'rented'
+                            ? 'Miete'
+                            : asset.ownershipType === 'borrowed'
+                              ? 'Leihe'
+                              : 'Extern'}
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (

@@ -69,6 +69,22 @@ def _ensure_test_schema_compat() -> None:
             db.execute(text("ALTER TABLE planning_items ADD COLUMN linked_planning_external_id VARCHAR(64)"))
         if "handover_note" not in planning_item_columns:
             db.execute(text("ALTER TABLE planning_items ADD COLUMN handover_note TEXT"))
+        # Fremdbestand-Felder am AssetRecord — gleicher Shim wie in
+        # database/session._ensure_new_columns(), damit die Test-DB ohne
+        # FastAPI-Startup-Event auf den aktuellen Schema-Stand kommt.
+        asset_columns = [row[1] for row in db.execute(text("PRAGMA table_info(assets)")).fetchall()]
+        new_asset_columns: list[tuple[str, str]] = [
+            ("ownership_type", "VARCHAR(16) NOT NULL DEFAULT 'owned'"),
+            ("source_name", "VARCHAR(180)"),
+            ("available_from", "DATE"),
+            ("available_until", "DATE"),
+            ("return_due_date", "DATE"),
+            ("returned_at", "DATE"),
+            ("external_note", "TEXT"),
+        ]
+        for column_name, definition in new_asset_columns:
+            if column_name not in asset_columns:
+                db.execute(text(f"ALTER TABLE assets ADD COLUMN {column_name} {definition}"))
         db.commit()
 
 

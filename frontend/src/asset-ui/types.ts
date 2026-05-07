@@ -20,6 +20,7 @@ export type MaintenanceStatus = 'Offen' | 'In Bearbeitung' | 'Erledigt';
 export type AppPage =
   | 'dashboard'
   | 'inventory'
+  | 'externalPool'
   | 'categories'
   | 'planning'
   | 'assetDetail'
@@ -41,6 +42,13 @@ export type NavItem = {
   hint?: string;
 };
 
+// Bestandsart des Assets:
+//   owned     = Eigenbestand (Default für alle bestehenden Geräte)
+//   rented    = Mietgerät
+//   borrowed  = Leihgerät
+//   external  = Externes Gerät (z. B. Kunden-Hardware)
+export type OwnershipType = 'owned' | 'rented' | 'borrowed' | 'external';
+
 export type Asset = {
   id: string;
   name: string;
@@ -61,6 +69,15 @@ export type Asset = {
   lastCheckout: string;
   nextReservation: string;
   sourceFile?: string;
+  // Fremdbestand-Felder (alle optional). Bestehende Eigenbestand-Geräte
+  // ohne diese Felder verhalten sich unverändert (Default = owned).
+  ownershipType?: OwnershipType;
+  sourceName?: string | null;
+  availableFrom?: string | null;
+  availableUntil?: string | null;
+  returnDueDate?: string | null;
+  returnedAt?: string | null;
+  externalNote?: string | null;
 };
 
 export type ActivityItem = {

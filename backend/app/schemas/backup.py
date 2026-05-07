@@ -44,6 +44,16 @@ class BackupAsset(BaseModel):
     lastCheckout: str = "-"
     nextReservation: str = "-"
     sourceFile: str | None = None
+    # Fremdbestand-Felder. Alle optional mit sicheren Defaults, damit
+    # ältere Backups OHNE diese Felder weiterhin importierbar bleiben
+    # (jedes fehlende Asset wird dann als Eigenbestand interpretiert).
+    ownershipType: str = "owned"
+    sourceName: str | None = None
+    availableFrom: date | None = None
+    availableUntil: date | None = None
+    returnDueDate: date | None = None
+    returnedAt: date | None = None
+    externalNote: str | None = None
 
 
 class BackupActivity(BaseModel):

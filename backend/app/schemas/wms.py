@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -28,6 +29,11 @@ MaintenanceStatus = Literal[
 UserRole = Literal["Admin", "Projektmanager", "Mitarbeiter"]
 UserStatus = Literal["Aktiv", "Inaktiv", "Wartet auf Freigabe"]
 
+# Bestandsart eines Assets. owned = Eigenbestand (Default für Bestandsdaten),
+# rented/borrowed/external = Fremdbestand mit zeitlich befristeter
+# Verfügbarkeit. Siehe AssetRecord-Modell und planning_repository.
+OwnershipType = Literal["owned", "rented", "borrowed", "external"]
+
 
 class AssetItem(BaseModel):
     id: str
@@ -49,6 +55,37 @@ class AssetItem(BaseModel):
     lastCheckout: str
     nextReservation: str
     sourceFile: Optional[str] = None
+    # --- Fremdbestand-Felder (alle optional, Default = Eigenbestand) ---
+    ownershipType: OwnershipType = "owned"
+    sourceName: Optional[str] = None
+    availableFrom: Optional[date] = None
+    availableUntil: Optional[date] = None
+    returnDueDate: Optional[date] = None
+    returnedAt: Optional[date] = None
+    externalNote: Optional[str] = None
+
+
+class ExternalPoolCreatePayload(BaseModel):
+    """Payload zum Anlegen mehrerer Fremdbestand-Geräte in einem Aufruf."""
+
+    category: str
+    ownershipType: OwnershipType = "rented"
+    count: int = Field(ge=1, le=200)
+    namePrefix: str
+    location: str = "Fremdbestand"
+    availableFrom: Optional[date] = None
+    availableUntil: Optional[date] = None
+    returnDueDate: Optional[date] = None
+    sourceName: Optional[str] = None
+    externalNote: Optional[str] = None
+
+
+class ExternalPoolCreateResponse(BaseModel):
+    createdAssetIds: list[str]
+
+
+class AssetMarkReturnedPayload(BaseModel):
+    returnedAt: Optional[date] = None  # default = heute
 
 
 class ActivityItem(BaseModel):

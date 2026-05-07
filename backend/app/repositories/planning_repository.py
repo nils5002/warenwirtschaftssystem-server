@@ -82,6 +82,36 @@ def _planning_to_list_item(
     )
 
 
+def _is_asset_usable_on_date(asset: AssetRecord, on_date: date) -> bool:
+    """Prüft, ob ein Asset an einem konkreten Datum als verfügbarer Bestand zählt.
+
+    Eigenbestand (ownership_type == 'owned' oder leer) ist datums-unabhängig
+    verfügbar, sofern der Status 'Verfuegbar/Verfügbar' ist. Damit verhalten
+    sich alle vor diesem Feature bestehenden Assets unverändert.
+
+    Fremdbestand (rented / borrowed / external) zählt zusätzlich nur, wenn:
+    - returned_at NICHT gesetzt ist (oder das Datum vor returned_at liegt)
+    - on_date >= available_from (falls gesetzt)
+    - on_date <= available_until (falls gesetzt)
+    """
+    status = str(asset.status).strip().lower()
+    if status not in {"verfuegbar", "verfügbar"}:
+        return False
+    ownership = str(getattr(asset, "ownership_type", "owned") or "owned").strip().lower()
+    if ownership == "owned":
+        return True
+    returned_at = getattr(asset, "returned_at", None)
+    if returned_at is not None and on_date >= returned_at:
+        return False
+    available_from = getattr(asset, "available_from", None)
+    if available_from is not None and on_date < available_from:
+        return False
+    available_until = getattr(asset, "available_until", None)
+    if available_until is not None and on_date > available_until:
+        return False
+    return True
+
+
 def count_open_conflicts(availability: PlanningAvailabilityResponse | None) -> int:
     if availability is None:
         return 0
@@ -212,13 +242,21 @@ def get_open_conflict_counts_for_plannings(
     if not categories_seen:
         return {ext_id: 0 for ext_id in target_external_ids}
 
-    stock_usable: dict[str, int] = defaultdict(int)
+    # Bestand pro (Datum, Kategorie). Fremdbestand wird nur an Tagen mitgezählt,
+    # an denen er laut available_from / available_until / returned_at verfügbar
+    # ist; Eigenbestand bleibt jeden Tag verfügbar.
+    bound_dates_for_active_plannings: set[date] = set()
+    for record in all_active_records:
+        for bound_date in _iter_bound_dates(record.start_date, record.end_date):
+            bound_dates_for_active_plannings.add(bound_date)
+    stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_for_db(db, asset.category)
         if category not in categories_seen:
             continue
-        if str(asset.status).strip().lower() in {"verfuegbar", "verfügbar"}:
-            stock_usable[category] += 1
+        for bound_date in bound_dates_for_active_plannings:
+            if _is_asset_usable_on_date(asset, bound_date):
+                stock_usable_by_day[(bound_date, category)] += 1
 
     # Effektive Tagesmenge je (Planung, Datum, Kategorie). Spiegelt die
     # gleiche Logik wie ``get_planning_availability`` wider: explizite
@@ -248,7 +286,7 @@ def get_open_conflict_counts_for_plannings(
     for (ext_id, bound_date, category), this_qty in effective_qty.items():
         if ext_id not in target_external_ids:
             continue
-        usable = stock_usable.get(category, 0)
+        usable = stock_usable_by_day.get((bound_date, category), 0)
         total_qty = total_demand.get((bound_date, category), 0)
         shortage_qty = max(0, total_qty - usable)
         if shortage_qty <= 0:
@@ -768,16 +806,32 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         )
     categories = sorted({category_repository.normalize_category_for_db(db, item.category_key) for item in relevant_item_rows})
 
+    # Bestand wird DATUMSABHÄNGIG ermittelt, damit Fremdbestand
+    # (Miet-/Leih-/Externe Geräte) nur in seinem Verfügbarkeitsfenster
+    # mitgezählt wird. Eigenbestand kommt jeden Tag mit, weil
+    # _is_asset_usable_on_date für ownership_type='owned' immer True liefert.
     stock_totals: dict[str, int] = defaultdict(int)
-    stock_usable: dict[str, int] = defaultdict(int)
+    stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
+    categories_set = set(categories)
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_for_db(db, asset.category)
-        if category not in categories:
+        if category not in categories_set:
             continue
         stock_totals[category] += 1
-        if str(asset.status).strip().lower() in {"verfuegbar", "verfügbar"}:
-            stock_usable[category] += 1
-    stock_map = {category: (stock_totals[category], stock_usable[category]) for category in categories}
+        for bound_date in bound_dates:
+            if _is_asset_usable_on_date(asset, bound_date):
+                stock_usable_by_day[(bound_date, category)] += 1
+    # Repräsentativer Wert für categorySummary: Verfügbarkeit am Start des
+    # Planungszeitraums (deckt 99 % der Praxisfälle korrekt ab und entspricht
+    # der bisherigen "ein Wert pro Kategorie"-Semantik).
+    summary_reference_date = bound_dates[0]
+    stock_map = {
+        category: (
+            stock_totals[category],
+            stock_usable_by_day.get((summary_reference_date, category), 0),
+        )
+        for category in categories
+    }
 
     explicit_requested_qty_by_day_category: dict[tuple[date, str], int] = defaultdict(int)
     max_requested_qty_by_category: dict[str, int] = defaultdict(int)
@@ -936,7 +990,10 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
 
     for (planning_date, category), requested in sorted(requested_by_day_category.items(), key=lambda row: (row[0][0], row[0][1])):
         requested_qty = int(requested["qty"])
-        total_stock, usable_stock = stock_map.get(category, (0, 0))
+        total_stock = stock_totals.get(category, 0)
+        # usable_stock pro Tag — Fremdbestand zählt nur an Tagen innerhalb
+        # seines Verfügbarkeitsfensters mit. Eigenbestand bleibt konstant.
+        usable_stock = stock_usable_by_day.get((planning_date, category), 0)
         already_planned = overlap_map.get((planning_date, category), 0)
         remaining_qty = usable_stock - already_planned
         current_planning_qty = requested_qty

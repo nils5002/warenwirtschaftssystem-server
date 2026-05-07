@@ -65,10 +65,16 @@ function App() {
     if (activeRole === 'Admin') return navigation;
     if (activeRole === 'Projektmanager') {
       return navigation.filter(
-        (item) => !['users', 'categories', 'importExport', 'backup', 'qrFunctions', 'massPrint'].includes(item.key),
+        (item) =>
+          !['users', 'categories', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'externalPool'].includes(
+            item.key,
+          ),
       );
     }
-    return navigation.filter((item) => !['users', 'categories', 'importExport', 'backup', 'massPrint'].includes(item.key));
+    return navigation.filter(
+      (item) =>
+        !['users', 'categories', 'importExport', 'backup', 'massPrint', 'externalPool'].includes(item.key),
+    );
   }, [activeRole]);
 
   useEffect(() => {
