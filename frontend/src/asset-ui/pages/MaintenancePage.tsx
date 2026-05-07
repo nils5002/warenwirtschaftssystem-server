@@ -344,46 +344,52 @@ export function MaintenancePage({
         ) : null}
       </div>
 
-      <article className="surface-card animate-fade-up">
-        <h3 className="text-sm font-semibold text-slate-900">Abgeschlossene Historie (nicht aktiv)</h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Erledigte Fälle werden nach Abschluss aus dem Board entfernt und nur hier dokumentiert.
-        </p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {completedHistory.length ? (
-            completedHistory.map((item) => {
-              const linkedAsset = assets.find((asset) => asset.name === item.assetName);
-              return (
-                <article key={item.id} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-900">{item.assetName}</p>
-                    <StatusBadge value={item.status} />
-                  </div>
-                  <p className="mt-1 text-sm text-slate-700">{item.issue}</p>
-                  <p className="mt-1 text-xs text-slate-500">{item.reportedAt}</p>
-                  <button
-                    type="button"
-                    className="btn-ghost mt-2 px-2 py-1 text-xs"
-                    onClick={() => {
-                      if (linkedAsset) {
-                        onOpenAssetDetail(linkedAsset.id);
-                        return;
-                      }
-                      onOpenInventoryWithQuery(item.assetName);
-                    }}
-                  >
-                    Asset
-                  </button>
-                </article>
-              );
-            })
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3">
-              Noch keine abgeschlossenen Fälle.
-            </div>
-          )}
-        </div>
-      </article>
+      {/* Abgeschlossene Historie nur für Admin/Techniker. Projektmanager,
+          Mitarbeiter und Junior sehen den Block nicht — weder Desktop
+          noch Mobile. Die aktive Defektmeldung und der Board-Workflow
+          bleiben für alle Rollen unverändert. */}
+      {canManageRepairBoard ? (
+        <article className="surface-card animate-fade-up">
+          <h3 className="text-sm font-semibold text-slate-900">Abgeschlossene Historie (nicht aktiv)</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            Erledigte Fälle werden nach Abschluss aus dem Board entfernt und nur hier dokumentiert.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {completedHistory.length ? (
+              completedHistory.map((item) => {
+                const linkedAsset = assets.find((asset) => asset.name === item.assetName);
+                return (
+                  <article key={item.id} className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-900">{item.assetName}</p>
+                      <StatusBadge value={item.status} />
+                    </div>
+                    <p className="mt-1 text-sm text-slate-700">{item.issue}</p>
+                    <p className="mt-1 text-xs text-slate-500">{item.reportedAt}</p>
+                    <button
+                      type="button"
+                      className="btn-ghost mt-2 px-2 py-1 text-xs"
+                      onClick={() => {
+                        if (linkedAsset) {
+                          onOpenAssetDetail(linkedAsset.id);
+                          return;
+                        }
+                        onOpenInventoryWithQuery(item.assetName);
+                      }}
+                    >
+                      Asset
+                    </button>
+                  </article>
+                );
+              })
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3">
+                Noch keine abgeschlossenen Fälle.
+              </div>
+            )}
+          </div>
+        </article>
+      ) : null}
     </section>
   );
 }
