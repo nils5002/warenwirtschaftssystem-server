@@ -20,11 +20,20 @@ router = APIRouter(prefix="/api/wms/planning", tags=["Planning"])
 
 
 def _matches_planning_write_scope(context: AccessContext, planning: PlanningListItem | PlanningResponse) -> bool:
+    # Schreibrechte sind ROLLENbasiert, nicht eigentümerbasiert.
+    # Admin/Techniker und JEDER Projektmanager dürfen jede Planung
+    # bearbeiten — die frühere Einschränkung auf
+    # planning.projectManagerUserId == context.user_id wurde entfernt,
+    # weil Akkreditierungsprojekte als Team-Workflow geplant werden und
+    # mehrere Projektmanager dieselbe Planung pflegen können müssen.
     if context.role == "admin":
         return True
     if context.role == "projektmanager":
-        if context.user_id and planning.projectManagerUserId and planning.projectManagerUserId == context.user_id:
-            return True
+        return True
+    # Fallback für andere Rollen (z. B. Mitarbeiter mit explizitem
+    # Project-Context-Scope) bleibt erhalten — wird durch die
+    # require_roles()-Aufrufe in den Routes ohnehin nur greifen, wenn
+    # die Rolle vorher zugelassen wurde.
     if not context.project_contexts:
         return False
     haystack = f"{planning.customerName} {planning.projectName} {planning.eventName or ''}".lower()
@@ -91,8 +100,12 @@ def update_planning(
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     _ensure_planning_write_access(context, existing)
-    if context.role == "projektmanager" and context.user_id:
-        payload.projectManagerUserId = context.user_id
+    # Beim Update wird projectManagerUserId NICHT mehr automatisch auf den
+    # editierenden User umgeschrieben. Sonst würde ein zweiter Projektmanager,
+    # der eine Planung pflegt, die ursprüngliche PM-Zuordnung still
+    # überschreiben (Owner-Verhalten). Das Feld bleibt das, was der Client
+    # explizit sendet — bei Bedarf kann es über das Formular gewechselt
+    # werden, aber Speichern alleine löst keinen Eigentümerwechsel aus.
     return PlanningService.update_planning(db, planning_id, payload)
 
 
@@ -108,8 +121,7 @@ def update_planning_post(
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     _ensure_planning_write_access(context, existing)
-    if context.role == "projektmanager" and context.user_id:
-        payload.projectManagerUserId = context.user_id
+    # Wie bei PUT: kein implizites Überschreiben des projectManagerUserId.
     return PlanningService.update_planning(db, planning_id, payload)
 
 
