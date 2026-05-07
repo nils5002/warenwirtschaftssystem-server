@@ -638,7 +638,7 @@ export function CheckinCheckoutPage({
           ) : null}
 
           <div
-            className={`rounded-xl border border-slate-200/80 bg-white/40 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}
+            className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Schritt 1</p>
             <label className={`field ${isMobile ? 'mt-1' : 'mt-1'}`}>
@@ -700,7 +700,7 @@ export function CheckinCheckoutPage({
             </div>
           ) : null}
 
-          <div className={`rounded-xl border border-slate-200/80 bg-white/40 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
+          <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 2</p>
             {isMobile ? (
               <label className="field mt-1">
@@ -852,7 +852,7 @@ export function CheckinCheckoutPage({
             </>
           ) : null}
 
-          <div className={`rounded-xl border border-slate-200/80 bg-white/40 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
+          <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 1</p>
             <label className="field mt-1">
               <span className={isMobile ? 'sr-only' : ''}>Gerät scannen</span>
@@ -913,7 +913,7 @@ export function CheckinCheckoutPage({
               der Auswahl-Karte sichtbar, daher kein "Erkannt: ..." doppelt).
               Auf Desktop bleibt die volle Anzeige erhalten. */}
           <div
-            className={`rounded-xl border border-slate-200/80 bg-white/40 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'} text-sm`}
+            className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'} text-sm`}
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Schritt 2</p>
             {!isMobile ? (
