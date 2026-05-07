@@ -97,26 +97,39 @@ function getVisualStatus(
   handoverSummary: PlanningListHandoverSummary | undefined,
   availability: PlanningAvailabilityResponse | undefined,
 ): { status: CalendarVisualStatus; label: string } {
-  const neutralStatuses: PlanningStatus[] = ['Entwurf', 'Abgeschlossen', 'Storniert'];
+  // Nur wirklich abgeschlossene/stornierte Planungen werden als neutral
+  // (grau) dargestellt. ENTWURF ist – wie im Backend
+  // (ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt",
+  // "Bestätigt"}) – ein AKTIVER Status: das Backend zählt Konflikte für
+  // Entwurf-Planungen, also muss der Kalender Entwurf-Karten ebenfalls
+  // farblich auswerten. Vorher wurde Entwurf zwangsweise grau und damit
+  // wurden ALLE Entwurf-Konflikte im Kalender unsichtbar.
+  const neutralStatuses: PlanningStatus[] = ['Abgeschlossen', 'Storniert'];
   if (neutralStatuses.includes(planning.status)) {
     return { status: 'gray', label: planning.status };
   }
 
   const hasHandover = Boolean(handoverSummary);
-  // Wichtig: Die Planungsliste vom Backend liefert pro Planung bereits
-  // einen vorberechneten openConflictCount. Wir nutzen das als robusten
-  // Fallback und als Kurzschluss — so zeigt der Kalender denselben Status
-  // wie die Liste, AUCH BEVOR die detaillierte Availability per
-  // requestPlanningData() asynchron nachgeladen wurde. Vorher defaultete
-  // eine Karte mit echtem Konflikt fälschlich auf "grün", solange
-  // availability noch nicht im State war.
+  // Die Planungsliste vom Backend liefert pro Planung bereits einen
+  // vorberechneten openConflictCount. Den nutzen wir als robusten
+  // Fallback und Kurzschluss, damit der Kalender denselben Status wie
+  // die Liste zeigt — auch BEVOR die detaillierte Availability per
+  // requestPlanningData() asynchron nachgeladen wurde.
   const openConflictCount = Number(planning.openConflictCount ?? 0);
 
   if (!availability) {
     if (openConflictCount > 0) {
       return { status: 'red', label: 'Offener Engpass' };
     }
-    return hasHandover ? { status: 'sky', label: 'Übergabe geplant' } : { status: 'green', label: 'Alles verfügbar' };
+    if (hasHandover) {
+      return { status: 'sky', label: 'Übergabe geplant' };
+    }
+    // Bei aktiven Status ohne Konflikt: grün (verfügbar). Beim Status
+    // "Entwurf" zeigen wir das Label "Entwurf" statt "Alles verfügbar",
+    // damit erkennbar bleibt, dass die Planung noch nicht final ist.
+    return planning.status === 'Entwurf'
+      ? { status: 'green', label: 'Entwurf · verfügbar' }
+      : { status: 'green', label: 'Alles verfügbar' };
   }
 
   const hasOpenShortage = availability.items.some((item) => {
@@ -142,7 +155,9 @@ function getVisualStatus(
     return { status: 'sky', label: 'Verbund aktiv' };
   }
 
-  return { status: 'green', label: 'Alles verfügbar' };
+  return planning.status === 'Entwurf'
+    ? { status: 'green', label: 'Entwurf · verfügbar' }
+    : { status: 'green', label: 'Alles verfügbar' };
 }
 
 function barClasses(status: CalendarVisualStatus, active: boolean): string {
