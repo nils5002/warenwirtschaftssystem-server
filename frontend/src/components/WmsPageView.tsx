@@ -124,6 +124,9 @@ type WmsPageViewProps = {
   onNavigate: (page: AppPage) => void;
   onOpenInventoryWithQuery: (query: string) => void;
   isMobile?: boolean;
+  // True solange der erste /api/wms/overview-Call noch läuft. Pages
+  // verwenden das, um keine 0-Werte als Bestand anzuzeigen.
+  isInitialLoading?: boolean;
 };
 
 export function WmsPageView({
@@ -174,6 +177,7 @@ export function WmsPageView({
   onNavigate,
   onOpenInventoryWithQuery,
   isMobile = false,
+  isInitialLoading = false,
 }: WmsPageViewProps) {
   const isAdmin = activeRole === 'Admin';
   const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
@@ -198,6 +202,7 @@ export function WmsPageView({
           planningSummary={planningSummary}
           theme={theme}
           onNavigate={onNavigate}
+          isInitialLoading={isInitialLoading}
         />
       );
     case 'inventory':
@@ -205,6 +210,7 @@ export function WmsPageView({
         <AssetsPage
           assets={assets}
           isMobile={isMobile}
+          isInitialLoading={isInitialLoading}
           onNavigate={onNavigate}
           onOpenDetail={onOpenAssetDetail}
           initialSearch={search}

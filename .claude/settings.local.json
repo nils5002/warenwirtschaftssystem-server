@@ -12,7 +12,12 @@
       "Bash(./.venv/Scripts/python.exe -m compileall app)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -k planning)",
       "Bash(.venv/Scripts/python.exe -m compileall app)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests)",
+      "Bash(cd /d D:\\\\DEV\\\\warenwirtschaftssystem-server)",
+      "Bash(dir)",
+      "Bash(npm --prefix /d/DEV/warenwirtschaftssystem-server/frontend run build)",
+      "Bash(/d/DEV/warenwirtschaftssystem-server/backend/.venv/Scripts/python.exe -m compileall /d/DEV/warenwirtschaftssystem-server/backend/app)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -v)"
     ]
   }
 }
