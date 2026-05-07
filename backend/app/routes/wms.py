@@ -86,6 +86,20 @@ def _movement_only_allowed(previous: AssetItem | None, next_item: AssetItem) -> 
     return True
 
 
+def _is_external_asset_edit(previous: AssetItem | None, next_item: AssetItem) -> bool:
+    """True, wenn Vorzustand UND Zielzustand Fremdbestand sind.
+
+    Damit dürfen Projektmanager Fremdbestand-Metadaten (sourceName, Daten,
+    externalNote etc.) korrigieren, ohne dass das Verfuegbar↔Verliehen-Gate
+    (``_movement_only_allowed``) sie blockiert. Eigenbestand bleibt für PMs
+    weiterhin ausschließlich auf reine Status-Flips beschränkt.
+    """
+    if previous is None or next_item is None:
+        return False
+    fremdbestand = {"rented", "borrowed", "external"}
+    return (previous.ownershipType in fremdbestand) and (next_item.ownershipType in fremdbestand)
+
+
 @router.post("/assets", response_model=AssetItem)
 def upsert_asset(
     asset: AssetItem,
@@ -94,7 +108,12 @@ def upsert_asset(
 ) -> AssetItem:
     if context.role in {"mitarbeiter", "projektmanager"}:
         existing = WmsService.get_asset(db, asset.id)
-        if not _movement_only_allowed(existing, asset):
+        movement_ok = _movement_only_allowed(existing, asset)
+        # Projektmanager dürfen zusätzlich Fremdbestand-Felder pflegen.
+        external_edit_ok = (
+            context.role == "projektmanager" and _is_external_asset_edit(existing, asset)
+        )
+        if not (movement_ok or external_edit_ok):
             raise HTTPException(
                 status_code=403,
                 detail="Nur Ausgabe/Rückgabe-Statuswechsel sind in dieser Rolle erlaubt.",
@@ -120,10 +139,13 @@ def create_external_pool(
 ) -> ExternalPoolCreateResponse:
     """Legt mehrere Fremdbestand-Geräte (Miet-/Leih-/Externe Geräte) an.
 
-    Nur Admin/Techniker. Die erzeugten Assets nutzen den vorhandenen
+    Erlaubt für Admin/Techniker (intern auf admin gemappt) UND Projektmanager,
+    da Fremdbestand fachlich Teil der Projektplanung ist und PMs eigenständig
+    Mietgeräte für ihre Projekte einbuchen können müssen. Mitarbeiter/Junior
+    bleiben ausgeschlossen. Die erzeugten Assets nutzen den vorhandenen
     Inventar-/QR-/Checkout-Pfad — es entsteht kein paralleles Modell.
     """
-    require_roles(context, "admin")
+    require_roles(context, "admin", "projektmanager")
     created_ids = WmsService.create_external_pool(db, payload)
     return ExternalPoolCreateResponse(createdAssetIds=created_ids)
 
@@ -137,9 +159,11 @@ def mark_asset_returned(
 ) -> AssetItem:
     """Markiert ein Fremdbestand-Gerät als zurückgegeben.
 
-    Nur Admin/Techniker. Schlägt fehl, wenn das Gerät aktuell verliehen ist.
+    Erlaubt für Admin/Techniker UND Projektmanager — PMs verwalten den von
+    ihnen angelegten Fremdbestand auch wieder zurück. Schlägt weiterhin fehl,
+    wenn das Gerät aktuell verliehen ist.
     """
-    require_roles(context, "admin")
+    require_roles(context, "admin", "projektmanager")
     returned_at = payload.returnedAt if payload else None
     return WmsService.mark_asset_returned(db, asset_id, returned_at=returned_at)
 

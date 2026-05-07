@@ -487,3 +487,84 @@ def test_techniker_can_manage_external_pool() -> None:
         assert denied_mark.status_code == 403
     finally:
         _cleanup_assets(client, [asset_id])
+
+
+# -----------------------------------------------------------------------------
+# Testfall 9: Projektmanager darf Fremdbestand anlegen + zurückgeben + bearbeiten.
+#             Mitarbeiter darf nichts davon.
+# -----------------------------------------------------------------------------
+def test_projektmanager_can_manage_external_pool() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+    pm_user_id = f"pm-pool-{suffix}"
+    pm_headers = auth_headers(client, "Projektmanager", user_id=pm_user_id)
+
+    # 1. Anlegen via PM
+    create_payload = {
+        "category": "Pool-PM",
+        "ownershipType": "rented",
+        "count": 1,
+        "namePrefix": f"PMRent-{suffix}",
+        "availableFrom": today.isoformat(),
+        "availableUntil": (today + timedelta(days=14)).isoformat(),
+        "sourceName": "PM-Quelle",
+    }
+    create_res = client.post(
+        "/api/wms/assets/external-pool",
+        headers=pm_headers,
+        json=create_payload,
+    )
+    assert create_res.status_code == 200, create_res.text
+    asset_id = create_res.json()["createdAssetIds"][0]
+
+    try:
+        # 2. Bearbeiten (Fremdbestand-Felder pflegen) via PM — sourceName ändern
+        detail = client.get(f"/api/wms/assets/{asset_id}", headers=_headers(client, "Admin")).json()
+        assert detail["ownershipType"] == "rented"
+        detail["sourceName"] = "PM-Quelle (korrigiert)"
+        detail["externalNote"] = "Vertrag Nr. 12345"
+        edit_res = client.post("/api/wms/assets", headers=pm_headers, json=detail)
+        assert edit_res.status_code == 200, edit_res.text
+        assert edit_res.json()["sourceName"] == "PM-Quelle (korrigiert)"
+        assert edit_res.json()["externalNote"] == "Vertrag Nr. 12345"
+
+        # 3. Mark-as-returned via PM
+        mark_res = client.post(
+            f"/api/wms/assets/{asset_id}/mark-returned",
+            headers=pm_headers,
+            json={},
+        )
+        assert mark_res.status_code == 200, mark_res.text
+        assert mark_res.json()["returnedAt"] is not None
+
+        # 4. Mitarbeiter darf NICHT — Gegenprobe für alle drei Aktionen
+        emp_headers = auth_headers(client, "Mitarbeiter", user_id=f"emp-pool-{suffix}")
+        denied_create = client.post(
+            "/api/wms/assets/external-pool", headers=emp_headers, json=create_payload
+        )
+        assert denied_create.status_code == 403
+        denied_mark = client.post(
+            f"/api/wms/assets/{asset_id}/mark-returned", headers=emp_headers, json={}
+        )
+        assert denied_mark.status_code == 403
+        denied_edit = client.post("/api/wms/assets", headers=emp_headers, json=detail)
+        # Mitarbeiter darf zwar Status-Flips machen, hier wäre es aber
+        # ein Metadaten-Edit ohne Status-Flip → 403.
+        assert denied_edit.status_code == 403
+
+        # 5. PM darf KEIN Eigenbestand-Edit machen — Sicherheits-Gegenprobe
+        owned_id = _create_owned_asset(client, suffix)
+        try:
+            owned_detail = client.get(
+                f"/api/wms/assets/{owned_id}", headers=_headers(client, "Admin")
+            ).json()
+            owned_detail["sourceName"] = "PM-Versuch"  # PM versucht Edit
+            denied_owned_edit = client.post("/api/wms/assets", headers=pm_headers, json=owned_detail)
+            assert denied_owned_edit.status_code == 403, (
+                "PM darf NICHT Eigenbestand-Felder bearbeiten — Gate muss greifen."
+            )
+        finally:
+            _cleanup_assets(client, [owned_id])
+    finally:
+        _cleanup_assets(client, [asset_id])

@@ -207,10 +207,14 @@ export function WmsPageView({
         />
       );
     case 'externalPool':
-      if (!isAdmin) {
+      // Fremdbestand: Admin/Techniker (über AppRole 'Admin' gemappt) UND
+      // Projektmanager — fachlich Teil der Projektplanung. Mitarbeiter/Junior
+      // sehen die Seite nicht und können sie auch per direktem URL-Aufruf
+      // nicht öffnen.
+      if (activeRole !== 'Admin' && activeRole !== 'Projektmanager') {
         return (
           <div className="surface-card p-6 text-sm text-slate-600">
-            Fremdbestand-Verwaltung nur für Admin / Techniker.
+            Fremdbestand-Verwaltung nur für Admin / Techniker / Projektmanager.
           </div>
         );
       }
