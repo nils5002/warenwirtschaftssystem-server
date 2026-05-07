@@ -742,13 +742,7 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
     open_conflict_count = 0
     for planning_external_id in planning_external_ids:
         availability = planning_repository.get_planning_availability(db, planning_external_id)
-        if availability is None:
-            continue
-        open_conflict_count += sum(
-            1
-            for item in availability.items
-            if bool(item.hasGlobalShortage) or int(item.shortageQty or 0) > 0
-        )
+        open_conflict_count += planning_repository.count_open_conflicts(availability)
 
     planning_ids = [row.id for row in planning_rows]
     day_rows = db.scalars(

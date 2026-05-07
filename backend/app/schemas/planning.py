@@ -104,6 +104,7 @@ class PlanningListItem(BaseModel):
     status: PlanningStatus
     updatedAt: datetime
     handoverSummary: PlanningListHandoverSummary | None = None
+    openConflictCount: int = 0
 
 
 class PlanningAvailabilityItem(BaseModel):

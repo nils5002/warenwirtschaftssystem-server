@@ -942,6 +942,116 @@ def test_overview_open_conflicts_are_global_and_refresh_with_handover_resolution
     assert after_target_close_count == baseline_count
 
 
+def test_planning_list_reports_per_planning_open_conflict_count() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:8]
+    category_name = f"ListKonflikt-{suffix}"
+    source_date = date(2099, 6, 14)
+    target_date = source_date + timedelta(days=1)
+
+    created_category = client.post("/api/wms/categories", headers=_headers(client, "Admin"), json={"name": category_name})
+    assert created_category.status_code == 200
+    category = created_category.json()["name"]
+
+    payload_source = {
+        "customerName": f"Kunde List Source {suffix}",
+        "projectName": f"Projekt List Source {suffix}",
+        "eventName": "List Source",
+        "projectManagerUserId": f"pm-list-source-{suffix}",
+        "calendarWeek": source_date.isocalendar().week,
+        "startDate": source_date.isoformat(),
+        "endDate": source_date.isoformat(),
+        "notes": "",
+        "status": "Geplant",
+        "days": [
+            {
+                "planningDate": source_date.isoformat(),
+                "weekday": "Montag",
+                "items": [{"categoryKey": category, "qty": 1, "notes": None}],
+            }
+        ],
+    }
+    payload_target = {
+        "customerName": f"Kunde List Target {suffix}",
+        "projectName": f"Projekt List Target {suffix}",
+        "eventName": "List Target",
+        "projectManagerUserId": f"pm-list-target-{suffix}",
+        "calendarWeek": target_date.isocalendar().week,
+        "startDate": target_date.isoformat(),
+        "endDate": target_date.isoformat(),
+        "notes": "",
+        "status": "Bestaetigt",
+        "days": [
+            {
+                "planningDate": target_date.isoformat(),
+                "weekday": "Dienstag",
+                "items": [{"categoryKey": category, "qty": 1, "notes": None}],
+            }
+        ],
+    }
+
+    created_source = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", f"pm-list-source-{suffix}"),
+        json=payload_source,
+    )
+    created_target = client.post(
+        "/api/wms/planning",
+        headers=_headers(client, "Projektmanager", f"pm-list-target-{suffix}"),
+        json=payload_target,
+    )
+    assert created_source.status_code == 200
+    assert created_target.status_code == 200
+    source_id = created_source.json()["id"]
+    target_id = created_target.json()["id"]
+
+    list_response = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
+    assert list_response.status_code == 200
+    rows_by_id = {row["id"]: row for row in list_response.json()}
+    assert "openConflictCount" in rows_by_id[source_id]
+    assert int(rows_by_id[source_id]["openConflictCount"]) >= 1
+    assert int(rows_by_id[target_id]["openConflictCount"]) >= 1
+
+    overview = client.get("/api/wms/overview", headers=_headers(client, "Admin"))
+    assert overview.status_code == 200
+    global_count = int((overview.json().get("planningSummary") or {}).get("openConflictCount") or 0)
+    list_sum = sum(int(row.get("openConflictCount") or 0) for row in list_response.json())
+    assert list_sum == global_count
+
+    # Resolve via valid handover -> target conflict drops to 0.
+    fetched_target = client.get(
+        f"/api/wms/planning/{target_id}",
+        headers=_headers(client, "Projektmanager", f"pm-list-target-{suffix}"),
+    )
+    update_payload = fetched_target.json()
+    update_payload["days"][0]["items"][0]["handoverEnabled"] = True
+    update_payload["days"][0]["items"][0]["linkedPlanningId"] = source_id
+    update_payload["days"][0]["items"][0]["handoverNote"] = "Verbund aktiv"
+    updated_target = client.put(
+        f"/api/wms/planning/{target_id}",
+        headers=_headers(client, "Projektmanager", f"pm-list-target-{suffix}"),
+        json=update_payload,
+    )
+    assert updated_target.status_code == 200
+
+    list_after_handover = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
+    rows_after_handover = {row["id"]: row for row in list_after_handover.json()}
+    assert int(rows_after_handover[target_id]["openConflictCount"]) == 0
+    assert int(rows_after_handover[source_id]["openConflictCount"]) >= 1
+
+    # Completing the source planning excludes it from per-planning conflict counting.
+    closed_source = client.post(
+        f"/api/wms/planning/{source_id}/status",
+        headers=_headers(client, "Projektmanager", f"pm-list-source-{suffix}"),
+        json={"status": "Abgeschlossen"},
+    )
+    assert closed_source.status_code == 200
+
+    list_after_close = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
+    rows_after_close = {row["id"]: row for row in list_after_close.json()}
+    assert int(rows_after_close[source_id]["openConflictCount"]) == 0
+
+
 def test_overview_contains_planning_summary_separate_from_inventory_status() -> None:
     client = TestClient(app)
     response = client.get("/api/wms/overview", headers=_headers(client, "Admin"))

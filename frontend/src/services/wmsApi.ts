@@ -186,6 +186,7 @@ export type PlanningListItem = {
     partnerPlanningCount: number;
     categoryKeys: string[];
   } | null;
+  openConflictCount?: number;
 };
 
 export type PlanningItemResponse = {
