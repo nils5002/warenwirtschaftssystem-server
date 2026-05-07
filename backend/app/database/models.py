@@ -23,9 +23,12 @@ class AssetRecord(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    category: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Status und Kategorie werden bei jeder Verfügbarkeits-/Konflikt-
+    # Berechnung gefiltert (Inventar, Planungs-Availability, Summary).
+    # Mit Index spart das bei großen Beständen O(N)-Scans.
+    category: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     location: Mapped[str] = mapped_column(String(120), nullable=False)
-    status: Mapped[str] = mapped_column(String(64), nullable=False, default="Verfuegbar")
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="Verfuegbar", index=True)
     assigned_to: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
     next_return: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
     tag_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -34,7 +37,8 @@ class AssetRecord(TimestampMixin, Base):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mac_lan: Mapped[str | None] = mapped_column(String(32), nullable=True)
     mac_wlan: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    qr_code: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # qr_code wird beim QR-Scan in Ein-/Auslagerung gesucht.
+    qr_code: Mapped[str] = mapped_column(String(255), nullable=False, default="", index=True)
     maintenance_state: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     last_checkout: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
@@ -71,12 +75,17 @@ class MaintenanceRecord(TimestampMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    asset_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # asset_name wird in _sync_asset_maintenance_status für die
+    # Asset-Zuordnung gefiltert. Index verhindert Full-Table-Scans bei
+    # jedem Status-Wechsel eines Defekts.
+    asset_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     issue: Mapped[str] = mapped_column(Text, nullable=False)
     reported_at: Mapped[str] = mapped_column(String(80), nullable=False)
     due_date: Mapped[str] = mapped_column(String(80), nullable=False)
     priority: Mapped[str] = mapped_column(String(32), nullable=False, default="Mittel")
-    status: Mapped[str] = mapped_column(String(64), nullable=False, default="Offen")
+    # status wird im Board und im Sync-Pfad gefiltert (Offen / In Bearbeitung
+    # / Erledigt) — Index hilft bei der Filterung der aktiven Items.
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="Offen", index=True)
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
     location: Mapped[str] = mapped_column(String(120), nullable=False)
 

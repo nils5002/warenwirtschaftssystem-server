@@ -12,7 +12,12 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET}
 
-      DATABASE_URL: ${DATABASE_URL:-sqlite:///./app/data/app.db}
+      # Default ist BEWUSST ein absoluter Pfad (4 Slashes nach sqlite:),
+      # damit die SQLite-Datei im persistenten Volume warehouse_app_data
+      # landet. Ein relativer Pfad würde im Container zu /app/app/data/...
+      # auflösen und außerhalb des Volumes liegen → Datenverlust beim
+      # Redeploy.
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/app.db}
       DB_AUTO_CREATE_SCHEMA: ${DB_AUTO_CREATE_SCHEMA:-true}
       WMS_SEED_LEGACY_ON_STARTUP: ${WMS_SEED_LEGACY_ON_STARTUP:-false}
 

@@ -17,7 +17,8 @@
       "Bash(dir)",
       "Bash(npm --prefix /d/DEV/warenwirtschaftssystem-server/frontend run build)",
       "Bash(/d/DEV/warenwirtschaftssystem-server/backend/.venv/Scripts/python.exe -m compileall /d/DEV/warenwirtschaftssystem-server/backend/app)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_rbac_api.py -v)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_backup_clear_data_api.py -v)"
     ]
   }
 }
