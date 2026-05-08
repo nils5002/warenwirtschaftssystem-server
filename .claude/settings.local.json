@@ -23,7 +23,8 @@
       "Read(//d/d/DEV/warenwirtschaftssystem-server/frontend/src/asset-ui/pages/**)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py -v)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py::test_existing_asset_defaults_to_owned_ownership_type)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py::test_existing_asset_defaults_to_owned_ownership_type --tb=short)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py::test_existing_asset_defaults_to_owned_ownership_type --tb=short)",
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_category_delete.py -v)"
     ]
   }
 }
