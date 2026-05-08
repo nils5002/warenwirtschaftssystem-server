@@ -127,7 +127,46 @@ def delete_asset(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> dict[str, bool]:
-    require_roles(context, "admin")
+    """Löscht ein Asset.
+
+    Rollenmatrix:
+      - Admin/Techniker (intern admin): dürfen jedes Asset löschen — bestehendes
+        Verhalten unverändert.
+      - Projektmanager: darf NUR Fremdbestand löschen
+        (ownershipType in {rented, borrowed, external}). Versuch auf
+        Eigenbestand → 403.
+      - Mitarbeiter / Junior: nicht erlaubt → 403.
+
+    Fachliche Sicherheit für Fremdbestand (alle Rollen):
+      - Wenn das Gerät aktuell verliehen ist (status == 'Verliehen'),
+        wird das Löschen mit 409 abgelehnt. Der Workflow muss erst
+        regulären Check-in durchlaufen. Eigenbestand-Delete bleibt für
+        Admin/Techniker davon unberührt (bestehendes Verhalten).
+    """
+    require_roles(context, "admin", "projektmanager")
+    asset = WmsService.get_asset(db, asset_id)
+    if asset is None:
+        # Bestehendes Verhalten: deleted=False, kein 404 (idempotent für
+        # konsistente Frontend-UX).
+        return {"deleted": False}
+
+    is_external = asset.ownershipType in {"rented", "borrowed", "external"}
+
+    if context.role == "projektmanager" and not is_external:
+        raise HTTPException(
+            status_code=403,
+            detail="Projektmanager dürfen nur Fremdbestand löschen.",
+        )
+
+    if is_external and asset.status == "Verliehen":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Dieses Gerät ist aktuell ausgegeben und kann erst nach "
+                "Rücknahme gelöscht werden."
+            ),
+        )
+
     return {"deleted": WmsService.delete_asset(db, asset_id)}
 
 

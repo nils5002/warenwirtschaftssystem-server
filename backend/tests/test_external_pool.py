@@ -568,3 +568,175 @@ def test_projektmanager_can_manage_external_pool() -> None:
             _cleanup_assets(client, [owned_id])
     finally:
         _cleanup_assets(client, [asset_id])
+
+
+# -----------------------------------------------------------------------------
+# Testfall 10: Fremdbestand-Löschung — RBAC + fachliche Schutz-Regeln
+#  - Admin / Techniker / Projektmanager dürfen Fremdbestand löschen
+#  - Mitarbeiter darf NICHT
+#  - Eigenbestand kann via PM nicht über diese Route gelöscht werden
+#  - Verliehenes Fremdbestand-Gerät kann nicht gelöscht werden (409)
+#  - Gelöschtes Gerät erscheint nicht mehr im Asset-Listing
+#  - Gelöschtes Gerät zählt nicht mehr in der Availability
+# -----------------------------------------------------------------------------
+def test_admin_techniker_pm_can_delete_external_employee_cannot() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+
+    # Admin darf
+    admin_ids = _create_external_pool(
+        client,
+        category="DelPool-Admin",
+        count=1,
+        name_prefix=f"DelAdm-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    res = client.delete(f"/api/wms/assets/{admin_ids[0]}", headers=_headers(client, "Admin"))
+    assert res.status_code == 200
+    assert res.json()["deleted"] is True
+
+    # Techniker darf
+    tech_ids = _create_external_pool(
+        client,
+        category="DelPool-Tech",
+        count=1,
+        name_prefix=f"DelTech-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    tech_headers = auth_headers(client, "Techniker", user_id=f"tech-del-{suffix}")
+    res_tech = client.delete(f"/api/wms/assets/{tech_ids[0]}", headers=tech_headers)
+    assert res_tech.status_code == 200
+    assert res_tech.json()["deleted"] is True
+
+    # Projektmanager darf
+    pm_ids = _create_external_pool(
+        client,
+        category="DelPool-PM",
+        count=1,
+        name_prefix=f"DelPM-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    pm_headers = auth_headers(client, "Projektmanager", user_id=f"pm-del-{suffix}")
+    res_pm = client.delete(f"/api/wms/assets/{pm_ids[0]}", headers=pm_headers)
+    assert res_pm.status_code == 200
+    assert res_pm.json()["deleted"] is True
+
+    # Mitarbeiter darf NICHT
+    emp_ids = _create_external_pool(
+        client,
+        category="DelPool-Emp",
+        count=1,
+        name_prefix=f"DelEmp-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    try:
+        emp_headers = auth_headers(client, "Mitarbeiter", user_id=f"emp-del-{suffix}")
+        denied = client.delete(f"/api/wms/assets/{emp_ids[0]}", headers=emp_headers)
+        assert denied.status_code == 403
+    finally:
+        _cleanup_assets(client, emp_ids)
+
+
+def test_pm_cannot_delete_owned_asset_via_external_pool_route() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    owned_id = _create_owned_asset(client, suffix)
+    try:
+        pm_headers = auth_headers(client, "Projektmanager", user_id=f"pm-owned-del-{suffix}")
+        denied = client.delete(f"/api/wms/assets/{owned_id}", headers=pm_headers)
+        assert denied.status_code == 403
+        detail = denied.json().get("detail", "")
+        assert "Fremdbestand" in detail or "Projektmanager" in detail
+
+        # Asset MUSS noch vorhanden sein
+        check = client.get(f"/api/wms/assets/{owned_id}", headers=_headers(client, "Admin"))
+        assert check.status_code == 200
+    finally:
+        _cleanup_assets(client, [owned_id])
+
+
+def test_loaned_external_asset_cannot_be_deleted_returns_409() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+    rented_ids = _create_external_pool(
+        client,
+        category="DelPool-Loaned",
+        count=1,
+        name_prefix=f"DelLoaned-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=14),
+    )
+    asset_id = rented_ids[0]
+    try:
+        # Auf Verliehen setzen via Admin-Update
+        detail = client.get(f"/api/wms/assets/{asset_id}", headers=_headers(client, "Admin")).json()
+        detail["status"] = "Verliehen"
+        detail["assignedTo"] = "Test User"
+        client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=detail)
+
+        # Admin-Versuch: 409
+        denied_admin = client.delete(f"/api/wms/assets/{asset_id}", headers=_headers(client, "Admin"))
+        assert denied_admin.status_code == 409
+        assert "ausgegeben" in denied_admin.json()["detail"]
+
+        # PM-Versuch: ebenfalls 409
+        pm_headers = auth_headers(client, "Projektmanager", user_id=f"pm-loaned-{suffix}")
+        denied_pm = client.delete(f"/api/wms/assets/{asset_id}", headers=pm_headers)
+        assert denied_pm.status_code == 409
+
+        # Asset existiert weiter
+        still = client.get(f"/api/wms/assets/{asset_id}", headers=_headers(client, "Admin"))
+        assert still.status_code == 200
+    finally:
+        _cleanup_assets(client, [asset_id])
+
+
+def test_deleted_external_asset_disappears_from_listing_and_availability() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+    rented_ids = _create_external_pool(
+        client,
+        category="DelPool-Avail",
+        count=2,
+        name_prefix=f"DelAvail-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    planning_id = _create_planning(
+        client,
+        suffix,
+        start=today + timedelta(days=2),
+        end=today + timedelta(days=3),
+        qty=2,
+        category="DelPool-Avail",
+    )
+    try:
+        # Vor Delete: 2 Mietgeräte verfügbar → kein Engpass
+        avail_before = _availability_for(client, planning_id)
+        assert avail_before["items"][0]["usableStock"] == 2
+        assert avail_before["items"][0]["shortageQty"] == 0
+
+        # PM löscht eines davon
+        pm_headers = auth_headers(client, "Projektmanager", user_id=f"pm-avail-{suffix}")
+        del_res = client.delete(f"/api/wms/assets/{rented_ids[0]}", headers=pm_headers)
+        assert del_res.status_code == 200
+
+        # Asset-Listing enthält das gelöschte Gerät NICHT mehr
+        listing = client.get("/api/wms/assets", headers=_headers(client, "Admin")).json()
+        assert all(a["id"] != rented_ids[0] for a in listing)
+        assert any(a["id"] == rented_ids[1] for a in listing)
+
+        # Availability: nur noch 1 Mietgerät → Engpass von 1
+        avail_after = _availability_for(client, planning_id)
+        assert avail_after["items"][0]["usableStock"] == 1
+        assert avail_after["items"][0]["shortageQty"] == 1
+    finally:
+        _cleanup_planning(client, planning_id)
+        _cleanup_assets(client, rented_ids)
