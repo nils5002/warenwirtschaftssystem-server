@@ -109,6 +109,7 @@ type WmsPageViewProps = {
   onOpenLocationInventory: (name: string) => void;
   onEditLocation: (name: string) => Promise<void>;
   onCreateCategory: (name: string) => Promise<CategoryItem>;
+  onDeleteCategory?: (categoryId: number) => Promise<void>;
   onReloadData: () => Promise<void>;
   onCheckoutFromForm: (payload: {
     assetId: string;
@@ -172,6 +173,7 @@ export function WmsPageView({
   onOpenLocationInventory,
   onEditLocation,
   onCreateCategory,
+  onDeleteCategory,
   onReloadData,
   onCheckoutFromForm,
   onCheckinFromForm,
@@ -297,7 +299,11 @@ export function WmsPageView({
           assets={assets}
           categories={categories}
           canManageCategories={isAdmin}
+          // Löschen ist erlaubt für Admin/Techniker (gemappt auf 'Admin')
+          // sowie Projektmanager. Mitarbeiter/Junior nicht.
+          canDeleteCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           onCreateCategory={onCreateCategory}
+          onDeleteCategory={onDeleteCategory}
         />
       );
     case 'planning':

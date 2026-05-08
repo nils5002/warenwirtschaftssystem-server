@@ -130,7 +130,11 @@ export type UserItem = {
 };
 
 export type CategoryItem = {
+  // Backend liefert id für gespeicherte Kategorien. Bei lokal vorgemerkten
+  // Kategorien (z. B. aus Asset-Ableitung) kann sie noch fehlen.
+  id?: number;
   name: string;
   isActive?: boolean;
+  isStandard?: boolean;
 };
 

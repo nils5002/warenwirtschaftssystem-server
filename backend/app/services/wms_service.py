@@ -116,6 +116,10 @@ class WmsService:
         return category_repository.create_category(db, name)
 
     @staticmethod
+    def delete_category(db: Session, category_id: int) -> dict[str, object]:
+        return category_repository.delete_category(db, category_id)
+
+    @staticmethod
     def upsert_location(db: Session, location: LocationItem) -> LocationItem:
         return wms_repository.upsert_location(db, location)
 

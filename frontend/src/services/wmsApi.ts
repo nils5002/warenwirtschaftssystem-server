@@ -560,6 +560,23 @@ export function markAssetReturned(
   });
 }
 
+// Holt die Kategorien-Stammdaten aus dem Backend (mit ids), damit das
+// Frontend für Delete die richtige id mitschicken kann. Die abgeleitete
+// "Kategorien aus vorhandenen Assets"-Liste im Controller hat keine ids.
+export async function listCategories(): Promise<CategoryItem[]> {
+  const response = await apiFetch('/api/wms/categories');
+  return parseResponse<CategoryItem[]>(response);
+}
+
+// Löscht eine Kategorie. Wirft mit verständlicher Meldung, wenn die
+// Kategorie noch von Geräten verwendet wird (Backend liefert HTTP 409).
+export async function deleteCategory(categoryId: number): Promise<{ deleted: boolean; id: number }> {
+  const response = await apiFetch(`/api/wms/categories/${categoryId}`, {
+    method: 'DELETE',
+  });
+  return parseResponse<{ deleted: boolean; id: number }>(response);
+}
+
 export function upsertReservation(reservation: ReservationItem): Promise<ReservationItem> {
   return postJson<ReservationItem>('/api/wms/reservations', reservation);
 }

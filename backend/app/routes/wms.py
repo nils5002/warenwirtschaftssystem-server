@@ -257,6 +257,27 @@ def create_category(
     return WmsService.create_category(db, payload.name)
 
 
+@router.delete("/categories/{category_id}")
+def delete_category(
+    category_id: int,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> dict[str, object]:
+    """Löscht eine Kategorie hart, wenn sie aktuell von keinem Asset verwendet wird.
+
+    Erlaubt für Admin/Techniker (intern auf admin gemappt) UND Projektmanager,
+    weil Kategorien fachlich Teil der Projektplanungs-Stammdaten sind.
+    Mitarbeiter/Junior bleiben ausgeschlossen.
+
+    Antworten:
+      - 200: gelöscht
+      - 404: Kategorie nicht gefunden
+      - 409: noch von Assets verwendet — verständliche Meldung im detail
+    """
+    require_roles(context, "admin", "projektmanager")
+    return WmsService.delete_category(db, category_id)
+
+
 @router.post("/locations", response_model=LocationItem)
 def upsert_location(
     location: LocationItem,

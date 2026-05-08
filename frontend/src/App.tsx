@@ -64,13 +64,13 @@ function App() {
   const visibleNavigation = useMemo(() => {
     if (activeRole === 'Admin') return navigation;
     if (activeRole === 'Projektmanager') {
-      // Projektmanager: kein User-/Kategorien-/Import-/Backup-/QR-/Massendruck-
-      // Zugriff. Fremdbestand IST Teil der Projektplanung und damit hier sichtbar.
+      // Projektmanager: kein User-/Import-/Backup-/QR-/Massendruck-Zugriff.
+      // Kategorien IST sichtbar — PMs dürfen Stammdaten-Kategorien löschen
+      // (Anlegen bleibt admin-only, Hinweis dazu in der Page selbst).
+      // Fremdbestand IST Teil der Projektplanung und ebenfalls sichtbar.
       return navigation.filter(
         (item) =>
-          !['users', 'categories', 'importExport', 'backup', 'qrFunctions', 'massPrint'].includes(
-            item.key,
-          ),
+          !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint'].includes(item.key),
       );
     }
     // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
@@ -248,6 +248,7 @@ function App() {
               onOpenLocationInventory={controller.openLocationInventory}
               onEditLocation={controller.editLocation}
               onCreateCategory={controller.createCategory}
+              onDeleteCategory={controller.deleteCategory}
               onReloadData={controller.loadWms}
               onCheckoutFromForm={controller.checkoutFromForm}
               onCheckinFromForm={controller.checkinFromForm}

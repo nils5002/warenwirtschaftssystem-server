@@ -14,7 +14,9 @@ import type {
 } from '../asset-ui/types';
 import {
   deleteAsset,
+  deleteCategory as deleteCategoryRequest,
   deleteUser as deleteUserRequest,
+  listCategories as listCategoriesRequest,
   deleteUsersBulk,
   fetchWmsOverview,
   getApiAccessContext,
@@ -169,6 +171,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [planningSummary, setPlanningSummary] = useState<WmsOverview['planningSummary']>(null);
   const [extraCategories, setExtraCategories] = useState<CategoryItem[]>([]);
+  // Backend-Stammdaten der Kategorien (mit ids), damit das Frontend bei
+  // Delete die richtige id mitschicken kann. Wird einmal nach Login
+  // geladen und nach create/delete neu eingespielt.
+  const [categoryRecords, setCategoryRecords] = useState<CategoryItem[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [wmsError, setWmsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -261,9 +267,27 @@ export function useWmsController(options: UseWmsControllerOptions) {
     }
   }, []);
 
+  // Lädt Kategorien-Stammdaten (mit ids) aus dem Backend. Wird einmal nach
+  // Login geladen und nach create/delete neu eingespielt.
+  const refreshCategoryRecords = useCallback(async () => {
+    try {
+      const records = await listCategoriesRequest();
+      setCategoryRecords(records);
+    } catch {
+      // Stillschweigend ignorieren — die abgeleitete Kategorienliste aus
+      // Assets reicht weiter aus, das Delete-Feature ist dann nur lokal
+      // ohne id verfügbar.
+    }
+  }, []);
+
   useEffect(() => {
     setApiAccessContext({ projectContext });
   }, [projectContext]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void refreshCategoryRecords();
+  }, [isAuthenticated, refreshCategoryRecords]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -329,12 +353,20 @@ export function useWmsController(options: UseWmsControllerOptions) {
       if (trimmed && trimmed !== 'Zuordnung erforderlich') fromAssets.add(trimmed);
     }
     const merged = new Map<string, CategoryItem>();
-    for (const name of fromAssets) merged.set(name, { name, isActive: true });
+    // Backend-Records zuerst eintragen — sie haben die echte id und das
+    // korrekte isStandard-Flag. Lokale Asset-Ableitungen werden danach nur
+    // ergänzt, wenn die Kategorie nicht schon im Backend bekannt ist.
+    for (const item of categoryRecords) {
+      if (item?.name) merged.set(item.name, item);
+    }
+    for (const name of fromAssets) {
+      if (!merged.has(name)) merged.set(name, { name, isActive: true });
+    }
     for (const item of extraCategories) {
       if (!merged.has(item.name)) merged.set(item.name, item);
     }
     return [...merged.values()];
-  }, [assets, extraCategories]);
+  }, [assets, extraCategories, categoryRecords]);
 
   const createCategory = useCallback(
     async (name: string): Promise<CategoryItem> => {
@@ -342,9 +374,26 @@ export function useWmsController(options: UseWmsControllerOptions) {
       if (!trimmed) throw new Error('Kategoriename darf nicht leer sein.');
       const item: CategoryItem = { name: trimmed, isActive: true };
       setExtraCategories((prev) => (prev.some((existing) => existing.name === trimmed) ? prev : [...prev, item]));
+      // Backend-Records nachladen, damit die neue Kategorie ihre id bekommt
+      // und im UI gelöscht werden kann.
+      void refreshCategoryRecords();
       return item;
     },
-    [],
+    [refreshCategoryRecords],
+  );
+
+  const deleteCategoryAction = useCallback(
+    async (categoryId: number): Promise<void> => {
+      // Backend wirft auf 409, wenn die Kategorie noch verwendet wird —
+      // wir lassen den Fehler nach oben durch, damit die Page eine
+      // verständliche Meldung anzeigen kann.
+      await deleteCategoryRequest(categoryId);
+      // Optimistisch lokal entfernen + Backend-Records frisch nachladen.
+      setCategoryRecords((prev) => prev.filter((item) => item.id !== categoryId));
+      setExtraCategories((prev) => prev.filter((item) => item.id !== categoryId));
+      void refreshCategoryRecords();
+    },
+    [refreshCategoryRecords],
   );
 
   const openAssetDetail = (assetId: string) => {
@@ -1123,6 +1172,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     planningSummary,
     categories,
     createCategory,
+    deleteCategory: deleteCategoryAction,
     openAssetDetail,
     createAsset,
     createAssetFromInput,
