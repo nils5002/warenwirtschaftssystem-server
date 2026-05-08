@@ -1,9 +1,9 @@
-import { CalendarClock, PackagePlus, RefreshCw, Search, Undo2 } from 'lucide-react';
+import { CalendarClock, PackagePlus, RefreshCw, Search, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { LoadingButton } from '../../components/loading';
-import { createExternalPool, markAssetReturned } from '../../services/wmsApi';
+import { createExternalPool, deleteAsset, markAssetReturned } from '../../services/wmsApi';
 import type { Asset, CategoryItem, OwnershipType } from '../types';
 
 type ExternalPoolPageProps = {
@@ -137,6 +137,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     initialCreateForm(categoryNames[0] ?? 'iPad'),
   );
   const [returningId, setReturningId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!categoryNames.length) return;
@@ -225,6 +226,54 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
       });
     } finally {
       setReturningId(null);
+    }
+  };
+
+  const submitDelete = async (asset: Asset) => {
+    // Schutz vor versehentlicher Eigenbestand-Löschung — die Page rendert
+    // ohnehin nur Fremdbestand, aber doppelter Boden schadet nicht.
+    if (asset.ownershipType === 'owned' || !asset.ownershipType) {
+      await alert({
+        title: 'Eigenbestand kann hier nicht gelöscht werden',
+        message: 'Diese Aktion ist nur für Fremdbestand gedacht.',
+      });
+      return;
+    }
+    if (asset.status === 'Verliehen') {
+      await alert({
+        title: 'Löschen nicht möglich',
+        message:
+          'Dieses Gerät ist aktuell ausgegeben und kann erst nach Rücknahme gelöscht werden.',
+      });
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Fremdbestand löschen?',
+      message:
+        'Dieses Gerät wird dauerhaft aus dem Fremdbestand entfernt. Diese Aktion kann nicht rückgängig gemacht werden.',
+      confirmLabel: 'Ja, löschen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setDeletingId(asset.id);
+    try {
+      await deleteAsset(asset.id);
+      await onReloadData();
+      await alert({
+        title: 'Fremdbestand gelöscht',
+        message: 'Das Gerät wurde dauerhaft entfernt.',
+      });
+    } catch (error) {
+      // Backend liefert 409 mit verständlicher Meldung wenn doch verliehen,
+      // 403 wenn Eigenbestand (kommt hier nicht vor, da Page nur Fremdbestand
+      // listet). Wir reichen die Backend-Meldung durch.
+      await alert({
+        title: 'Löschen nicht möglich',
+        message: error instanceof Error ? error.message : 'Unbekannter Fehler.',
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -381,27 +430,44 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right">
-                          {!asset.returnedAt ? (
+                          <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            {!asset.returnedAt ? (
+                              <LoadingButton
+                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                onClick={() => {
+                                  void submitMarkReturned(asset);
+                                }}
+                                isLoading={returningId === asset.id}
+                                loadingText="Wird gespeichert …"
+                                disabled={isLoaned || returningId !== null || deletingId !== null}
+                                title={
+                                  isLoaned
+                                    ? 'Gerät ist aktuell ausgegeben — erst regulären Check-in durchführen.'
+                                    : 'Gerät als zurückgegeben markieren'
+                                }
+                              >
+                                <Undo2 className="h-3.5 w-3.5" />
+                                Als zurückgegeben markieren
+                              </LoadingButton>
+                            ) : null}
                             <LoadingButton
-                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-0 py-0 text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/60"
                               onClick={() => {
-                                void submitMarkReturned(asset);
+                                void submitDelete(asset);
                               }}
-                              isLoading={returningId === asset.id}
-                              loadingText="Wird gespeichert …"
-                              disabled={isLoaned || returningId !== null}
+                              isLoading={deletingId === asset.id}
+                              loadingText=""
+                              disabled={isLoaned || deletingId !== null || returningId !== null}
                               title={
                                 isLoaned
-                                  ? 'Gerät ist aktuell ausgegeben — erst regulären Check-in durchführen.'
-                                  : 'Gerät als zurückgegeben markieren'
+                                  ? 'Verliehene Geräte können erst nach Rücknahme gelöscht werden.'
+                                  : 'Fremdbestand löschen'
                               }
+                              aria-label="Fremdbestand löschen"
                             >
-                              <Undo2 className="h-3.5 w-3.5" />
-                              Als zurückgegeben markieren
+                              <Trash2 className="h-3.5 w-3.5" />
                             </LoadingButton>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -447,20 +513,34 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                     >
                       {STATUS_LABELS[status]}
                     </span>
-                    {!asset.returnedAt ? (
+                    <div className="flex items-center gap-1.5">
+                      {!asset.returnedAt ? (
+                        <LoadingButton
+                          className="btn-secondary px-2.5 py-1.5 text-xs"
+                          onClick={() => {
+                            void submitMarkReturned(asset);
+                          }}
+                          isLoading={returningId === asset.id}
+                          loadingText="…"
+                          disabled={isLoaned || returningId !== null || deletingId !== null}
+                        >
+                          <Undo2 className="h-3.5 w-3.5" />
+                          Zurückgegeben
+                        </LoadingButton>
+                      ) : null}
                       <LoadingButton
-                        className="btn-secondary px-2.5 py-1.5 text-xs"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200"
                         onClick={() => {
-                          void submitMarkReturned(asset);
+                          void submitDelete(asset);
                         }}
-                        isLoading={returningId === asset.id}
-                        loadingText="…"
-                        disabled={isLoaned || returningId !== null}
+                        isLoading={deletingId === asset.id}
+                        loadingText=""
+                        disabled={isLoaned || deletingId !== null || returningId !== null}
+                        aria-label="Fremdbestand löschen"
                       >
-                        <Undo2 className="h-3.5 w-3.5" />
-                        Zurückgegeben
+                        <Trash2 className="h-4 w-4" />
                       </LoadingButton>
-                    ) : null}
+                    </div>
                   </div>
                   {isLoaned ? (
                     <p className="mt-1 text-[11px] text-rose-600">
