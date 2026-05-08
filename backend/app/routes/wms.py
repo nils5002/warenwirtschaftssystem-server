@@ -253,7 +253,12 @@ def create_category(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> CategoryItem:
-    require_roles(context, "admin")
+    """Legt eine neue Kategorie an.
+
+    Erlaubt für Admin/Techniker (intern auf admin gemappt) UND Projektmanager,
+    konsistent mit dem Lösch-Recht. Mitarbeiter/Junior bleiben ausgeschlossen.
+    """
+    require_roles(context, "admin", "projektmanager")
     return WmsService.create_category(db, payload.name)
 
 

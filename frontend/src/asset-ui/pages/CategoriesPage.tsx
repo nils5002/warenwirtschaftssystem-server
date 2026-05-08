@@ -203,10 +203,8 @@ export function CategoriesPage({
           </div>
           <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300">
             {canManageCategories
-              ? 'Anlegen: Admin / Techniker'
-              : canDeleteCategories
-                ? 'Löschen: Admin / Techniker / Projektmanager'
-                : 'Nur Auswahl'}
+              ? 'Admin / Techniker / Projektmanager'
+              : 'Nur Auswahl'}
           </span>
         </div>
 
@@ -237,9 +235,8 @@ export function CategoriesPage({
         {!canManageCategories ? (
           <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            {canDeleteCategories
-              ? 'Neue Kategorien anlegen nur Admin/Techniker. Vorhandene Kategorien dürfen Sie löschen.'
-              : 'Kategorien verwalten nur Admins und Techniker. Projektmanager und Mitarbeiter wählen vorhandene Kategorien.'}
+            Kategorien verwalten nur Admin / Techniker / Projektmanager.
+            Mitarbeiter und Junior wählen vorhandene Kategorien.
           </p>
         ) : error ? (
           <p className="mt-3 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">

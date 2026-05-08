@@ -298,9 +298,10 @@ export function WmsPageView({
         <CategoriesPage
           assets={assets}
           categories={categories}
-          canManageCategories={isAdmin}
-          // Löschen ist erlaubt für Admin/Techniker (gemappt auf 'Admin')
-          // sowie Projektmanager. Mitarbeiter/Junior nicht.
+          // Anlegen UND Löschen sind beide erlaubt für Admin/Techniker
+          // (intern als 'Admin' gemappt) sowie Projektmanager.
+          // Mitarbeiter/Junior bleiben ausgeschlossen.
+          canManageCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           canDeleteCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           onCreateCategory={onCreateCategory}
           onDeleteCategory={onDeleteCategory}
