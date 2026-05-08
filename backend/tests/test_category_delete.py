@@ -149,3 +149,50 @@ def test_delete_non_existing_category_returns_404() -> None:
     client = TestClient(app)
     res = client.delete("/api/wms/categories/9999999", headers=_headers("Admin"))
     assert res.status_code == 404
+
+
+def test_projektmanager_can_create_category_and_mitarbeiter_cannot() -> None:
+    """Anlegen einer neuen Kategorie ist für Admin / Techniker / Projektmanager
+    erlaubt — und für Mitarbeiter/Junior ausgeschlossen."""
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+
+    # Projektmanager darf anlegen
+    pm_name = f"PMKat-Create-{suffix}"
+    pm_create = client.post(
+        "/api/wms/categories",
+        headers=_headers("Projektmanager", user_id=f"pm-create-{suffix}"),
+        json={"name": pm_name},
+    )
+    assert pm_create.status_code == 200, pm_create.text
+    pm_id = pm_create.json()["id"]
+    assert pm_id is not None
+
+    # Techniker darf weiterhin anlegen
+    tech_name = f"TechKat-Create-{suffix}"
+    tech_create = client.post(
+        "/api/wms/categories",
+        headers=_headers("Techniker", user_id=f"tech-create-{suffix}"),
+        json={"name": tech_name},
+    )
+    assert tech_create.status_code == 200, tech_create.text
+    tech_id = tech_create.json()["id"]
+
+    # Mitarbeiter / Junior bleiben ausgeschlossen
+    denied = client.post(
+        "/api/wms/categories",
+        headers=_headers("Mitarbeiter", user_id=f"emp-create-{suffix}"),
+        json={"name": f"EmpKat-Create-{suffix}"},
+    )
+    assert denied.status_code == 403
+
+    denied_junior = client.post(
+        "/api/wms/categories",
+        headers=_headers("Junior", user_id=f"jun-create-{suffix}"),
+        json={"name": f"JunKat-Create-{suffix}"},
+    )
+    assert denied_junior.status_code == 403
+
+    # Aufräumen
+    client.delete(f"/api/wms/categories/{pm_id}", headers=_headers("Admin"))
+    client.delete(f"/api/wms/categories/{tech_id}", headers=_headers("Admin"))
