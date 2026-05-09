@@ -21,6 +21,7 @@ from ..database.models import (
     HardwareImportRunRecord,
     HardwareImportRowErrorRecord,
 )
+from ..repositories import category_repository
 from ..repositories.wms_repository import (
     _normalize_asset_status,
     _normalize_maintenance_status,
@@ -431,6 +432,11 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         db.execute(delete(HardwareImportRunRecord))
 
         db.execute(delete(UserRecord).where(UserRecord.id.notin_(preserved_admin_ids)))
+
+        # Re-seed standard categories so the app keeps a usable category set
+        # after a wipe (without this, the lazy-seed from older code paths was
+        # the only thing restoring them).
+        category_repository.seed_standard_categories(db)
 
         db.commit()
     except HTTPException:
