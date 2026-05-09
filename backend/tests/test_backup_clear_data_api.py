@@ -71,7 +71,14 @@ def test_admin_can_clear_wms_data_and_preserves_admin_user() -> None:
     assert payload["maintenanceItems"] == []
     assert payload["locations"] == []
     assert payload["plannings"] == []
-    assert payload["categories"] == []
+    # Standardkategorien werden nach dem Clear bewusst neu geseedet, damit die
+    # App weiter benutzbar bleibt (Stammdaten ohne App-Restart verfuegbar).
+    standard_names = {c["name"] for c in payload["categories"] if c.get("isStandard")}
+    assert "Laptop" in standard_names
+    assert "iPad" in standard_names
+    assert all(c.get("isStandard") for c in payload["categories"]), (
+        "Nach Clear duerfen nur Standardkategorien uebrig sein, keine benutzerdefinierten."
+    )
 
     users = payload["users"]
     assert users, "Mindestens ein Admin muss erhalten bleiben."

@@ -200,6 +200,8 @@ def get_open_conflict_counts_for_plannings(
     handover_meta_by_planning_category: dict[tuple[str, str], dict[str, object]] = {}
     categories_seen: set[str] = set()
 
+    active_names = category_repository.active_category_names(db)
+
     for item in item_rows:
         day = day_by_id.get(item.planning_day_id)
         if day is None:
@@ -207,7 +209,7 @@ def get_open_conflict_counts_for_plannings(
         ext_id = planning_pk_to_external.get(day.planning_id)
         if not ext_id:
             continue
-        category = category_repository.normalize_category_for_db(db, item.category_key)
+        category = category_repository.normalize_category_value(item.category_key, active_names)
         categories_seen.add(category)
         qty = int(item.qty or 0)
         explicit_key = (ext_id, day.planning_date, category)
@@ -251,7 +253,7 @@ def get_open_conflict_counts_for_plannings(
             bound_dates_for_active_plannings.add(bound_date)
     stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
-        category = category_repository.normalize_category_for_db(db, asset.category)
+        category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_seen:
             continue
         for bound_date in bound_dates_for_active_plannings:
@@ -804,7 +806,8 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             items=[],
             categorySummary=[],
         )
-    categories = sorted({category_repository.normalize_category_for_db(db, item.category_key) for item in relevant_item_rows})
+    active_names = category_repository.active_category_names(db)
+    categories = sorted({category_repository.normalize_category_value(item.category_key, active_names) for item in relevant_item_rows})
 
     # Bestand wird DATUMSABHÄNGIG ermittelt, damit Fremdbestand
     # (Miet-/Leih-/Externe Geräte) nur in seinem Verfügbarkeitsfenster
@@ -814,7 +817,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
     categories_set = set(categories)
     for asset in db.scalars(select(AssetRecord)).all():
-        category = category_repository.normalize_category_for_db(db, asset.category)
+        category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_set:
             continue
         stock_totals[category] += 1
@@ -842,7 +845,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     for item in relevant_item_rows:
         day = days_by_id[item.planning_day_id]
         weekday_by_date[day.planning_date] = day.weekday
-        category = category_repository.normalize_category_for_db(db, item.category_key)
+        category = category_repository.normalize_category_value(item.category_key, active_names)
         key = (day.planning_date, category)
         explicit_requested_qty_by_day_category[key] += int(item.qty or 0)
         max_requested_qty_by_category[category] = max(max_requested_qty_by_category[category], explicit_requested_qty_by_day_category[key])
@@ -913,7 +916,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         if not other_id:
             continue
         overlap_period_map[other_id] = (row.start_date, row.end_date)
-        category = category_repository.normalize_category_for_db(db, str(row.category_key))
+        category = category_repository.normalize_category_value(str(row.category_key), active_names)
         if category not in categories:
             continue
         qty_key = (other_id, row.planning_date, category)
@@ -970,7 +973,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             if not source_id:
                 continue
             source_period_map[source_id] = (row.start_date, row.end_date)
-            category = category_repository.normalize_category_for_db(db, str(row.category_key))
+            category = category_repository.normalize_category_value(str(row.category_key), active_names)
             key = (source_id, row.planning_date, category)
             source_explicit_qty_map[key] += int(row.qty or 0)
             source_default_qty_map[(source_id, category)] = max(source_default_qty_map[(source_id, category)], source_explicit_qty_map[key])

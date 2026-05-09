@@ -20,7 +20,6 @@ def _to_schema(record: CategoryRecord) -> CategoryItem:
 
 
 def seed_standard_categories(db: Session) -> None:
-    CategoryRecord.__table__.create(bind=db.get_bind(), checkfirst=True)
     changed = False
     existing = {
         record.name: record
@@ -50,7 +49,6 @@ def seed_standard_categories(db: Session) -> None:
 
 
 def list_categories(db: Session, *, include_inactive: bool = False) -> list[CategoryItem]:
-    seed_standard_categories(db)
     stmt = select(CategoryRecord)
     if not include_inactive:
         stmt = stmt.where(CategoryRecord.is_active.is_(True))
@@ -61,8 +59,11 @@ def list_categories(db: Session, *, include_inactive: bool = False) -> list[Cate
 
 
 def active_category_names(db: Session) -> set[str]:
-    seed_standard_categories(db)
     return set(db.scalars(select(CategoryRecord.name).where(CategoryRecord.is_active.is_(True))).all())
+
+
+def normalize_category_value(value: str | None, active_names: set[str]) -> str:
+    return normalize_known_category(value, active_names)
 
 
 def normalize_category_for_db(db: Session, value: str | None) -> str:
@@ -70,7 +71,6 @@ def normalize_category_for_db(db: Session, value: str | None) -> str:
 
 
 def create_category(db: Session, name: str) -> CategoryItem:
-    seed_standard_categories(db)
     cleaned = " ".join(name.strip().split())
     normalized_name = category_key(cleaned)
     if not cleaned:

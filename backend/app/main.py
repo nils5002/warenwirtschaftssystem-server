@@ -12,6 +12,7 @@ from sqlalchemy import text
 from .config.settings import get_settings
 from .database.session import SessionLocal, init_db
 from .errors import register_error_handlers
+from .repositories import category_repository
 from .routes import api_router
 from .services.auth_service import ensure_user_passwords
 from .services.auth_service import ensure_initial_admin
@@ -107,6 +108,8 @@ def create_app() -> FastAPI:
             if "handover_note" not in planning_item_columns:
                 db.execute(text("ALTER TABLE planning_items ADD COLUMN handover_note TEXT"))
                 db.commit()
+        with SessionLocal() as db:
+            category_repository.seed_standard_categories(db)
         if settings.wms_seed_legacy_on_startup:
             base_dir = Path(__file__).resolve().parents[1]
             legacy_path = settings.resolve_legacy_json_path(base_dir)

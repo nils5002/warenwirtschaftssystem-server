@@ -937,9 +937,10 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
     # Bestand für die "heute"-Ansicht: nur Geräte mitzählen, die HEUTE
     # tatsächlich verfügbar sind (Eigenbestand immer, Fremdbestand nur wenn
     # innerhalb available_from / available_until und nicht returned_at).
+    active_names = category_repository.active_category_names(db)
     usable_by_category: dict[str, int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
-        category = category_repository.normalize_category_for_db(db, asset.category)
+        category = category_repository.normalize_category_value(asset.category, active_names)
         if planning_repository._is_asset_usable_on_date(asset, today):
             usable_by_category[category] += 1
 
@@ -953,7 +954,7 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
         day = day_by_id.get(item.planning_day_id)
         if day is None:
             continue
-        category = category_repository.normalize_category_for_db(db, item.category_key)
+        category = category_repository.normalize_category_value(item.category_key, active_names)
         qty = int(item.qty or 0)
         planning_id = int(day.planning_id)
         key = (planning_id, day.planning_date, category)
