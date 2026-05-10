@@ -92,6 +92,13 @@ class PlanningListHandoverSummary(BaseModel):
     categoryKeys: list[str] = Field(default_factory=list)
 
 
+class PlanningListMissingItem(BaseModel):
+    categoryKey: str
+    missingQty: int
+    requiredQty: int = 0
+    availableQty: int = 0
+
+
 class PlanningListItem(BaseModel):
     id: str
     customerName: str
@@ -105,6 +112,7 @@ class PlanningListItem(BaseModel):
     updatedAt: datetime
     handoverSummary: PlanningListHandoverSummary | None = None
     openConflictCount: int = 0
+    missingItems: list[PlanningListMissingItem] = Field(default_factory=list)
 
 
 class PlanningAvailabilityItem(BaseModel):

@@ -70,6 +70,7 @@ type EditablePlanning = {
 
 type PlanningSummary = PlanningListItem | PlanningResponse;
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
+type PlanningListMissingItem = NonNullable<PlanningListItem['missingItems']>[number];
 type BusyState = 'list' | 'open' | 'save' | 'create' | 'duplicate' | 'delete' | 'status' | null;
 
 type HandoverNetworkAccent = {
@@ -356,6 +357,21 @@ function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): st
     return `Mit ${detailParts.join(' · ')} abgestimmt`;
   }
   return `Mit ${detailParts.join(' · ')} abgestimmt`;
+}
+
+const MISSING_SUMMARY_VISIBLE_LIMIT = 3;
+
+function getMissingHardwareSummary(
+  missingItems: PlanningListMissingItem[] | null | undefined,
+): string | null {
+  if (!missingItems || missingItems.length === 0) return null;
+  const positiveItems = missingItems.filter((item) => Number(item.missingQty) > 0);
+  if (positiveItems.length === 0) return null;
+  const visible = positiveItems.slice(0, MISSING_SUMMARY_VISIBLE_LIMIT);
+  const overflow = positiveItems.length - visible.length;
+  const parts = visible.map((item) => `${item.missingQty}× ${item.categoryKey}`);
+  const overflowSuffix = overflow > 0 ? ` + ${overflow} weitere` : '';
+  return `Fehlt: ${parts.join(', ')}${overflowSuffix}`;
 }
 
 function updatePlanningItemInEditor(
@@ -1758,6 +1774,7 @@ export function PlanningPage({
               const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
               const itemConflictCount = item.openConflictCount ?? 0;
               const hasOpenConflict = itemConflictCount > 0;
+              const missingSummary = getMissingHardwareSummary(item.missingItems);
               return (
                 <div
                   key={item.id}
@@ -1809,6 +1826,15 @@ export function PlanningPage({
                   </div>
                   {hasOpenConflict ? (
                     <p className="mt-1 text-[11px] font-medium text-rose-700">Offener Konflikt</p>
+                  ) : null}
+                  {missingSummary ? (
+                    <p
+                      data-testid={`planning-missing-summary-${item.id}`}
+                      className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"
+                    >
+                      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      <span className="break-words">{missingSummary}</span>
+                    </p>
                   ) : null}
 
                   <p className="mt-2 text-xs text-slate-500">{formatPeriod(item.startDate, item.endDate)}</p>

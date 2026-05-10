@@ -168,6 +168,13 @@ export type PlanningUpsertPayload = {
   days: PlanningDayPayload[];
 };
 
+export type PlanningListMissingItem = {
+  categoryKey: string;
+  missingQty: number;
+  requiredQty?: number;
+  availableQty?: number;
+};
+
 export type PlanningListItem = {
   id: string;
   customerName: string;
@@ -187,6 +194,7 @@ export type PlanningListItem = {
     categoryKeys: string[];
   } | null;
   openConflictCount?: number;
+  missingItems?: PlanningListMissingItem[];
 };
 
 export type PlanningItemResponse = {

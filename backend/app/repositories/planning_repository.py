@@ -18,6 +18,7 @@ from ..schemas.planning import (
     PlanningItemResponse,
     PlanningListHandoverSummary,
     PlanningListItem,
+    PlanningListMissingItem,
     PlanningResponse,
     PlanningStatus,
     PlanningUpsertPayload,
@@ -65,6 +66,7 @@ def _planning_to_list_item(
     record: PlanningRecord,
     handover_summary: PlanningListHandoverSummary | None = None,
     open_conflict_count: int = 0,
+    missing_items: list[PlanningListMissingItem] | None = None,
 ) -> PlanningListItem:
     return PlanningListItem(
         id=record.external_id,
@@ -79,6 +81,7 @@ def _planning_to_list_item(
         updatedAt=record.updated_at,
         handoverSummary=handover_summary,
         openConflictCount=int(open_conflict_count),
+        missingItems=list(missing_items or []),
     )
 
 
@@ -128,12 +131,26 @@ def get_open_conflict_counts_for_plannings(
 ) -> dict[str, int]:
     """Batch-Berechnung der offenen Konflikte pro Planung.
 
+    Liefert nur die Zähler — für die kompakte Fehlmengen-Übersicht (welche
+    Kategorie konkret fehlt) siehe ``get_open_conflict_summaries_for_plannings``.
+    """
+
+    summaries = get_open_conflict_summaries_for_plannings(db, external_ids)
+    return {ext_id: summary["count"] for ext_id, summary in summaries.items()}
+
+
+def get_open_conflict_summaries_for_plannings(
+    db: Session,
+    external_ids: list[str] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Batch-Berechnung von Konflikt-Zähler und Fehlmengen pro Planung.
+
     Vermeidet das N+1-Problem von ``list_plannings`` und
     ``_build_planning_summary``: statt ``get_planning_availability(...)`` pro
     Planung (jeweils mit komplettem Asset-Scan und mehreren Joins) lädt diese
     Funktion einmalig alle aktiven Planungen, deren Tage und Items sowie die
-    Bestandszahlen und berechnet daraus die Konfliktzahlen aller Planungen
-    in einem Durchlauf.
+    Bestandszahlen und berechnet daraus die Konfliktzahlen *und* eine
+    kompakte ``missingItems``-Liste je Planung in einem Durchlauf.
 
     Die Konflikt-Definition ist identisch zu
     ``count_open_conflicts(get_planning_availability(...))``:
@@ -141,8 +158,17 @@ def get_open_conflict_counts_for_plannings(
     geplanter Übergabe noch eine echte Knappheit bleibt
     (``shortage_after_handover_qty > 0``).
 
-    ``external_ids=None`` liefert die Counts aller aktiven Planungen.
-    Stornierte/abgeschlossene Planungen werden – wie bisher – ausgeklammert.
+    Pro (Planung, Kategorie) wird die **maximale** Tages-Fehlmenge
+    übernommen — das spiegelt die Engpasskategorie korrekt wider, ohne
+    Tage doppelt zu zählen. ``requiredQty`` ist die maximale geplante
+    Tagesmenge dieser Planung für diese Kategorie an einem konfliktbehafteten
+    Tag, ``availableQty = max(0, requiredQty - missingQty)``.
+
+    Rückgabe-Schema:
+        ``{ ext_id: { "count": int, "missing": list[PlanningListMissingItem] } }``
+
+    ``external_ids=None`` liefert die Summaries aller aktiven Planungen.
+    Stornierte/abgeschlossene Planungen werden ausgeklammert.
     """
 
     all_active_records = db.scalars(
@@ -150,10 +176,13 @@ def get_open_conflict_counts_for_plannings(
             PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES))
         )
     ).all()
+    def _empty_summary() -> dict[str, object]:
+        return {"count": 0, "missing": []}
+
     if not all_active_records:
         if external_ids is None:
             return {}
-        return {ext_id: 0 for ext_id in external_ids}
+        return {ext_id: _empty_summary() for ext_id in external_ids}
 
     active_external_ids = {
         record.external_id for record in all_active_records if record.external_id
@@ -176,7 +205,7 @@ def get_open_conflict_counts_for_plannings(
     }
 
     if not planning_pk_to_external:
-        return {ext_id: 0 for ext_id in target_external_ids}
+        return {ext_id: _empty_summary() for ext_id in target_external_ids}
 
     day_rows = db.scalars(
         select(PlanningDayRecord).where(
@@ -184,7 +213,7 @@ def get_open_conflict_counts_for_plannings(
         )
     ).all()
     if not day_rows:
-        return {ext_id: 0 for ext_id in target_external_ids}
+        return {ext_id: _empty_summary() for ext_id in target_external_ids}
 
     day_by_id = {day.id: day for day in day_rows}
     item_rows = db.scalars(
@@ -193,7 +222,7 @@ def get_open_conflict_counts_for_plannings(
         )
     ).all()
     if not item_rows:
-        return {ext_id: 0 for ext_id in target_external_ids}
+        return {ext_id: _empty_summary() for ext_id in target_external_ids}
 
     explicit_qty: dict[tuple[str, date, str], int] = defaultdict(int)
     max_qty_by_planning_category: dict[tuple[str, str], int] = defaultdict(int)
@@ -242,7 +271,7 @@ def get_open_conflict_counts_for_plannings(
                     existing_meta["linked_planning_id"] = linked_planning_id
 
     if not categories_seen:
-        return {ext_id: 0 for ext_id in target_external_ids}
+        return {ext_id: _empty_summary() for ext_id in target_external_ids}
 
     # Bestand pro (Datum, Kategorie). Fremdbestand wird nur an Tagen mitgezählt,
     # an denen er laut available_from / available_until / returned_at verfügbar
@@ -283,7 +312,13 @@ def get_open_conflict_counts_for_plannings(
     for (ext_id, bound_date, category), qty in effective_qty.items():
         total_demand[(bound_date, category)] += qty
 
-    result: dict[str, int] = {ext_id: 0 for ext_id in target_external_ids}
+    counts: dict[str, int] = {ext_id: 0 for ext_id in target_external_ids}
+    # Pro (planning, category) speichern wir die Tages-Auswertung mit der
+    # höchsten verbleibenden Fehlmenge (shortage_after_handover_qty). Diese
+    # Engpass-Tageszahl ist die fachlich aussagekräftigste Größe für die
+    # Planungs-Kachel: sie zeigt, wie viele Geräte minimal fehlen, damit die
+    # Planung in jedem Tag des Zeitraums gedeckt wäre.
+    worst_missing_by_planning_category: dict[tuple[str, str], dict[str, int]] = {}
 
     for (ext_id, bound_date, category), this_qty in effective_qty.items():
         if ext_id not in target_external_ids:
@@ -311,9 +346,39 @@ def get_open_conflict_counts_for_plannings(
             handover_covered_qty = min(shortage_qty, max(0, source_capacity))
 
         shortage_after_handover_qty = max(0, shortage_qty - handover_covered_qty)
-        if shortage_after_handover_qty > 0:
-            result[ext_id] += 1
+        if shortage_after_handover_qty <= 0:
+            continue
 
+        counts[ext_id] += 1
+
+        key = (ext_id, category)
+        current = worst_missing_by_planning_category.get(key)
+        if current is None or shortage_after_handover_qty > int(current["missingQty"]):
+            worst_missing_by_planning_category[key] = {
+                "missingQty": int(shortage_after_handover_qty),
+                "requiredQty": int(this_qty),
+            }
+
+    missing_by_planning: dict[str, list[PlanningListMissingItem]] = defaultdict(list)
+    for (ext_id, category), values in worst_missing_by_planning_category.items():
+        missing_qty = int(values["missingQty"])
+        required_qty = int(values["requiredQty"])
+        missing_by_planning[ext_id].append(
+            PlanningListMissingItem(
+                categoryKey=category,
+                missingQty=missing_qty,
+                requiredQty=required_qty,
+                availableQty=max(0, required_qty - missing_qty),
+            )
+        )
+
+    result: dict[str, dict[str, object]] = {}
+    for ext_id in target_external_ids:
+        items = missing_by_planning.get(ext_id, [])
+        # Stabile, deterministische Reihenfolge: größte Fehlmenge zuerst,
+        # bei Gleichstand alphabetisch.
+        items.sort(key=lambda item: (-item.missingQty, item.categoryKey.lower()))
+        result[ext_id] = {"count": counts.get(ext_id, 0), "missing": items}
     return result
 
 
@@ -512,16 +577,15 @@ def list_plannings(
         stmt = stmt.where(PlanningRecord.start_date <= to_date)
     records = db.scalars(stmt).all()
     handover_summary_map = _build_handover_list_summary_map(db, records)
-    # Konfliktzahlen in einem einzigen Batch-Durchlauf berechnen, statt pro
-    # Planung erneut die volle Verfügbarkeit zu rechnen. Spart pro List-Aufruf
-    # N-1 Asset-Tabellenscans und N×Joins für Overlap/Handover.
+    # Konfliktzahlen + Fehlmengen-Übersicht in einem Batch-Durchlauf. Spart
+    # pro List-Aufruf N-1 Asset-Tabellenscans und N×Joins für Overlap/Handover.
     active_target_ids = [
         record.external_id
         for record in records
         if record.external_id and _normalize_status(record.status) in ACTIVE_PLANNING_STATUSES
     ]
-    open_conflict_map: dict[str, int] = (
-        get_open_conflict_counts_for_plannings(db, active_target_ids)
+    conflict_summary_map: dict[str, dict[str, object]] = (
+        get_open_conflict_summaries_for_plannings(db, active_target_ids)
         if active_target_ids
         else {}
     )
@@ -529,7 +593,8 @@ def list_plannings(
         _planning_to_list_item(
             item,
             handover_summary_map.get(item.external_id),
-            open_conflict_map.get(item.external_id, 0),
+            int(conflict_summary_map.get(item.external_id, {}).get("count", 0) or 0),
+            list(conflict_summary_map.get(item.external_id, {}).get("missing", []) or []),
         )
         for item in records
     ]
