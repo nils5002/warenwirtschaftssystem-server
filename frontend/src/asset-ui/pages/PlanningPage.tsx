@@ -115,52 +115,52 @@ type AvailabilityVisual = {
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
   {
-    card: 'border-sky-200 bg-sky-50/55 dark:border-sky-800 dark:bg-sky-950/20',
-    cardActive: 'border-sky-300 bg-sky-50/80 ring-1 ring-sky-200 dark:border-sky-700 dark:bg-sky-950/25 dark:ring-sky-800',
-    panel: 'border-sky-200 bg-white/75 text-sky-900 dark:border-sky-800 dark:bg-slate-950/50 dark:text-sky-100',
-    badge: 'border-sky-200 bg-sky-100/80 text-sky-700 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100',
+    card: 'border-sky-200 bg-sky-50/55 dark:border-sky-400/40 dark:bg-sky-950/25',
+    cardActive: 'border-sky-300 bg-sky-50/80 ring-1 ring-sky-200 dark:border-sky-400/60 dark:bg-sky-950/40 dark:ring-sky-500/40',
+    panel: 'border-sky-200 bg-white/75 text-sky-900 dark:border-sky-400/50 dark:bg-sky-950/35 dark:text-sky-50',
+    badge: 'border-sky-200 bg-sky-100/80 text-sky-700 dark:border-sky-400/60 dark:bg-sky-900/60 dark:text-sky-50',
     hint: 'text-sky-800 dark:text-sky-100',
   },
   {
-    card: 'border-teal-200 bg-teal-50/55 dark:border-teal-800 dark:bg-teal-950/20',
-    cardActive: 'border-teal-300 bg-teal-50/80 ring-1 ring-teal-200 dark:border-teal-700 dark:bg-teal-950/25 dark:ring-teal-800',
-    panel: 'border-teal-200 bg-white/75 text-teal-900 dark:border-teal-800 dark:bg-slate-950/50 dark:text-teal-100',
-    badge: 'border-teal-200 bg-teal-100/80 text-teal-700 dark:border-teal-700 dark:bg-teal-900/40 dark:text-teal-100',
+    card: 'border-teal-200 bg-teal-50/55 dark:border-teal-400/40 dark:bg-teal-950/25',
+    cardActive: 'border-teal-300 bg-teal-50/80 ring-1 ring-teal-200 dark:border-teal-400/60 dark:bg-teal-950/40 dark:ring-teal-500/40',
+    panel: 'border-teal-200 bg-white/75 text-teal-900 dark:border-teal-400/50 dark:bg-teal-950/35 dark:text-teal-50',
+    badge: 'border-teal-200 bg-teal-100/80 text-teal-700 dark:border-teal-400/60 dark:bg-teal-900/60 dark:text-teal-50',
     hint: 'text-teal-800 dark:text-teal-100',
   },
   {
-    card: 'border-violet-200 bg-violet-50/55 dark:border-violet-800 dark:bg-violet-950/20',
-    cardActive: 'border-violet-300 bg-violet-50/80 ring-1 ring-violet-200 dark:border-violet-700 dark:bg-violet-950/25 dark:ring-violet-800',
-    panel: 'border-violet-200 bg-white/75 text-violet-900 dark:border-violet-800 dark:bg-slate-950/50 dark:text-violet-100',
-    badge: 'border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-700 dark:bg-violet-900/40 dark:text-violet-100',
+    card: 'border-violet-200 bg-violet-50/55 dark:border-violet-400/40 dark:bg-violet-950/25',
+    cardActive: 'border-violet-300 bg-violet-50/80 ring-1 ring-violet-200 dark:border-violet-400/60 dark:bg-violet-950/40 dark:ring-violet-500/40',
+    panel: 'border-violet-200 bg-white/75 text-violet-900 dark:border-violet-400/50 dark:bg-violet-950/35 dark:text-violet-50',
+    badge: 'border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-400/60 dark:bg-violet-900/60 dark:text-violet-50',
     hint: 'text-violet-800 dark:text-violet-100',
   },
   {
-    card: 'border-amber-200 bg-amber-50/55 dark:border-amber-800 dark:bg-amber-950/20',
-    cardActive: 'border-amber-300 bg-amber-50/80 ring-1 ring-amber-200 dark:border-amber-700 dark:bg-amber-950/25 dark:ring-amber-800',
-    panel: 'border-amber-200 bg-white/75 text-amber-900 dark:border-amber-800 dark:bg-slate-950/50 dark:text-amber-100',
-    badge: 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100',
+    card: 'border-amber-200 bg-amber-50/55 dark:border-amber-400/40 dark:bg-amber-950/25',
+    cardActive: 'border-amber-300 bg-amber-50/80 ring-1 ring-amber-200 dark:border-amber-400/60 dark:bg-amber-950/40 dark:ring-amber-500/40',
+    panel: 'border-amber-200 bg-white/75 text-amber-900 dark:border-amber-400/50 dark:bg-amber-950/35 dark:text-amber-50',
+    badge: 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-400/60 dark:bg-amber-900/60 dark:text-amber-50',
     hint: 'text-amber-800 dark:text-amber-100',
   },
   {
-    card: 'border-emerald-200 bg-emerald-50/55 dark:border-emerald-800 dark:bg-emerald-950/20',
-    cardActive: 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200 dark:border-emerald-700 dark:bg-emerald-950/25 dark:ring-emerald-800',
-    panel: 'border-emerald-200 bg-white/75 text-emerald-900 dark:border-emerald-800 dark:bg-slate-950/50 dark:text-emerald-100',
-    badge: 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-100',
+    card: 'border-emerald-200 bg-emerald-50/55 dark:border-emerald-400/40 dark:bg-emerald-950/25',
+    cardActive: 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200 dark:border-emerald-400/60 dark:bg-emerald-950/40 dark:ring-emerald-500/40',
+    panel: 'border-emerald-200 bg-white/75 text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-950/35 dark:text-emerald-50',
+    badge: 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-400/60 dark:bg-emerald-900/60 dark:text-emerald-50',
     hint: 'text-emerald-800 dark:text-emerald-100',
   },
   {
-    card: 'border-rose-200 bg-rose-50/55 dark:border-rose-800 dark:bg-rose-950/20',
-    cardActive: 'border-rose-300 bg-rose-50/80 ring-1 ring-rose-200 dark:border-rose-700 dark:bg-rose-950/25 dark:ring-rose-800',
-    panel: 'border-rose-200 bg-white/75 text-rose-900 dark:border-rose-800 dark:bg-slate-950/50 dark:text-rose-100',
-    badge: 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-700 dark:bg-rose-900/40 dark:text-rose-100',
+    card: 'border-rose-200 bg-rose-50/55 dark:border-rose-400/40 dark:bg-rose-950/25',
+    cardActive: 'border-rose-300 bg-rose-50/80 ring-1 ring-rose-200 dark:border-rose-400/60 dark:bg-rose-950/40 dark:ring-rose-500/40',
+    panel: 'border-rose-200 bg-white/75 text-rose-900 dark:border-rose-400/50 dark:bg-rose-950/35 dark:text-rose-50',
+    badge: 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-400/60 dark:bg-rose-900/60 dark:text-rose-50',
     hint: 'text-rose-800 dark:text-rose-100',
   },
   {
-    card: 'border-indigo-200 bg-indigo-50/55 dark:border-indigo-800 dark:bg-indigo-950/20',
-    cardActive: 'border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200 dark:border-indigo-700 dark:bg-indigo-950/25 dark:ring-indigo-800',
-    panel: 'border-indigo-200 bg-white/75 text-indigo-900 dark:border-indigo-800 dark:bg-slate-950/50 dark:text-indigo-100',
-    badge: 'border-indigo-200 bg-indigo-100/80 text-indigo-700 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-100',
+    card: 'border-indigo-200 bg-indigo-50/55 dark:border-indigo-400/40 dark:bg-indigo-950/25',
+    cardActive: 'border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200 dark:border-indigo-400/60 dark:bg-indigo-950/40 dark:ring-indigo-500/40',
+    panel: 'border-indigo-200 bg-white/75 text-indigo-900 dark:border-indigo-400/50 dark:bg-indigo-950/35 dark:text-indigo-50',
+    badge: 'border-indigo-200 bg-indigo-100/80 text-indigo-700 dark:border-indigo-400/60 dark:bg-indigo-900/60 dark:text-indigo-50',
     hint: 'text-indigo-800 dark:text-indigo-100',
   },
 ];
@@ -1784,15 +1784,15 @@ export function PlanningPage({
                   className={`cursor-pointer rounded-xl border p-3 ${
                     hasOpenConflict
                       ? isActive
-                        ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300'
-                        : 'border-rose-200 bg-rose-50/60'
+                        ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300 dark:border-rose-400/60 dark:bg-rose-950/40 dark:ring-rose-500/40'
+                        : 'border-rose-200 bg-rose-50/60 dark:border-rose-400/40 dark:bg-rose-950/30'
                       : isActive
                       ? hasHandoverNetwork
                         ? handoverAccent.cardActive
                         : 'border-brand-300 bg-brand-50/50 ring-1 ring-brand-200/80 dark:border-brand-700 dark:bg-brand-900/20 dark:ring-brand-700/60'
                       : hasHandoverNetwork
                         ? handoverAccent.card
-                        : 'border-slate-200 bg-slate-50'
+                        : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60'
                   }`}
                   onClick={() => {
                     handlePlanningCardClick(item.id);
@@ -1806,18 +1806,18 @@ export function PlanningPage({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">{item.customerName}</p>
-                      <p className="text-xs text-slate-600">{item.projectName}</p>
-                      {item.eventName ? <p className="text-xs text-slate-500">{item.eventName}</p> : null}
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{item.customerName}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300">{item.projectName}</p>
+                      {item.eventName ? <p className="text-xs text-slate-500 dark:text-slate-400">{item.eventName}</p> : null}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500">
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300">
                         KW {item.calendarWeek ?? '-'}
                       </span>
                       {hasOpenConflict ? (
                         <span
                           data-testid={`planning-conflict-badge-${item.id}`}
-                          className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700"
+                          className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:border-rose-400/50 dark:bg-rose-950/70 dark:text-rose-100"
                         >
                           Konflikt{itemConflictCount > 1 ? ` · ${itemConflictCount}` : ''}
                         </span>
@@ -1825,20 +1825,20 @@ export function PlanningPage({
                     </div>
                   </div>
                   {hasOpenConflict ? (
-                    <p className="mt-1 text-[11px] font-medium text-rose-700">Offener Konflikt</p>
+                    <p className="mt-1 text-[11px] font-medium text-rose-700 dark:text-rose-200">Offener Konflikt</p>
                   ) : null}
                   {missingSummary ? (
                     <p
                       data-testid={`planning-missing-summary-${item.id}`}
-                      className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700"
+                      className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-400/40 dark:bg-rose-950/55 dark:text-rose-100"
                     >
                       <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
                       <span className="break-words">{missingSummary}</span>
                     </p>
                   ) : null}
 
-                  <p className="mt-2 text-xs text-slate-500">{formatPeriod(item.startDate, item.endDate)}</p>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-300">{formatPeriod(item.startDate, item.endDate)}</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
                     PM:{' '}
                     {item.projectManagerUserId
                       ? managerLabelById.get(item.projectManagerUserId) ?? '-'
