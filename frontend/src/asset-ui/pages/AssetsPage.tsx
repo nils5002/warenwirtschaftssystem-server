@@ -1,5 +1,5 @@
 import { Eye, Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
@@ -822,55 +822,32 @@ export function AssetsPage({
         ) : null}
 
         <div className={`mt-4 ${isMobile ? 'hidden' : 'hidden lg:block'}`}>
-          <div
-            className={`soft-scrollbar relative max-h-[68vh] rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 ${
-              showTechnicalColumns ? 'overflow-auto' : 'overflow-y-auto overflow-x-hidden'
-            }`}
-          >
-          <table
-            className={`w-full border-collapse text-sm ${
-              showTechnicalColumns
-                ? 'w-[max(100%,1600px)] min-w-[1600px]'
-                : 'w-full table-fixed'
-            }`}
-          >
-            {!showTechnicalColumns ? (
-              <colgroup>
-                {canManageAssets ? <col style={{ width: '56px' }} /> : null}
-                <col style={{ width: '30%' }} />
-                <col style={{ width: '18%' }} />
-                <col style={{ width: '20%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '20%' }} />
-              </colgroup>
-            ) : null}
+          <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+          <table className="w-full border-collapse text-sm table-fixed">
+            <colgroup>
+              {canManageAssets ? <col style={{ width: '56px' }} /> : null}
+              <col style={{ width: '30%' }} />
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
                 {canManageAssets ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Auswahl</th> : null}
                 <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Name</th>
                 <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Kategorie</th>
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Modell</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Seriennummer</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">IP-Adresse</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">MAC LAN</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">MAC WLAN</th> : null}
-                {showTechnicalColumns ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">QR / Asset-ID</th> : null}
                 <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Zugewiesen an</th>
-                <th className={`sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900 ${showTechnicalColumns ? 'min-w-[160px]' : 'min-w-[140px]'}`}>Status</th>
-                <th
-                  className={`top-0 z-30 border-b border-l border-slate-200 bg-slate-50 px-3 py-2.5 text-right dark:border-slate-800 dark:bg-slate-900 ${
-                    showTechnicalColumns
-                      ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.5)]'
-                      : 'sticky min-w-[240px]'
-                  }`}
-                >
+                <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Status</th>
+                <th className="sticky top-0 z-20 border-b border-l-2 border-slate-200 bg-slate-50 px-3 py-2.5 pl-4 text-right dark:border-slate-700 dark:bg-slate-900">
                   Aktion
                 </th>
               </tr>
             </thead>
             <tbody>
               {filteredAssets.map((asset, rowIndex) => (
-                <tr key={asset.id} className="border-b border-slate-100 bg-white text-slate-800 hover:bg-sky-50/40 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70">
+                <Fragment key={asset.id}>
+                <tr className={`bg-white text-slate-800 hover:bg-sky-50/40 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70 ${showTechnicalColumns ? '' : 'border-b border-slate-100 dark:border-slate-800'}`}>
                   {canManageAssets ? (
                     <td className="px-3 py-3">
                       <input
@@ -923,50 +900,23 @@ export function AssetsPage({
                       <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3">
-                      <span className="inline-block max-w-[120px] truncate align-bottom" title={asset.model || '-'}>{asset.model || '-'}</span>
-                    </td>
-                  ) : null}
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3">
-                      <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.serialNumber}>{asset.serialNumber}</span>
-                    </td>
-                  ) : null}
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3">
-                      <span className="inline-block max-w-[110px] truncate align-bottom" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
-                    </td>
-                  ) : null}
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3">
-                      <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
-                    </td>
-                  ) : null}
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3">
-                      <span className="inline-block max-w-[130px] truncate align-bottom font-mono text-xs" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
-                    </td>
-                  ) : null}
-                  {showTechnicalColumns ? (
-                    <td className="px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="inline-block max-w-[150px] truncate align-bottom" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber}</span>
-                    </td>
-                  ) : null}
                   <td className="px-3 py-3">
                     <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
                   </td>
-                  <td className={`whitespace-nowrap px-3 py-3 ${showTechnicalColumns ? 'min-w-[160px]' : ''}`}>
+                  <td className="whitespace-nowrap px-3 py-3 pr-6">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td
-                    className={`z-10 border-l border-slate-100 bg-white px-3 py-3 text-right dark:border-slate-800 dark:bg-slate-900 ${
-                      showTechnicalColumns
-                        ? 'sticky right-0 min-w-[420px] shadow-[-8px_0_10px_-10px_rgba(15,23,42,0.35)]'
-                        : 'min-w-[240px]'
-                    }`}
-                  >
+                  <td className="border-l-2 border-slate-200 bg-white px-3 py-3 pl-4 text-right dark:border-slate-700 dark:bg-slate-900">
                     <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
+                      <button type="button" className="btn-primary shrink-0 px-2.5 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
+                        Detail
+                      </button>
+                      {canManageAssets ? (
+                        <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
+                          <Settings2 className="h-3.5 w-3.5" />
+                          <span>Admin</span>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="btn-ghost shrink-0 px-2 py-1 text-xs"
@@ -976,18 +926,42 @@ export function AssetsPage({
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
-                      <button type="button" className="btn-primary shrink-0 px-2 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
-                        Detail
-                      </button>
-                      {canManageAssets ? (
-                        <button type="button" className="btn-ghost shrink-0 px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
-                          <Settings2 className="h-3.5 w-3.5" />
-                          Admin
-                        </button>
-                      ) : null}
                     </div>
                   </td>
                 </tr>
+                {showTechnicalColumns ? (
+                  <tr className="border-b border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60">
+                    <td colSpan={canManageAssets ? 6 : 5} className="px-3 pb-3 pt-1">
+                      <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3 text-xs text-slate-600 dark:text-slate-300">
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">Modell</span>
+                          <span className="truncate" title={asset.model || '-'}>{asset.model || '-'}</span>
+                        </div>
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">Seriennummer</span>
+                          <span className="truncate" title={asset.serialNumber || '-'}>{asset.serialNumber || '-'}</span>
+                        </div>
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">IP-Adresse</span>
+                          <span className="truncate" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
+                        </div>
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">MAC LAN</span>
+                          <span className="truncate font-mono" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
+                        </div>
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">MAC WLAN</span>
+                          <span className="truncate font-mono" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
+                        </div>
+                        <div className="flex min-w-0 gap-2">
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">QR / Asset-ID</span>
+                          <span className="truncate" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber || '-'}</span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               ))}
             </tbody>
           </table>
