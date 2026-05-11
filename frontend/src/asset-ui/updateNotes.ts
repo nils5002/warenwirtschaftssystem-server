@@ -14,6 +14,7 @@ export const updateNotes: UpdateNotes = {
   items: [
     "Kopfdaten bestehender Einsatzplanungen können nachträglich bearbeitet werden",
     "Kunde, Projekt und Veranstaltung lassen sich nun auch nach dem Anlegen korrigieren",
-    "Änderungen an Planungsdaten werden direkt in Liste, Detailansicht und Planungskarte übernommen"
+    "Änderungen an Planungsdaten werden direkt in Liste, Detailansicht und Planungskarte übernommen",
+    "Kalenderwoche wurde aus der Einsatzplanung entfernt"
   ],
 };

@@ -429,7 +429,6 @@ export function PlanningPage({
     projectManagerUserId: '',
     startDate: toIsoDate(new Date()),
     endDate: toIsoDate(new Date()),
-    calendarWeek: '',
     notes: '',
     status: 'Entwurf' as PlanningStatus,
   });
@@ -1328,7 +1327,6 @@ export function PlanningPage({
         projectName: createForm.projectName.trim(),
         eventName: createForm.eventName.trim() || null,
         projectManagerUserId: createForm.projectManagerUserId || null,
-        calendarWeek: createForm.calendarWeek ? Number(createForm.calendarWeek) : null,
         startDate: createForm.startDate,
         endDate: createForm.endDate,
         notes: createForm.notes,
@@ -1810,9 +1808,6 @@ export function PlanningPage({
                       {item.eventName ? <p className="text-xs text-slate-500 dark:text-slate-400">{item.eventName}</p> : null}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-300">
-                        KW {item.calendarWeek ?? '-'}
-                      </span>
                       {hasOpenConflict ? (
                         <span
                           data-testid={`planning-conflict-badge-${item.id}`}
@@ -2051,22 +2046,6 @@ export function PlanningPage({
                             days: buildRangePlanningDays(current.startDate, current.days),
                           };
                         })
-                      }
-                    />
-                  </label>
-                  <label className="field">
-                    Kalenderwoche
-                    <input
-                      className="field-input"
-                      type="number"
-                      min={1}
-                      max={53}
-                      value={editor.calendarWeek ?? ''}
-                      onChange={(event) =>
-                        patchEditor((current) => ({
-                          ...current,
-                          calendarWeek: event.target.value ? Number(event.target.value) : null,
-                        }))
                       }
                     />
                   </label>
@@ -2908,17 +2887,6 @@ export function PlanningPage({
                   className="field-input"
                   value={createForm.endDate}
                   onChange={(event) => setCreateForm((current) => ({ ...current, endDate: event.target.value }))}
-                />
-              </label>
-              <label className="field">
-                Kalenderwoche
-                <input
-                  className="field-input"
-                  type="number"
-                  min={1}
-                  max={53}
-                  value={createForm.calendarWeek}
-                  onChange={(event) => setCreateForm((current) => ({ ...current, calendarWeek: event.target.value }))}
                 />
               </label>
               <label className="field">
