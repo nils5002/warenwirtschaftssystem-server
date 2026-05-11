@@ -1665,8 +1665,7 @@ export function PlanningPage({
           <div className="mt-3 space-y-2">
             {mobileWeek.slice(0, 12).map((item) => {
               const handoverSummary = planningListHandoverSummaryById.get(item.id);
-              const availability = calendarAvailabilitiesByPlanningId[item.id];
-              const hasShortage = (availability?.summary?.withShortageCount ?? 0) > 0;
+              const hasShortage = (item.openConflictCount ?? 0) > 0;
               return (
                 <button
                   key={item.id}

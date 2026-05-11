@@ -2,6 +2,7 @@ import type {
   ActivityItem,
   Asset,
   AppRole,
+  CategoryItem,
   LocationItem,
   MaintenanceItem,
   ReservationItem,
@@ -333,7 +334,7 @@ const outboundEnumMap: Record<string, string> = {
 function normalizeText(value: string): string {
   let next = value;
   for (const [from, to] of umlautPairs) {
-    next = next.replaceAll(from, to);
+    next = next.split(from).join(to);
   }
   return next;
 }

@@ -118,11 +118,11 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
       asset.status,
       asset.location,
       asset.assignedTo,
-      asset.notes.replaceAll('\n', ' '),
+      asset.notes.split('\n').join(' '),
       asset.qrCode ?? '',
     ]);
     const csv = [header, ...rows]
-      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';'))
+      .map((row) => row.map((value) => `"${String(value).split('"').join('""')}"`).join(';'))
       .join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

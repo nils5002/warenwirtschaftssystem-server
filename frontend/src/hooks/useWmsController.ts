@@ -901,6 +901,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
       nextAssetStatus = 'In Wartung';
       nextMaintenanceState = 'Reparatur in Bearbeitung';
     } else if (status === 'Erledigt') {
+      // MaintenanceStatus auf Frontend-Seite ist 'Offen' | 'In Bearbeitung' |
+      // 'Erledigt'. Backend-Synonyme ('In Arbeit', 'Wartet auf Teile') werden
+      // serverseitig auf 'In Bearbeitung' normalisiert — sie können hier
+      // nicht auftauchen und müssen nicht geprüft werden.
       const activeOtherItems = maintenanceItems
         .map((item) => (item.id === maintenanceId ? updatedItem : item))
         .filter(
@@ -908,12 +912,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
             item.id !== maintenanceId &&
             (item.assetName === existing.assetName ||
               findAssetForMaintenance(assets, item.assetName)?.id === relatedAsset.id) &&
-            (
-              item.status === 'Offen' ||
-              item.status === 'In Bearbeitung' ||
-              item.status === 'In Arbeit' ||
-              item.status === 'Wartet auf Teile'
-            ),
+            (item.status === 'Offen' || item.status === 'In Bearbeitung'),
         );
 
       if (activeOtherItems.some((item) => item.status === 'In Bearbeitung')) {

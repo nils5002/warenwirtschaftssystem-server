@@ -25,6 +25,7 @@ const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
   dashboard: ['Betrieb', 'Dashboard'],
   planning: ['Betrieb', 'Einsatzplanung'],
   inventory: ['Lager', 'Inventar'],
+  externalPool: ['Lager', 'Fremdbestand'],
   assetDetail: ['Lager', 'Inventar / Detail'],
   checkinCheckout: ['Lager', 'Ein-/Auslagerung'],
   tickets: ['Tickets', 'Defekte / Tickets'],

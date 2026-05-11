@@ -253,8 +253,8 @@ export function WmsPageView({
           onAdminUpdateAsset={(id, patch) => {
             void onAdminUpdateAsset(id, patch);
           }}
-          onAdminDeleteAsset={(id) => {
-            void onAdminDeleteAsset(id);
+          onAdminDeleteAsset={async (id) => {
+            await onAdminDeleteAsset(id);
           }}
           onCreateMaintenance={(payload) => {
             void onCreateMaintenance(payload);

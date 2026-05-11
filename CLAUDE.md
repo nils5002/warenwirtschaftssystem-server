@@ -1,8 +1,10 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Arbeitsleitfaden fuer Claude Code in diesem Repository.
 
-Diese Datei ist verbindlich fuer alle Aenderungen in `D:\DEV\cloud_web`.
+Diese Datei ist verbindlich fuer alle Aenderungen in `C:\VS\warenwirtschaftssystem-server`.
 
 ## 1) Projektziel (kurz)
 
@@ -11,6 +13,33 @@ Hardware-Warenwirtschaft mit Einsatzplanung:
 - projektbezogene Planung (Availability/Engpaesse)
 - Ausgabe/Rueckgabe auf Person + Projekt
 - Defekt/Wartung fachlich korrekt steuern
+
+## 1a) Architektur (Big Picture)
+
+Monorepo mit zwei Anwendungen, gemeinsamer Top-Level `package.json` orchestriert beide:
+
+- **Backend** (`backend/`): FastAPI + SQLAlchemy + SQLite. Einstieg `app/main.py:create_app`. Schichten:
+  - `app/routes/` — HTTP-Endpoints. Alle WMS-Routen unter Prefix `/api/wms` (siehe `routes/__init__.py:api_router`). Auth/Backup/Planning/Health als eigene Router.
+  - `app/services/` — Fachlogik (z. B. `wms_service.py`, `planning_service.py`, `auth_service.py`, `upload_import_service.py`, `hardware_import/`).
+  - `app/repositories/` — DB-Zugriff (CRUD pro Aggregat: `asset_`, `category_`, `planning_`, `wms_`, `hardware_import_`).
+  - `app/database/` — Engine/Session (`session.py`), ORM-Modelle (`database/models.py`), `init_db`.
+  - `app/schemas/` — Pydantic-Schemas (`schemas/wms.py`, `schemas/job.py`). Die Module `app/models.py` und `app/wms_models.py` sind nur Legacy-Re-Exports.
+  - `app/domain/` — Stammwerte (z. B. kanonische Kategorien in `domain/categories.py`).
+  - `app/config/settings.py` — Pydantic-Settings (env-getrieben, siehe `.env`).
+- **Frontend** (`frontend/`): React 18 + TypeScript + Vite + Tailwind. Einstieg `src/App.tsx`. Aufbau:
+  - `src/components/` und `src/asset-ui/` — UI-Bausteine, eine zentrale Page-Switch-Komponente `WmsPageView.tsx`.
+  - `src/hooks/useWmsController.ts` — zentrale Datenladung/Mutationen, hält den App-State.
+  - `src/services/wmsApi.ts` — gebündelter API-Client gegen `/api/...`.
+  - `src/routing/appRoutes.ts` — sehr leichtgewichtiges Routing via `history.replaceState`.
+  - Dev-Proxy: Vite leitet `/api` an `VITE_PROXY_TARGET` (default `http://127.0.0.1:8000`) bzw. `VITE_DEV_API_TARGET` (im Combo-Dev-Script `8010`).
+
+### Wichtige Laufzeit-Eigenheiten (nicht offensichtlich)
+
+- **Idempotente Schema-Patches beim Startup**: `app/main.py:on_startup` und `app/database/session.py:_ensure_new_columns/_ensure_hot_path_indexes` legen fehlende Spalten/Indizes per `ALTER TABLE ADD COLUMN` bzw. `CREATE INDEX IF NOT EXISTS` an. Diese Patches sind die *aktuelle* Migrationsstrategie für leichte Schema-Erweiterungen — Alembic existiert, wird aber nicht für jede Spalte genutzt. **Neue Spalten daher entweder in Alembic ODER konsistent in diese Listen eintragen**, sonst läuft Production schief.
+- **Legacy-Seed**: Beim Startup wird optional aus `app/data/wms_db.json` geseedet (`WMS_SEED_LEGACY_ON_STARTUP`). Local-Dev-Skripte schalten das aus.
+- **Standardkategorien werden beim Startup geseedet** (`category_repository.seed_standard_categories`).
+- **Auth**: Token-basiert (`AUTH_TOKEN_SECRET`), optionaler Legacy-Header-Modus (`ALLOW_LEGACY_HEADER_AUTH`). Initial-Admin via `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD`.
+- **Rollen-Sichtbarkeit im UI**: `App.tsx` filtert die Navigation pro Rolle. Backend muss *zusätzlich* RBAC enforced — UI-Filter ist nur Komfort.
 
 ## 2) Source of Truth
 
@@ -135,14 +164,27 @@ Preview soll mindestens liefern:
 
 ## 9) Lokaler Workflow
 
-### Starten
+### Starten (Standard)
 ```powershell
 npm run dev
 ```
+Startet Backend (uvicorn) und Frontend (Vite) parallel via `concurrently` aus `frontend/package.json`.
 
-Wenn Portkonflikte:
-- pruefen, welcher Prozess auf `5173`/`8000` lauscht
-- gezielt den falschen Prozess beenden
+Ports (Dev):
+- Frontend (Vite): **4173**
+- Backend (uvicorn, via `dev:backend`): **8010**
+- Vite-Proxy `/api` → `127.0.0.1:8010` (gesetzt via `VITE_DEV_API_TARGET`)
+
+Production-Default des Backends ist Port **8000** (siehe `app/main.py`).
+
+Bei Portkonflikten: pruefen, welcher Prozess auf `4173`/`8010` lauscht und gezielt beenden — niemals blind die Konfiguration ändern.
+
+### Starten (Local-Modus mit fixem Admin)
+```powershell
+npm run dev:local         # isolierte DB app.local.db, Login admin@example.com / Admin123!
+npm run dev:local:fresh   # zusätzlich: lokalen Datenstand zurücksetzen
+```
+Diese Skripte (`scripts/dev-local.ps1`) setzen `DATABASE_URL=sqlite:///./app/data/app.local.db`, deaktivieren den Legacy-Seed und legen Initial-Admin-Credentials per Env an.
 
 ### Build/Compile
 ```powershell
@@ -154,8 +196,13 @@ python -m compileall app
 ### Tests (wichtig: Arbeitsverzeichnis)
 Backend-Tests immer aus `backend` starten:
 ```powershell
-cd D:\DEV\cloud_web\backend
+cd C:\VS\warenwirtschaftssystem-server\backend
 .\.venv\Scripts\python.exe -m pytest tests
+```
+
+Einzelner Test:
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_planning_availability_no_seeding.py -k "specific_case" -x
 ```
 
 Wenn stattdessen aus Repo-Root getestet wird, kann `ModuleNotFoundError: app` auftreten.
