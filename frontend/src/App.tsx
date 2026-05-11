@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './asset-ui/components/Sidebar';
 import { Topbar } from './asset-ui/components/Topbar';
+import { UpdateNotesModal } from './asset-ui/components/UpdateNotesModal';
 import { LoginPage } from './components/auth/LoginPage';
 import { InlineLoadingState } from './components/loading';
 import { WmsPageView } from './components/WmsPageView';
@@ -156,6 +157,7 @@ function App() {
 
   return (
     <div className="min-h-screen text-slate-900">
+      <UpdateNotesModal />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-20 -top-12 h-72 w-72 rounded-full bg-brand-200/55 blur-3xl" />
         <div className="absolute right-0 top-14 h-80 w-80 rounded-full bg-cyan-200/35 blur-3xl" />
