@@ -788,7 +788,7 @@ export function CheckinCheckoutPage({
             }}
           >
             <Handshake className="h-4 w-4" />
-            Ausgabe (Check-out)
+            Ausgabe
           </button>
           <button
             type="button"
@@ -805,7 +805,7 @@ export function CheckinCheckoutPage({
             }}
           >
             <Undo2 className="h-4 w-4" />
-            Rücknahme (Check-in)
+            Rücknahme
           </button>
         </div>
       </div>

@@ -112,7 +112,7 @@ const initialCreateForm = (defaultCategory: string): CreateForm => ({
 });
 
 export function ExternalPoolPage({ assets, categories, isMobile = false, onReloadData }: ExternalPoolPageProps) {
-  const { alert } = useAppDialog();
+  const { alert, confirm } = useAppDialog();
 
   const externalAssets = useMemo(
     () => assets.filter((asset) => (asset.ownershipType ?? 'owned') !== 'owned'),

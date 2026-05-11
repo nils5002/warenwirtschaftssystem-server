@@ -112,7 +112,9 @@ export function categoryOptionsFromRecords(
     .map((item) => item.name.trim())
     .filter(Boolean);
   const merged = activeNames.length ? activeNames : [...CANONICAL_CATEGORIES];
-  const order = new Map(CANONICAL_CATEGORIES.map((category, index) => [category, index]));
+  const order = new Map<string, number>(
+    CANONICAL_CATEGORIES.map((category, index) => [category, index]),
+  );
   return [...new Set(merged)].sort((a, b) => {
     const left = order.get(a) ?? 10_000;
     const right = order.get(b) ?? 10_000;

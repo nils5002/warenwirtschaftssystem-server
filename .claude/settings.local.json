@@ -24,7 +24,13 @@
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py -v)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py::test_existing_asset_defaults_to_owned_ownership_type)",
       "Bash(.venv/Scripts/python.exe -m pytest tests/test_external_pool.py::test_existing_asset_defaults_to_owned_ownership_type --tb=short)",
-      "Bash(.venv/Scripts/python.exe -m pytest tests/test_category_delete.py -v)"
+      "Bash(.venv/Scripts/python.exe -m pytest tests/test_category_delete.py -v)",
+      "Bash(.\\\\.venv\\\\Scripts\\\\python.exe -m pytest tests/test_planning_missing_items.py -x)",
+      "Bash(/c/Users/NilsKlemm/AppData/Local/Programs/Python/Python312/python *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }

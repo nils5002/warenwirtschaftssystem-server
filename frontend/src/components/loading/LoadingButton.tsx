@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { LoadingSpinner } from './LoadingSpinner';
 
 type LoadingButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -8,24 +8,30 @@ type LoadingButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   spinnerSize?: 'sm' | 'md' | 'lg';
 };
 
-export function LoadingButton({
-  isLoading = false,
-  loadingText,
-  children,
-  disabled,
-  spinnerSize = 'sm',
-  className,
-  ...buttonProps
-}: LoadingButtonProps) {
-  return (
-    <button
-      {...buttonProps}
-      className={className}
-      disabled={disabled || isLoading}
-      aria-busy={isLoading}
-    >
-      {isLoading ? <LoadingSpinner size={spinnerSize} /> : null}
-      {isLoading && loadingText ? loadingText : children}
-    </button>
-  );
-}
+export const LoadingButton = forwardRef<HTMLButtonElement, LoadingButtonProps>(
+  function LoadingButton(
+    {
+      isLoading = false,
+      loadingText,
+      children,
+      disabled,
+      spinnerSize = 'sm',
+      className,
+      ...buttonProps
+    },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        {...buttonProps}
+        className={className}
+        disabled={disabled || isLoading}
+        aria-busy={isLoading}
+      >
+        {isLoading ? <LoadingSpinner size={spinnerSize} /> : null}
+        {isLoading && loadingText ? loadingText : children}
+      </button>
+    );
+  },
+);

@@ -4,6 +4,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   dashboard: '/dashboard',
   planning: '/einsatzplanung',
   inventory: '/inventar',
+  externalPool: '/fremdbestand',
   checkinCheckout: '/ein-auslagerung',
   tickets: '/tickets',
   users: '/benutzer',
@@ -25,6 +26,10 @@ const PATH_ALIASES: Record<string, AppPage> = {
 
   '/inventar': 'inventory',
   '/inventory': 'inventory',
+
+  '/fremdbestand': 'externalPool',
+  '/external-pool': 'externalPool',
+  '/externalpool': 'externalPool',
 
   '/ein-auslagerung': 'checkinCheckout',
   '/checkin-checkout': 'checkinCheckout',
