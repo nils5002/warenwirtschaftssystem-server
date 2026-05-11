@@ -1977,6 +1977,45 @@ export function PlanningPage({
                       </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <h4 className="text-sm font-semibold text-slate-900">Projektdaten</h4>
+                <div className="mt-2 grid gap-3 md:grid-cols-2">
+                  <label className="field">
+                    Kunde
+                    <input
+                      className="field-input"
+                      value={editor.customerName}
+                      onChange={(event) =>
+                        patchEditor((current) => ({ ...current, customerName: event.target.value }))
+                      }
+                      disabled={!canEdit}
+                    />
+                  </label>
+                  <label className="field">
+                    Projekt
+                    <input
+                      className="field-input"
+                      value={editor.projectName}
+                      onChange={(event) =>
+                        patchEditor((current) => ({ ...current, projectName: event.target.value }))
+                      }
+                      disabled={!canEdit}
+                    />
+                  </label>
+                  <label className="field md:col-span-2">
+                    Veranstaltung
+                    <input
+                      className="field-input"
+                      value={editor.eventName}
+                      onChange={(event) =>
+                        patchEditor((current) => ({ ...current, eventName: event.target.value }))
+                      }
+                      disabled={!canEdit}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Zeitraum und Status</h4>
                 <div className="mt-2 grid gap-3 md:grid-cols-2">
                   <label className="field">
