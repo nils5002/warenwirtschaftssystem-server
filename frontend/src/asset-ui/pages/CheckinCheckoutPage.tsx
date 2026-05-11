@@ -1,6 +1,5 @@
 import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { listPlannings, type PlanningListItem } from '../../services/wmsApi';
 import { resolveAssetByScan } from '../qr';
@@ -28,6 +27,19 @@ type CheckinCheckoutPageProps = {
 
 type Mode = 'checkout' | 'checkin';
 type FlowMessage = { kind: 'error' | 'success' | 'info'; text: string };
+
+type QueueEntry = {
+  assetId: string;
+  name: string;
+  category: string;
+  status: string;
+  contextProject: string;
+  assignedTo: string;
+};
+
+type BatchFailure = { assetId: string; name: string; reason: string };
+
+const QUEUE_VISIBLE_LIMIT = 3;
 
 function toIsoDate(value: Date): string {
   const year = value.getFullYear();
@@ -75,7 +87,6 @@ export function CheckinCheckoutPage({
   onCheckout,
   onCheckin,
 }: CheckinCheckoutPageProps) {
-  const { alert } = useAppDialog();
   const today = useMemo(() => toIsoDate(new Date()), []);
   const plusTwoDays = useMemo(() => toIsoDate(new Date(Date.now() + 2 * 86400000)), []);
 
@@ -115,6 +126,16 @@ export function CheckinCheckoutPage({
   const [scanBusyMode, setScanBusyMode] = useState<Mode | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkinBusy, setCheckinBusy] = useState(false);
+
+  // Batch-Scan-State: jede Scan-Aktion legt einen Eintrag hier ab. Die
+  // bestehenden Einzel-Selektion-States (checkoutAssetId, ...) bleiben
+  // erhalten — sie spiegeln einfach den zuletzt gescannten Eintrag wider.
+  const [checkoutQueue, setCheckoutQueue] = useState<QueueEntry[]>([]);
+  const [checkinQueue, setCheckinQueue] = useState<QueueEntry[]>([]);
+  const [batchSubmitting, setBatchSubmitting] = useState<Mode | null>(null);
+  const [lastBatchFailures, setLastBatchFailures] = useState<BatchFailure[]>([]);
+  const [showAllCheckoutQueue, setShowAllCheckoutQueue] = useState(false);
+  const [showAllCheckinQueue, setShowAllCheckinQueue] = useState(false);
 
   const checkoutScanRef = useRef<HTMLInputElement | null>(null);
   const checkoutRecipientRef = useRef<HTMLInputElement | null>(null);
@@ -167,18 +188,6 @@ export function CheckinCheckoutPage({
 
   const checkoutAsset = assets.find((asset) => asset.id === checkoutAssetId) ?? null;
   const checkinAsset = assets.find((asset) => asset.id === checkinAssetId) ?? null;
-  const hasCurrentCheckoutSelection = Boolean(
-    currentCheckoutAssetId &&
-      checkoutAsset &&
-      checkoutAsset.id === currentCheckoutAssetId &&
-      (checkoutScan.trim().length > 0 || checkoutAssetId === currentCheckoutAssetId),
-  );
-  const hasCurrentCheckinSelection = Boolean(
-    currentCheckinAssetId &&
-      checkinAsset &&
-      checkinAsset.id === currentCheckinAssetId &&
-      (checkinScan.trim().length > 0 || checkinAssetId === currentCheckinAssetId),
-  );
 
   const checkoutContextProject = checkoutAsset
     ? parseProjectFromAsset(checkoutAsset) || parseProjectFromAssignedTo(checkoutAsset)
@@ -262,6 +271,8 @@ export function CheckinCheckoutPage({
     setCheckinCondition('');
     setCheckinScan('');
     setShowCheckinOptions(false);
+    setCheckinQueue([]);
+    setShowAllCheckinQueue(false);
   };
 
   const resetCheckoutState = () => {
@@ -269,6 +280,8 @@ export function CheckinCheckoutPage({
     setCurrentCheckoutAssetId(null);
     setCheckoutScan('');
     setShowCheckoutOptions(false);
+    setCheckoutQueue([]);
+    setShowAllCheckoutQueue(false);
   };
 
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
@@ -286,20 +299,19 @@ export function CheckinCheckoutPage({
           kind: 'error',
           text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
         });
-        await alert({
-          title: 'Unbekannter QR-Code',
-          message: 'Kein passendes Gerät gefunden.',
-        });
         focusElement(checkoutScanRef.current);
         return false;
       }
 
-      setCheckoutScan(scanValue);
-      setCheckoutAssetId(asset.id);
-      setCurrentCheckoutAssetId(asset.id);
-      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
-      if (parsedProject) {
-        setCheckoutProject(parsedProject);
+      // Bereits in der Zwischenablage?
+      if (checkoutQueue.some((entry) => entry.assetId === asset.id)) {
+        setMessage({
+          kind: 'info',
+          text: `${getDisplayAssetName(asset)} ist bereits in der Scan-Liste.`,
+        });
+        setCheckoutScan('');
+        focusElement(checkoutScanRef.current);
+        return true;
       }
 
       if (asset.status === 'Verliehen') {
@@ -320,8 +332,29 @@ export function CheckinCheckoutPage({
         return true;
       }
 
-      setMessage({ kind: 'info', text: `${asset.name} erkannt. Schritt 2: Projekt wählen.` });
-      focusElement(checkoutProjectRef.current);
+      // Validiert → in die Scan-Liste übernehmen.
+      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
+      if (parsedProject && !checkoutProject.trim()) {
+        setCheckoutProject(parsedProject);
+      }
+      const displayName = getDisplayAssetName(asset);
+      setCheckoutQueue((prev) => [
+        ...prev,
+        {
+          assetId: asset.id,
+          name: displayName,
+          category: asset.category,
+          status: asset.status,
+          contextProject: parsedProject,
+          assignedTo: asset.assignedTo,
+        },
+      ]);
+      setCheckoutAssetId(asset.id);
+      setCurrentCheckoutAssetId(asset.id);
+      setCheckoutScan('');
+      setLastBatchFailures([]);
+      setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
+      focusElement(checkoutScanRef.current);
       return true;
     } finally {
       setScanBusyMode((current) => (current === 'checkout' ? null : current));
@@ -343,17 +376,20 @@ export function CheckinCheckoutPage({
           kind: 'error',
           text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
         });
-        await alert({
-          title: 'Unbekannter QR-Code',
-          message: 'Kein passendes Gerät gefunden.',
-        });
         focusElement(checkinScanRef.current);
         return false;
       }
 
-      setCheckinScan(scanValue);
-      setCheckinAssetId(asset.id);
-      setCurrentCheckinAssetId(asset.id);
+      // Bereits in der Rücknahme-Liste?
+      if (checkinQueue.some((entry) => entry.assetId === asset.id)) {
+        setMessage({
+          kind: 'info',
+          text: `${getDisplayAssetName(asset)} ist bereits in der Rücknahme-Liste.`,
+        });
+        setCheckinScan('');
+        focusElement(checkinScanRef.current);
+        return true;
+      }
 
       if (asset.status === 'Verfügbar') {
         setMessage({
@@ -373,8 +409,25 @@ export function CheckinCheckoutPage({
         return true;
       }
 
-      setMessage({ kind: 'info', text: `${asset.name} erkannt. Rücknahme kann bestätigt werden.` });
-      focusElement(checkinSubmitRef.current);
+      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
+      const displayName = getDisplayAssetName(asset);
+      setCheckinQueue((prev) => [
+        ...prev,
+        {
+          assetId: asset.id,
+          name: displayName,
+          category: asset.category,
+          status: asset.status,
+          contextProject: parsedProject,
+          assignedTo: asset.assignedTo,
+        },
+      ]);
+      setCheckinAssetId(asset.id);
+      setCurrentCheckinAssetId(asset.id);
+      setCheckinScan('');
+      setLastBatchFailures([]);
+      setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
+      focusElement(checkinScanRef.current);
       return true;
     } finally {
       setScanBusyMode((current) => (current === 'checkin' ? null : current));
@@ -393,26 +446,8 @@ export function CheckinCheckoutPage({
   };
 
   const checkoutNow = async () => {
-    if (!checkoutAsset) {
-      setMessage({ kind: 'error', text: 'Bitte zuerst ein Gerät scannen oder auswählen.' });
-      focusElement(checkoutScanRef.current);
-      return;
-    }
-
-    if (checkoutAsset.status === 'Verliehen') {
-      setMessage({
-        kind: 'error',
-        text: `Gerät ist bereits vergeben an ${checkoutAsset.assignedTo}.`,
-      });
-      focusElement(checkoutScanRef.current);
-      return;
-    }
-
-    if (checkoutAsset.status !== 'Verfügbar') {
-      setMessage({
-        kind: 'error',
-        text: `Gerät kann nicht ausgegeben werden (Status: ${checkoutAsset.status}).`,
-      });
+    if (checkoutQueue.length === 0 || batchSubmitting === 'checkout') {
+      setMessage({ kind: 'error', text: 'Bitte zuerst Geräte scannen.' });
       focusElement(checkoutScanRef.current);
       return;
     }
@@ -426,84 +461,150 @@ export function CheckinCheckoutPage({
       'Allgemeiner Einsatz';
 
     const normalizedAssignee = checkoutAssignee.trim() || '-';
-    setCheckoutBusy(true);
-    try {
-      await onCheckout({
-        assetId: checkoutAsset.id,
-        assignee: normalizedAssignee,
-        projectName: normalizedProject,
-        dueDate: checkoutDueDate,
-        note: checkoutNote.trim(),
-      });
+    const normalizedNote = checkoutNote.trim();
+    const total = checkoutQueue.length;
 
+    setBatchSubmitting('checkout');
+    setCheckoutBusy(true);
+    setLastBatchFailures([]);
+
+    const failures: BatchFailure[] = [];
+    const successIds = new Set<string>();
+
+    for (const entry of checkoutQueue) {
+      try {
+        await onCheckout({
+          assetId: entry.assetId,
+          assignee: normalizedAssignee,
+          projectName: normalizedProject,
+          dueDate: checkoutDueDate,
+          note: normalizedNote,
+        });
+        successIds.add(entry.assetId);
+      } catch (err) {
+        const reason =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Buchung konnte nicht abgeschlossen werden.';
+        failures.push({ assetId: entry.assetId, name: entry.name, reason });
+      }
+    }
+
+    setCheckoutQueue((prev) => prev.filter((entry) => !successIds.has(entry.assetId)));
+    setLastBatchFailures(failures);
+
+    if (successIds.size > 0) {
       if (checkoutAssignee.trim()) {
         setLastAssignee(checkoutAssignee.trim());
       }
       setLastProject(normalizedProject);
       setCheckoutProject(normalizedProject);
+    }
+
+    const successCount = successIds.size;
+    if (failures.length === 0) {
       setCheckoutNote('');
       resetCheckoutState();
-      setMessage({ kind: 'success', text: `${checkoutAsset.name} wurde ausgegeben.` });
-      focusElement(checkoutScanRef.current);
-    } catch {
-      setMessage({ kind: 'error', text: 'Check-out konnte nicht gebucht werden. Bitte erneut versuchen.' });
-    } finally {
-      setCheckoutBusy(false);
+      setMessage({
+        kind: 'success',
+        text:
+          successCount === 1
+            ? 'Ein Gerät wurde ausgegeben.'
+            : `${successCount} Geräte wurden ausgegeben.`,
+      });
+    } else if (successCount === 0) {
+      setMessage({
+        kind: 'error',
+        text: 'Keine Ausgabe gebucht. Siehe Fehlerliste.',
+      });
+    } else {
+      setMessage({
+        kind: 'error',
+        text: `${successCount} von ${total} Geräten ausgegeben — ${failures.length} fehlgeschlagen.`,
+      });
     }
+
+    setCheckoutBusy(false);
+    setBatchSubmitting(null);
+    focusElement(checkoutScanRef.current);
   };
 
   const checkinNow = async () => {
-    if (!checkinAsset) {
-      setMessage({ kind: 'error', text: 'Bitte zuerst ein Gerät scannen oder auswählen.' });
+    if (checkinQueue.length === 0 || batchSubmitting === 'checkin') {
+      setMessage({ kind: 'error', text: 'Bitte zuerst Geräte scannen.' });
       focusElement(checkinScanRef.current);
       return;
     }
 
-    if (checkinAsset.status === 'Verfügbar') {
-      setMessage({
-        kind: 'error',
-        text: 'Dieses Gerät wurde bereits zurückgenommen.',
-      });
-      focusElement(checkinScanRef.current);
-      return;
-    }
+    const explicitProject = checkinProject.trim();
+    const normalizedCondition = checkinCondition.trim() || 'Zustand geprüft.';
+    const total = checkinQueue.length;
 
-    if (checkinAsset.status !== 'Verliehen') {
-      setMessage({
-        kind: 'error',
-        text: `Rücknahme nicht erlaubt für Status "${checkinAsset.status}".`,
-      });
-      focusElement(checkinScanRef.current);
-      return;
-    }
-
-    if (checkinContextProject && checkinProject.trim() && checkinProject.trim() !== checkinContextProject) {
-      setMessage({
-        kind: 'error',
-        text: `Projekt passt nicht. Gerät ist aktuell für "${checkinContextProject}" verbucht.`,
-      });
-      setShowCheckinOptions(true);
-      return;
-    }
-
-    const resolvedProject = checkinProject.trim() || checkinContextProject;
-
+    setBatchSubmitting('checkin');
     setCheckinBusy(true);
-    try {
-      await onCheckin({
-        assetId: checkinAsset.id,
-        condition: checkinCondition.trim() || 'Zustand geprüft.',
-        projectName: resolvedProject,
-      });
+    setLastBatchFailures([]);
 
-      resetCheckinState();
-      setMessage({ kind: 'success', text: `${checkinAsset.name} wurde zurückgenommen.` });
-      focusElement(checkinScanRef.current);
-    } catch {
-      setMessage({ kind: 'error', text: 'Check-in konnte nicht gebucht werden. Bitte erneut versuchen.' });
-    } finally {
-      setCheckinBusy(false);
+    const failures: BatchFailure[] = [];
+    const successIds = new Set<string>();
+
+    for (const entry of checkinQueue) {
+      // Projekt-Plausibilitätsprüfung pro Gerät: wenn der Nutzer ein
+      // Projekt explizit gewählt hat und das Gerät einem anderen Projekt
+      // zugeordnet ist, ist das ein Konflikt — Eintrag zurückbehalten.
+      if (explicitProject && entry.contextProject && entry.contextProject !== explicitProject) {
+        failures.push({
+          assetId: entry.assetId,
+          name: entry.name,
+          reason: `Projekt passt nicht (zugeordnet: ${entry.contextProject}).`,
+        });
+        continue;
+      }
+
+      const resolvedProject = explicitProject || entry.contextProject;
+      try {
+        await onCheckin({
+          assetId: entry.assetId,
+          condition: normalizedCondition,
+          projectName: resolvedProject,
+        });
+        successIds.add(entry.assetId);
+      } catch (err) {
+        const reason =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Rücknahme konnte nicht abgeschlossen werden.';
+        failures.push({ assetId: entry.assetId, name: entry.name, reason });
+      }
     }
+
+    setCheckinQueue((prev) => prev.filter((entry) => !successIds.has(entry.assetId)));
+    setLastBatchFailures(failures);
+
+    const successCount = successIds.size;
+    if (failures.length === 0) {
+      resetCheckinState();
+      setMessage({
+        kind: 'success',
+        text:
+          successCount === 1
+            ? 'Ein Gerät wurde zurückgenommen.'
+            : `${successCount} Geräte wurden zurückgenommen.`,
+      });
+    } else if (successCount === 0) {
+      setMessage({
+        kind: 'error',
+        text: 'Keine Rücknahme gebucht. Siehe Fehlerliste.',
+      });
+    } else {
+      setMessage({
+        kind: 'error',
+        text: `${successCount} von ${total} Geräten zurückgenommen — ${failures.length} fehlgeschlagen.`,
+      });
+    }
+
+    setCheckinBusy(false);
+    setBatchSubmitting(null);
+    focusElement(checkinScanRef.current);
   };
 
   const messageClass =
@@ -529,6 +630,131 @@ export function CheckinCheckoutPage({
   const isCheckoutScanBusy = scanBusyMode === 'checkout';
   const isCheckinScanBusy = scanBusyMode === 'checkin';
   const isAnyBusy = planningProjectsLoading || checkoutBusy || checkinBusy || isCheckoutScanBusy || isCheckinScanBusy;
+
+  const removeFromCheckoutQueue = (assetId: string) => {
+    setCheckoutQueue((prev) => prev.filter((entry) => entry.assetId !== assetId));
+    setLastBatchFailures((prev) => prev.filter((failure) => failure.assetId !== assetId));
+  };
+  const removeFromCheckinQueue = (assetId: string) => {
+    setCheckinQueue((prev) => prev.filter((entry) => entry.assetId !== assetId));
+    setLastBatchFailures((prev) => prev.filter((failure) => failure.assetId !== assetId));
+  };
+
+  function renderScanQueueCard(params: {
+    entries: QueueEntry[];
+    mode: Mode;
+    showAll: boolean;
+    setShowAll: (next: boolean) => void;
+    onRemove: (assetId: string) => void;
+    onClear: () => void;
+    failures: BatchFailure[];
+  }) {
+    const { entries, mode, showAll, setShowAll, onRemove, onClear, failures } = params;
+    if (entries.length === 0 && failures.length === 0) return null;
+
+    const failureById = new Map(failures.map((failure) => [failure.assetId, failure]));
+    const visible = showAll ? entries : entries.slice(0, QUEUE_VISIBLE_LIMIT);
+    const overflow = entries.length - visible.length;
+    const headlineCount = entries.length;
+    const headline =
+      headlineCount === 0
+        ? 'Zwischenablage geleert'
+        : headlineCount === 1
+          ? '1 Gerät vorbereitet'
+          : `${headlineCount} Geräte vorbereitet`;
+
+    return (
+      <div
+        data-testid={`scan-queue-${mode}`}
+        className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Gescannte Geräte
+            </p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+              {headline}
+            </p>
+          </div>
+          {entries.length > 0 ? (
+            <button
+              type="button"
+              className="shrink-0 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+              onClick={onClear}
+              disabled={batchSubmitting === mode}
+            >
+              Liste leeren
+            </button>
+          ) : null}
+        </div>
+
+        {entries.length > 0 ? (
+          <ul
+            className={`mt-2 space-y-1.5 ${entries.length > QUEUE_VISIBLE_LIMIT && !showAll ? '' : 'max-h-56 overflow-y-auto pr-1 soft-scrollbar'}`}
+          >
+            {visible.map((entry) => {
+              const failure = failureById.get(entry.assetId);
+              return (
+                <li
+                  key={entry.assetId}
+                  className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 text-sm ${
+                    failure
+                      ? 'border-rose-200 bg-rose-50 dark:border-rose-400/40 dark:bg-rose-950/30'
+                      : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/40'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{entry.name}</p>
+                    <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                      {entry.category}
+                      {mode === 'checkin' && entry.assignedTo && entry.assignedTo !== '-'
+                        ? ` · ${entry.assignedTo}`
+                        : ''}
+                    </p>
+                    {failure ? (
+                      <p className="mt-0.5 truncate text-xs text-rose-700 dark:text-rose-200" title={failure.reason}>
+                        {failure.reason}
+                      </p>
+                    ) : null}
+                  </div>
+                  <StatusBadge value={entry.status} />
+                  <button
+                    type="button"
+                    aria-label={`${entry.name} aus Liste entfernen`}
+                    className="shrink-0 rounded-md p-2 text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+                    onClick={() => onRemove(entry.assetId)}
+                    disabled={batchSubmitting === mode}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+
+        {!showAll && overflow > 0 ? (
+          <button
+            type="button"
+            className="mt-2 text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300"
+            onClick={() => setShowAll(true)}
+          >
+            + {overflow} weitere anzeigen
+          </button>
+        ) : null}
+        {showAll && entries.length > QUEUE_VISIBLE_LIMIT ? (
+          <button
+            type="button"
+            className="mt-2 text-xs font-semibold text-slate-500 hover:underline dark:text-slate-400"
+            onClick={() => setShowAll(false)}
+          >
+            Weniger anzeigen
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <section
@@ -686,19 +912,19 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
-          {hasCurrentCheckoutSelection && checkoutAsset ? (
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                Ausgewähltes Gerät
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
-                  {getDisplayAssetName(checkoutAsset)}
-                </p>
-                <StatusBadge value={checkoutAsset.status} />
-              </div>
-            </div>
-          ) : null}
+          {renderScanQueueCard({
+            entries: checkoutQueue,
+            mode: 'checkout',
+            showAll: showAllCheckoutQueue,
+            setShowAll: setShowAllCheckoutQueue,
+            onRemove: removeFromCheckoutQueue,
+            onClear: () => {
+              setCheckoutQueue([]);
+              setShowAllCheckoutQueue(false);
+              setLastBatchFailures([]);
+            },
+            failures: batchSubmitting === null ? lastBatchFailures : [],
+          })}
 
           <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 2</p>
@@ -822,12 +1048,14 @@ export function CheckinCheckoutPage({
             ref={checkoutSubmitRef}
             className="btn-primary hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
             onClick={() => void checkoutNow()}
-            disabled={!hasCurrentCheckoutSelection || isAnyBusy}
+            disabled={checkoutQueue.length === 0 || isAnyBusy}
             isLoading={checkoutBusy}
-            loadingText="Check-out wird gebucht ..."
+            loadingText={`Ausgabe wird gebucht ... (${checkoutQueue.length})`}
           >
             <Handshake className="h-4 w-4" />
-            Jetzt ausgeben
+            {checkoutQueue.length > 0
+              ? `${checkoutQueue.length} Gerät${checkoutQueue.length === 1 ? '' : 'e'} ausgeben`
+              : 'Gerät scannen zum Ausgeben'}
           </LoadingButton>
         </article>
       ) : (
@@ -897,17 +1125,19 @@ export function CheckinCheckoutPage({
             </label>
           </div>
 
-          {hasCurrentCheckinSelection && checkinAsset ? (
-            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Gerät</p>
-              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 break-words font-semibold text-slate-900 dark:text-slate-100">
-                  {getDisplayAssetName(checkinAsset)}
-                </p>
-                <StatusBadge value={checkinAsset.status} />
-              </div>
-            </div>
-          ) : null}
+          {renderScanQueueCard({
+            entries: checkinQueue,
+            mode: 'checkin',
+            showAll: showAllCheckinQueue,
+            setShowAll: setShowAllCheckinQueue,
+            onRemove: removeFromCheckinQueue,
+            onClear: () => {
+              setCheckinQueue([]);
+              setShowAllCheckinQueue(false);
+              setLastBatchFailures([]);
+            },
+            failures: batchSubmitting === null ? lastBatchFailures : [],
+          })}
 
           {/* Schritt 2 Panel: auf Mobile sehr kompakt (Asset ist schon oben in
               der Auswahl-Karte sichtbar, daher kein "Erkannt: ..." doppelt).
@@ -1034,38 +1264,44 @@ export function CheckinCheckoutPage({
             ref={checkinSubmitRef}
             className="btn-dark hidden w-full disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
             onClick={() => void checkinNow()}
-            disabled={!checkinAsset || isAnyBusy}
+            disabled={checkinQueue.length === 0 || isAnyBusy}
             isLoading={checkinBusy}
-            loadingText="Check-in wird gebucht ..."
+            loadingText={`Rücknahme wird gebucht ... (${checkinQueue.length})`}
           >
             <ClipboardCheck className="h-4 w-4" />
-            Rücknahme bestätigen
+            {checkinQueue.length > 0
+              ? `${checkinQueue.length} Gerät${checkinQueue.length === 1 ? '' : 'e'} zurücknehmen`
+              : 'Gerät scannen zur Rücknahme'}
           </LoadingButton>
         </article>
       )}
 
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur sm:hidden">
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 border-t border-slate-200 bg-white/95 p-3 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95 sm:hidden">
         {mode === 'checkout' ? (
           <LoadingButton
             className="btn-primary w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void checkoutNow()}
-            disabled={!hasCurrentCheckoutSelection || isAnyBusy}
+            disabled={checkoutQueue.length === 0 || isAnyBusy}
             isLoading={checkoutBusy}
-            loadingText="Check-out wird gebucht ..."
+            loadingText={`Ausgabe wird gebucht ... (${checkoutQueue.length})`}
           >
             <Handshake className="h-5 w-5" />
-            Jetzt ausgeben
+            {checkoutQueue.length > 0
+              ? `${checkoutQueue.length} Gerät${checkoutQueue.length === 1 ? '' : 'e'} ausgeben`
+              : 'Gerät scannen zum Ausgeben'}
           </LoadingButton>
         ) : (
           <LoadingButton
             className="btn-dark w-full py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void checkinNow()}
-            disabled={!hasCurrentCheckinSelection || isAnyBusy}
+            disabled={checkinQueue.length === 0 || isAnyBusy}
             isLoading={checkinBusy}
-            loadingText="Check-in wird gebucht ..."
+            loadingText={`Rücknahme wird gebucht ... (${checkinQueue.length})`}
           >
             <ClipboardCheck className="h-5 w-5" />
-            Rücknahme bestätigen
+            {checkinQueue.length > 0
+              ? `${checkinQueue.length} Gerät${checkinQueue.length === 1 ? '' : 'e'} zurücknehmen`
+              : 'Gerät scannen zur Rücknahme'}
           </LoadingButton>
         )}
       </div>
