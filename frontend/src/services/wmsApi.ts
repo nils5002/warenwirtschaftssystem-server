@@ -440,6 +440,41 @@ export function clearAuthSession(): void {
   }
 }
 
+/**
+ * Typisierter Fehler für API-Antworten. Anders als `Error` trägt diese
+ * Klasse den HTTP-Statuscode mit, damit aufrufende Komponenten z. B. zwischen
+ * "Backend antwortet nicht (5xx)" und "Aktion abgelehnt (4xx)" unterscheiden
+ * können, ohne den Fehlertext per Regex zu parsen.
+ */
+export class WmsApiError extends Error {
+  readonly status: number;
+  readonly detail: string;
+
+  constructor(status: number, detail: string, message: string) {
+    super(message);
+    this.name = 'WmsApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+export function isWmsApiError(value: unknown): value is WmsApiError {
+  return value instanceof WmsApiError;
+}
+
+export function isBackendUnreachableError(value: unknown): boolean {
+  if (value instanceof WmsApiError) {
+    // 5xx-Bereich (Bad Gateway, Service Unavailable, Gateway Timeout etc.)
+    // sowie 0 (Netzwerkabbruch) interpretieren wir als "Backend ist gerade
+    // nicht ansprechbar" — für den User ist das die relevante Aussage.
+    return value.status === 0 || value.status >= 500;
+  }
+  // Native fetch-Fehler (TypeError) treten bei Netzwerkproblemen auf — z. B.
+  // wenn der Browser den Host nicht erreicht, weil Cloudflare den Origin
+  // gerade nicht bedienen kann.
+  return value instanceof TypeError;
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detailMessage = '';
@@ -458,11 +493,10 @@ async function parseResponse<T>(response: Response): Promise<T> {
     } catch {
       detailMessage = '';
     }
-    throw new Error(
-      detailMessage
-        ? `WMS API Fehler (${response.status}): ${detailMessage}`
-        : `WMS API Fehler (${response.status})`,
-    );
+    const baseMessage = detailMessage
+      ? `WMS API Fehler (${response.status}): ${detailMessage}`
+      : `WMS API Fehler (${response.status})`;
+    throw new WmsApiError(response.status, detailMessage, baseMessage);
   }
   return normalizeDeep((await response.json()) as T);
 }
@@ -671,7 +705,7 @@ export async function confirmHardwareImport(previewId: string): Promise<Hardware
 export async function downloadHardwareImportTemplate(): Promise<Blob> {
   const response = await apiFetch('/api/wms/import/template');
   if (!response.ok) {
-    throw new Error(`WMS API Fehler (${response.status})`);
+    throw new WmsApiError(response.status, '', `WMS API Fehler (${response.status})`);
   }
   return response.blob();
 }
@@ -679,7 +713,7 @@ export async function downloadHardwareImportTemplate(): Promise<Blob> {
 export async function downloadWarehouseBackup(): Promise<{ blob: Blob; fileName: string }> {
   const response = await apiFetch('/api/wms/backup/export');
   if (!response.ok) {
-    throw new Error(`WMS API Fehler (${response.status})`);
+    throw new WmsApiError(response.status, '', `WMS API Fehler (${response.status})`);
   }
   const contentDisposition = response.headers.get('content-disposition') || '';
   const fileNameMatch = /filename="([^"]+)"/i.exec(contentDisposition);

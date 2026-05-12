@@ -121,8 +121,13 @@ def create_app() -> FastAPI:
                 ensure_initial_admin(db)
                 ensure_user_passwords(db)
             except Exception:  # noqa: BLE001
-                logger.exception("Passwort-Initialisierung fehlgeschlagen")
-                raise
+                # Bewusst KEIN re-raise mehr: ein Fehlschlag der
+                # Passwort-Initialisierung darf den Server-Start nicht
+                # verhindern. Sonst stirbt der Worker beim Boot und der
+                # Reverse-Proxy (Cloudflare) liefert minutenlang 502 statt
+                # einer kontrollierten 401/403 vom Login-Endpoint. Fehler
+                # wird ausführlich geloggt; Operator kann nachsteuern.
+                logger.exception("Passwort-Initialisierung fehlgeschlagen — App startet trotzdem")
 
     return app
 

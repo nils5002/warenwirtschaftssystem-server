@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getAssetQrCode } from '../asset-ui/qr';
 import type {
@@ -16,6 +16,8 @@ import {
   deleteAsset,
   deleteCategory as deleteCategoryRequest,
   deleteUser as deleteUserRequest,
+  isBackendUnreachableError,
+  isWmsApiError,
   listCategories as listCategoriesRequest,
   deleteUsersBulk,
   fetchWmsOverview,
@@ -185,6 +187,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // "Gerätebestand: 0") Skeleton/„—"-Platzhalter anzuzeigen, solange
   // echte Daten noch nicht eingetroffen sind.
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  // Markiert, ob der zuletzt durchgeführte ``loadWms``-Aufruf erfolgreich war.
+  // Wird vom Polling-Scheduler ausgelesen, um Backoff bei wiederholten
+  // Fehlschlägen zu aktivieren. Bewusst ein Ref statt useState, damit das
+  // Setzen keine Re-Renders auslöst — andernfalls würde jeder Poll-Cycle
+  // den Effekt neu starten und der Backoff-Zähler liefe zurück.
+  const lastLoadSuccessRef = useRef<boolean>(true);
   const currentOperatorName = getAuthSession()?.user.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
@@ -216,6 +224,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     const startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
       const payload = await fetchWmsOverview();
+      lastLoadSuccessRef.current = true;
       const normalizedUsers = payload.users.map((user) => ({
         ...user,
         role: normalizeUserRole(user.role),
@@ -259,8 +268,31 @@ export function useWmsController(options: UseWmsControllerOptions) {
           );
         }
       }
-    } catch {
-      setWmsError('Backend nicht erreichbar oder fehlerhafte API-Antwort.');
+    } catch (error) {
+      // Konkrete Meldung statt generischer "Backend nicht erreichbar"-Text.
+      // Bereits geladene Daten (assets, planningSummary etc.) bleiben in
+      // ihrem letzten erfolgreichen Zustand, weil wir KEIN reset auf [] /
+      // null machen — die App bleibt damit auch bei kurzen 502-Phasen
+      // bedienbar. Nur die Fehlermeldung wird sichtbar gemacht.
+      if (isBackendUnreachableError(error)) {
+        setWmsError(
+          'Backend ist aktuell nicht erreichbar. Daten werden automatisch neu geladen.',
+        );
+      } else if (isWmsApiError(error) && error.status === 401) {
+        setWmsError('Sitzung abgelaufen. Bitte erneut anmelden.');
+      } else if (isWmsApiError(error)) {
+        setWmsError(
+          `Live-Kennzahlen konnten nicht geladen werden (${error.status}).`,
+        );
+      } else {
+        setWmsError('Live-Kennzahlen konnten nicht geladen werden.');
+      }
+      // Bewusst KEIN throw: bestehende Aufrufer (saveAsset, adminDeleteUser
+      // etc.) rufen ``await loadWms()`` ohne eigenes try/catch auf, um nach
+      // einem Fehlschlag den Stand neu zu laden. Ein throw hier würde diese
+      // Pfade unterbrechen. Stattdessen signalisieren wir den Fehlschlag
+      // dem Polling-Scheduler über das Ref (success-Flag).
+      lastLoadSuccessRef.current = false;
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -295,30 +327,63 @@ export function useWmsController(options: UseWmsControllerOptions) {
       return;
     }
     let cancelled = false;
+    let timeoutId: number | null = null;
+    let inflight = false;
+    let consecutiveFailures = 0;
 
-    // Initial-Load setzt explizit isLoading=true, damit der globale Banner
-    // wirklich nur beim ersten Aufruf erscheint.
-    const initial = async () => {
-      if (cancelled) return;
-      await loadWms({ initial: true });
+    const BASE_INTERVAL_MS = 15_000;
+    // Bei wiederholten Fehlschlägen (z. B. 502 von Cloudflare während eines
+    // Backend-Neustarts) wird das Intervall exponentiell gedehnt, damit das
+    // Frontend den Origin nicht weiter mit Requests bombardiert. Obergrenze
+    // = 2 Minuten — danach reicht ein langsamer Heartbeat aus, sobald der
+    // Server wieder antwortet, springt der Backoff sofort auf BASE zurück.
+    const MAX_INTERVAL_MS = 120_000;
+
+    const nextDelay = (): number => {
+      if (consecutiveFailures <= 0) return BASE_INTERVAL_MS;
+      const factor = 2 ** Math.min(consecutiveFailures, 3);
+      return Math.min(BASE_INTERVAL_MS * factor, MAX_INTERVAL_MS);
     };
 
-    // Hintergrund-Polling DARF KEIN isLoading auslösen, sonst flackert der
-    // globale "Daten werden geladen ..."-Hinweis alle 15 Sekunden und das
-    // Layout springt (was z. B. die Backup-Seite optisch leerziehen lässt).
-    const refresh = async () => {
+    const schedule = (delay: number) => {
       if (cancelled) return;
-      await loadWms();
+      timeoutId = window.setTimeout(() => {
+        void tick();
+      }, delay);
     };
 
-    void initial();
-    const intervalId = window.setInterval(() => {
-      void refresh();
-    }, 15000);
+    const tick = async (initial = false) => {
+      if (cancelled) return;
+      if (inflight) {
+        // Vorheriger Poll läuft noch — Überlappung vermeiden. Wir reschedulen
+        // direkt, damit ein hängender Request das Polling nicht stoppt.
+        schedule(nextDelay());
+        return;
+      }
+      inflight = true;
+      try {
+        await loadWms(initial ? { initial: true } : undefined);
+        if (cancelled) return;
+        if (lastLoadSuccessRef.current) {
+          consecutiveFailures = 0;
+        } else {
+          consecutiveFailures += 1;
+        }
+      } finally {
+        inflight = false;
+        if (!cancelled) {
+          schedule(nextDelay());
+        }
+      }
+    };
+
+    void tick(true);
 
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
     };
   }, [isAuthenticated, loadWms]);
 
