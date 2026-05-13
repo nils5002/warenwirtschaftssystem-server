@@ -542,7 +542,14 @@ def test_backup_restore_preserves_handover_links_and_availability_state() -> Non
     availability_item = owner_availability_after.json()["items"][0]
     assert availability_item["handoverEnabled"] is True
     assert availability_item["linkedPlanningId"] == partner_id
-    assert availability_item["handoverStatus"] in {"none", "planned"}
+    # Owner und Partner sind beide am gleichen Tag — der Partner hat am
+    # Vortag (planning_date - 1) keine Geräte geplant. Mit der korrigierten
+    # Status-Ableitung ist das eine organisatorische Verbindung, kein
+    # echter Konflikt-Ausgleich. Auch nach Restore muss diese
+    # fachliche Klassifizierung erhalten bleiben.
+    assert availability_item["handoverStatus"] in {"planned", "organizational"}
+    if availability_item["handoverStatus"] == "organizational":
+        assert availability_item["handoverCoveredQty"] == 0
 
     planning_list = client.get("/api/wms/planning", headers=_headers(client, "Admin"))
     assert planning_list.status_code == 200

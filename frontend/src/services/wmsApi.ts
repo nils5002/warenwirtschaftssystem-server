@@ -256,7 +256,7 @@ export type PlanningAvailabilityItem = {
   linkedPlanningId?: string | null;
   linkedPlanningLabel?: string | null;
   handoverNote?: string | null;
-  handoverStatus?: "none" | "planned" | "missing_link";
+  handoverStatus?: "none" | "planned" | "missing_link" | "organizational";
   handoverCoveredQty?: number;
   shortageAfterHandoverQty?: number;
 };
@@ -708,6 +708,32 @@ export async function downloadHardwareImportTemplate(): Promise<Blob> {
     throw new WmsApiError(response.status, '', `WMS API Fehler (${response.status})`);
   }
   return response.blob();
+}
+
+export async function downloadAdminLogs(): Promise<{ blob: Blob; fileName: string }> {
+  const response = await apiFetch('/api/wms/admin/logs/download');
+  if (!response.ok) {
+    // Detail aus dem Body lesen, damit der 403/404-Fall im UI eine
+    // präzise Meldung bekommt statt eines generischen Texts.
+    let detailMessage = '';
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      if (typeof payload.detail === 'string') {
+        detailMessage = payload.detail;
+      }
+    } catch {
+      detailMessage = '';
+    }
+    const baseMessage = detailMessage
+      ? `WMS API Fehler (${response.status}): ${detailMessage}`
+      : `WMS API Fehler (${response.status})`;
+    throw new WmsApiError(response.status, detailMessage, baseMessage);
+  }
+  const contentDisposition = response.headers.get('content-disposition') || '';
+  const fileNameMatch = /filename="([^"]+)"/i.exec(contentDisposition);
+  const fallback = `wms-logs-${new Date().toISOString().slice(0, 16).replace('T', '_').replace(/:/g, '-')}.zip`;
+  const fileName = fileNameMatch?.[1] || fallback;
+  return { blob: await response.blob(), fileName };
 }
 
 export async function downloadWarehouseBackup(): Promise<{ blob: Blob; fileName: string }> {

@@ -1,8 +1,14 @@
-import { Download, RotateCcw, Upload } from 'lucide-react';
+import { Download, FileArchive, RotateCcw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton, LoadingOverlay } from '../../components/loading';
-import { clearWarehouseDataForImport, downloadWarehouseBackup, restoreWarehouseBackup } from '../../services/wmsApi';
+import {
+  clearWarehouseDataForImport,
+  downloadAdminLogs,
+  downloadWarehouseBackup,
+  isWmsApiError,
+  restoreWarehouseBackup,
+} from '../../services/wmsApi';
 
 type BackupPageProps = {
   onRestored: () => Promise<void>;
@@ -13,6 +19,7 @@ export function BackupPage({ onRestored }: BackupPageProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadingLogs, setIsDownloadingLogs] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +46,36 @@ export function BackupPage({ onRestored }: BackupPageProps) {
       setError(err instanceof Error ? err.message : 'Backup konnte nicht heruntergeladen werden.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleDownloadLogs = async () => {
+    setError(null);
+    setSuccess(null);
+    setIsDownloadingLogs(true);
+    try {
+      const { blob, fileName } = await downloadAdminLogs();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSuccess('Logs erfolgreich heruntergeladen.');
+    } catch (err) {
+      if (isWmsApiError(err)) {
+        if (err.status === 403) {
+          setError('Nur Admins dürfen Logs herunterladen.');
+        } else if (err.status === 404) {
+          setError(err.detail || 'Es sind aktuell keine App-Logs verfügbar.');
+        } else {
+          setError(err.detail || 'Logs konnten nicht heruntergeladen werden.');
+        }
+      } else {
+        setError('Logs konnten nicht heruntergeladen werden.');
+      }
+    } finally {
+      setIsDownloadingLogs(false);
     }
   };
 
@@ -198,6 +235,31 @@ export function BackupPage({ onRestored }: BackupPageProps) {
 
         {error ? <p className="text-sm text-rose-700">{error}</p> : null}
         {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
+      </article>
+
+      <article className="surface-card animate-fade-up space-y-4">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900">System &amp; Diagnose</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Lade die aktuellen App-Logs als ZIP herunter, um Fehler im Serverbetrieb nachzuvollziehen.
+            Es werden ausschließlich App-eigene Logs bereitgestellt, keine Host- oder Systemlogs.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <LoadingButton
+            type="button"
+            className="btn-secondary min-h-[44px]"
+            onClick={() => {
+              void handleDownloadLogs();
+            }}
+            isLoading={isDownloadingLogs}
+            loadingText="Logs werden gepackt ..."
+          >
+            <FileArchive className="h-4 w-4" />
+            Logs herunterladen
+          </LoadingButton>
+        </div>
+        {isDownloadingLogs ? <InlineLoadingState message="Logs werden geladen ..." /> : null}
       </article>
 
       <article className="surface-card animate-fade-up space-y-4 border-rose-200/70">

@@ -8,7 +8,7 @@ export type UpdateNotes = {
 export const UPDATE_NOTES_STORAGE_KEY = 'wms.lastSeenUpdateVersion';
 
 export const updateNotes: UpdateNotes = {
-  version: '1.2.1',
+  version: '1..1',
   date: '2026-05-11',
   title: 'Neu in dieser Version',
   items: [

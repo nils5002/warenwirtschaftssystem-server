@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -12,13 +13,20 @@ from sqlalchemy import text
 from .config.settings import get_settings
 from .database.session import SessionLocal, init_db
 from .errors import register_error_handlers
+from .logging_setup import (
+    bind_request_context,
+    clear_request_context,
+    set_response_status,
+    setup_logging,
+)
 from .repositories import category_repository
 from .routes import api_router
-from .services.auth_service import ensure_user_passwords
+from .services.auth_service import decode_access_token, ensure_user_passwords
 from .services.auth_service import ensure_initial_admin
 from .services.job_manager import JobManager
 from .services.wms_service import WmsService
 
+setup_logging()
 logger = logging.getLogger("cloud_web.main")
 
 
@@ -53,6 +61,57 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     @app.middleware("http")
+    async def request_logging(request: Request, call_next):  # type: ignore[override]
+        # Eingehende Request-ID übernehmen, sonst eine neue generieren. So
+        # lässt sich ein einzelner Vorfall vom Cloudflare-Edge bis ins
+        # App-Log nachvollziehen.
+        incoming = request.headers.get("x-request-id", "").strip()
+        request_id = incoming if incoming else uuid.uuid4().hex[:16]
+
+        # Auth NICHT aus dem Header in den Log schreiben — nur die abgeleitete
+        # User-ID / Rolle. Das vermeidet Token-Leaks in der Logdatei.
+        user_id: str | None = None
+        role: str | None = None
+        auth_header = request.headers.get("authorization", "").strip()
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            if token:
+                try:
+                    info = decode_access_token(token)
+                    user_id = info.userId or None
+                    role = info.role or None
+                except Exception:  # noqa: BLE001
+                    user_id = None
+                    role = None
+
+        bind_request_context(
+            request_id=request_id,
+            user_id=user_id,
+            role=role,
+            method=request.method,
+            path=request.url.path,
+        )
+        try:
+            response: Response = await call_next(request)
+        except Exception:
+            # Unerwartete Exceptions werden im Error-Handler geloggt; hier
+            # nur Kontext freigeben.
+            clear_request_context()
+            raise
+        set_response_status(response.status_code)
+        try:
+            response.headers.setdefault("X-Request-ID", request_id)
+            if 500 <= response.status_code < 600:
+                logger.error("Request fehlgeschlagen (server)")
+            elif response.status_code in (401, 403):
+                logger.warning("Zugriff verweigert")
+            elif response.status_code >= 400:
+                logger.info("Request mit Fehlerstatus")
+        finally:
+            clear_request_context()
+        return response
+
+    @app.middleware("http")
     async def add_security_headers(request: Request, call_next):  # type: ignore[override]
         response: Response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -80,6 +139,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def on_startup() -> None:
+        logger.info("App-Startup: %s v%s (env=%s)", settings.app_name, settings.app_version, settings.app_env)
         if settings.db_auto_create_schema:
             init_db()
         with SessionLocal() as db:
