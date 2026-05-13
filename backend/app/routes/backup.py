@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -13,6 +14,7 @@ from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, Ware
 from ..services import backup_service
 
 router = APIRouter(prefix="/api/wms/backup", tags=["WMS Backup"])
+logger = logging.getLogger("cloud_web.backup")
 
 
 @router.get("/export", response_model=WarehouseBackupPayload)
@@ -27,6 +29,7 @@ def export_backup(
     content = payload.model_dump(mode="json")
     body = json.dumps(content, ensure_ascii=False, indent=2)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    logger.info("Backup-Export erzeugt (user_id=%s)", context.user_id)
     return JSONResponse(content=json.loads(body), headers=headers)
 
 
@@ -56,7 +59,15 @@ async def import_backup(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail="Backup-Datei hat ein ungültiges Format.") from exc
 
-    return backup_service.import_backup(db, payload)
+    result = backup_service.import_backup(db, payload)
+    logger.info(
+        "Backup-Import abgeschlossen (user_id=%s, assets=%s, users=%s, plannings=%s)",
+        context.user_id,
+        result.imported.get("assets"),
+        result.imported.get("users"),
+        result.imported.get("plannings"),
+    )
+    return result
 
 
 @router.post("/reset-for-import", response_model=BackupClearDataResponse)
@@ -65,4 +76,6 @@ def reset_for_import(
     context: AccessContext = Depends(get_access_context),
 ) -> BackupClearDataResponse:
     require_roles(context, "admin")
-    return backup_service.clear_data_for_import(db, keep_user_id=context.user_id)
+    result = backup_service.clear_data_for_import(db, keep_user_id=context.user_id)
+    logger.warning("Systemdaten bereinigt (user_id=%s)", context.user_id)
+    return result

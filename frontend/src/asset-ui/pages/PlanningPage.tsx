@@ -111,6 +111,12 @@ type AvailabilityVisual = {
   linkedPlanningId: string;
   linkedPlanningLabel: string;
   handoverCoveredQty: number;
+  // Backend-Klassifikation der Übergabe-Beziehung. Treibt das Differenz-
+  // Badge "Geplante Übergabe" vs "Organisatorische Übergabe" in der UI,
+  // damit Nutzer auf einen Blick sehen, ob die Verknüpfung tatsächlich
+  // einen Konflikt entschärfen kann (planned) oder rein dokumentarisch
+  // ist (organizational, z. B. Südwestfalen → PSD HT ohne Datums-Überlapp).
+  handoverStatus: 'none' | 'planned' | 'missing_link' | 'organizational';
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -677,6 +683,7 @@ export function PlanningPage({
         linkedPlanningId: effectiveLinkedPlanningId,
         linkedPlanningLabel: effectiveLinkedPlanningLabel,
         handoverCoveredQty,
+        handoverStatus: item.handoverStatus ?? 'none',
       });
     }
 
@@ -1005,7 +1012,7 @@ export function PlanningPage({
     const map = new Map<string, Array<{ id: string; label: string }>>();
 
     for (const day of editor.days) {
-      const options = handoverProjectOptions
+      const enriched = handoverProjectOptions
         .filter((planning) => planning.id !== editor.id)
         .map((planning) => {
           const sameDay = isDateWithinRange(day.planningDate, planning.startDate, planning.endDate);
@@ -1027,7 +1034,44 @@ export function PlanningPage({
             startDate: planning.startDate,
             label: `${planning.projectName} (${planning.customerName}) - ${suffix}`,
           };
-        })
+        });
+
+      // Fallback: aktuell verknüpfte Planungen, die nicht in der aktiven
+      // Auswahlliste auftauchen (z. B. Status "Abgeschlossen" oder
+      // "Storniert", oder Partner zwischenzeitlich gelöscht). Ohne diesen
+      // Block würde das <select> keine passende Option mehr finden und der
+      // Browser zeigt die leere Default-Option — der Nutzer denkt, die
+      // Übergabe sei verschwunden, obwohl linkedPlanningId noch gesetzt ist
+      // (Live-Fall BPI 1 / BPI 2 Kartendrucker).
+      const existingIds = new Set(enriched.map((option) => option.id));
+      const selectedIds = new Set<string>();
+      for (const item of day.items) {
+        const linked = item.linkedPlanningId?.trim();
+        if (linked && linked !== editor.id) {
+          selectedIds.add(linked);
+        }
+      }
+      for (const linkedId of selectedIds) {
+        if (existingIds.has(linkedId)) continue;
+        const partner = plannings.find((entry) => entry.id === linkedId);
+        if (partner) {
+          enriched.push({
+            id: linkedId,
+            priority: 3,
+            startDate: partner.startDate,
+            label: `${partner.projectName} (${partner.customerName}) - verknüpft, anderer Status`,
+          });
+        } else {
+          enriched.push({
+            id: linkedId,
+            priority: 4,
+            startDate: '',
+            label: `${buildPlanningFallbackLabel(linkedId, plannings)} - Verknüpfte Planung nicht gefunden`,
+          });
+        }
+      }
+
+      const options = enriched
         .sort((a, b) => {
           if (a.priority !== b.priority) return a.priority - b.priority;
           if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
@@ -1037,7 +1081,7 @@ export function PlanningPage({
       map.set(day.planningDate, options);
     }
     return map;
-  }, [editor, handoverProjectOptions]);
+  }, [editor, handoverProjectOptions, plannings]);
 
   const editorStats = useMemo(() => {
     if (!editor) {
@@ -2319,9 +2363,9 @@ export function PlanningPage({
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold">Übergabe-Verbund aktiv</p>
+                                          <p className="text-sm font-semibold">Geplante Übergabe</p>
                                           <span className="rounded-full border border-sky-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:border-sky-700 dark:bg-slate-950/40 dark:text-sky-100">
-                                            Kein offener Handlungsbedarf
+                                            Engpass-Ausgleich aktiv
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] font-medium text-slate-800 dark:text-slate-100">
@@ -2402,6 +2446,74 @@ export function PlanningPage({
                                   </div>
                                 ) : null}
 
+                                {visual?.status !== 'handover'
+                                  && visual?.handoverStatus === 'organizational' ? (
+                                  <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50 px-3 py-3 text-xs text-slate-700 shadow-sm dark:border-slate-700 dark:from-slate-900/40 dark:via-slate-950 dark:to-slate-900/20 dark:text-slate-200">
+                                    <div className="flex items-start gap-3">
+                                      <span className="rounded-2xl bg-slate-100 p-2 text-slate-600 dark:bg-slate-800/60 dark:text-slate-200">
+                                        <Link2 className="h-4 w-4" />
+                                      </span>
+                                      <div className="flex-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <p className="text-sm font-semibold">Organisatorische Übergabe</p>
+                                          <span className="rounded-full border border-slate-300 bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-600 dark:bg-slate-950/60 dark:text-slate-200">
+                                            Dokumentarische Verknüpfung
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[13px] font-medium text-slate-800 dark:text-slate-100">
+                                          {visual.categoryKey} · Verbindung zu {visual.partnerLabel || visual.linkedPlanningLabel || 'Partnerprojekt'}
+                                        </p>
+                                        <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
+                                          Diese Übergabe ist rein dokumentarisch — sie verändert die Verfügbarkeit nicht, weil sich die Zeiträume der beiden Planungen nicht überschneiden (bzw. die Partnerplanung am Vortag keinen Bedarf in dieser Kategorie hat).
+                                        </p>
+                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                                          <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
+                                            {currentPlanningLabel || 'Aktuelles Projekt'}
+                                          </span>
+                                          <span className="text-slate-400 dark:text-slate-500">↔</span>
+                                          <span className="rounded-full border border-slate-300 bg-slate-100/70 px-2.5 py-1 text-slate-700 dark:border-slate-600 dark:bg-slate-800/40 dark:text-slate-100">
+                                            {visual.partnerLabel || visual.linkedPlanningLabel || 'Partnerprojekt'}
+                                          </span>
+                                        </div>
+                                        {visual.note ? (
+                                          <p className="mt-2 rounded-xl border border-white/70 bg-white/65 px-2.5 py-2 text-[11px] text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+                                            Hinweis: {visual.note}
+                                          </p>
+                                        ) : null}
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          {visual.partnerPlanningId ? (
+                                            <button
+                                              type="button"
+                                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                                              onClick={() => {
+                                                void openPlanning(visual.partnerPlanningId);
+                                              }}
+                                            >
+                                              Partner öffnen
+                                            </button>
+                                          ) : null}
+                                          <button
+                                            type="button"
+                                            className="btn-secondary px-2.5 py-1.5 text-xs"
+                                            onClick={() => openHandoverEditor(dayIndex, itemIndex)}
+                                          >
+                                            Übergabe bearbeiten
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="btn-secondary px-2.5 py-1.5 text-xs"
+                                            onClick={() => {
+                                              void removeHandover(dayIndex, itemIndex);
+                                            }}
+                                          >
+                                            Verknüpfung lösen
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : null}
+
                                 {visual?.status === 'review' ? (
                                   <div className="rounded-2xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-amber-50 px-3 py-3 text-xs text-orange-900 shadow-sm dark:border-orange-700 dark:from-orange-950/35 dark:via-slate-950 dark:to-amber-950/20 dark:text-orange-100">
                                     <div className="flex items-start gap-3">
@@ -2416,7 +2528,9 @@ export function PlanningPage({
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed">
-                                          Eine Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.
+                                          {visual.handoverStatus === 'missing_link' && visual.linkedPlanningId
+                                            ? 'Verknüpfte Planung nicht gefunden — das verlinkte Partnerprojekt existiert nicht mehr. Bitte Verknüpfung lösen oder neu auswählen.'
+                                            : 'Eine Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.'}
                                         </p>
                                         {visual.note ? <p className="mt-2 text-[11px]">Hinweis: {visual.note}</p> : null}
                                         <details className="mt-3">

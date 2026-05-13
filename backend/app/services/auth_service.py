@@ -279,16 +279,22 @@ def register_user(db: Session, name: str, email: str, password: str) -> None:
 def authenticate_user(db: Session, email: str, password: str) -> AuthUserInfo:
     needle = email.strip().lower()
     if not needle:
+        # Bewusst KEIN Passwort/Token im Log — nur fachliches Ereignis.
+        logger.warning("Login fehlgeschlagen (leere E-Mail)")
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     user = db.scalar(select(UserRecord).where(UserRecord.email.ilike(needle)))
     if user is None:
+        logger.warning("Login fehlgeschlagen: Benutzer unbekannt (email=%s)", needle)
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     if not user.is_active:
+        logger.warning("Login abgelehnt: Konto inaktiv (user_id=%s)", user.external_id)
         raise HTTPException(status_code=403, detail="Dein Konto wurde noch nicht freigegeben.")
     if not verify_password(password, user.password_hash):
+        logger.warning("Login fehlgeschlagen: Passwort ungueltig (user_id=%s)", user.external_id)
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     user.last_active = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
     db.commit()
+    logger.info("Login erfolgreich (user_id=%s, role=%s)", user.external_id, user.role)
     return AuthUserInfo(
         userId=user.external_id,
         name=user.name,

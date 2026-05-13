@@ -1072,15 +1072,37 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         handover_covered_qty = 0
         handover_enabled = bool(requested["handoverEnabled"])
         linked_planning_id = str(requested["linkedPlanningId"] or "") or None
-        handover_status: "none" | "planned" | "missing_link" = "none"
-        if shortage_qty > 0 and handover_enabled and linked_planning_id:
+        # Vier mögliche Zustände — siehe schemas/planning.py.
+        # Die Ableitung ist bewusst UNABHÄNGIG von shortage_qty, damit das UI
+        # eine echte Übergabe-Beziehung (overlap + Partner mit Kapazität am
+        # Vortag) auch dann sieht, wenn aktuell kein Engpass besteht, und eine
+        # rein organisatorische Verknüpfung (kein Overlap, z. B.
+        # Südwestfalen → PSD HT) klar davon abgrenzen kann.
+        handover_status: "none | planned | missing_link | organizational" = "none"
+        if handover_enabled:
+            partner_exists = bool(linked_planning_id) and linked_planning_id in linked_labels
+            if not partner_exists:
+                # Leerer Link ODER toter Pointer (Partner gelöscht) → der
+                # Nutzer soll explizit warnen, damit er die Verbindung
+                # bereinigt. Beide Fälle kollabieren auf missing_link.
+                handover_status = "missing_link"
+            else:
+                previous_day = planning_date - timedelta(days=1)
+                source_capacity = handover_source_qty_map.get(
+                    (linked_planning_id, previous_day, category), 0
+                )
+                # source_capacity > 0 bedeutet: Partnerplanung hat am Vortag
+                # tatsächlich Geräte dieser Kategorie geplant — d. h.
+                # echter Zeitraum-Overlap besteht und ein Engpass könnte
+                # entschärft werden.
+                handover_status = "planned" if source_capacity > 0 else "organizational"
+
+        if shortage_qty > 0 and handover_status == "planned" and linked_planning_id:
             previous_day = planning_date - timedelta(days=1)
             source_capacity = handover_source_qty_map.get((linked_planning_id, previous_day, category), 0)
             handover_covered_qty = min(shortage_qty, max(0, source_capacity))
         shortage_after_handover_qty = max(0, shortage_qty - handover_covered_qty)
         has_global_shortage = shortage_after_handover_qty > 0
-        if shortage_qty > 0 and handover_enabled:
-            handover_status = "planned" if linked_planning_id else "missing_link"
         availability_state = _availability_state_with_handover(
             remaining_after_all_planning + handover_covered_qty,
             handover_covered_qty,

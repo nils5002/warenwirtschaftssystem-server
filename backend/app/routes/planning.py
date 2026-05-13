@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from ..schemas.planning import (
 from ..services.planning_service import PlanningService
 
 router = APIRouter(prefix="/api/wms/planning", tags=["Planning"])
+logger = logging.getLogger("cloud_web.planning")
 
 
 def _matches_planning_write_scope(context: AccessContext, planning: PlanningListItem | PlanningResponse) -> bool:
@@ -72,7 +74,9 @@ def create_planning(
     require_roles(context, "admin", "projektmanager")
     if context.role == "projektmanager" and context.user_id:
         payload.projectManagerUserId = context.user_id
-    return PlanningService.create_planning(db, payload)
+    result = PlanningService.create_planning(db, payload)
+    logger.info("Planung gespeichert (neu, planning_id=%s, user_id=%s)", result.id, context.user_id)
+    return result
 
 
 @router.get("/{planning_id}", response_model=PlanningResponse)
@@ -106,7 +110,9 @@ def update_planning(
     # überschreiben (Owner-Verhalten). Das Feld bleibt das, was der Client
     # explizit sendet — bei Bedarf kann es über das Formular gewechselt
     # werden, aber Speichern alleine löst keinen Eigentümerwechsel aus.
-    return PlanningService.update_planning(db, planning_id, payload)
+    result = PlanningService.update_planning(db, planning_id, payload)
+    logger.info("Planung gespeichert (update, planning_id=%s, user_id=%s)", planning_id, context.user_id)
+    return result
 
 
 @router.post("/{planning_id}", response_model=PlanningResponse)

@@ -136,7 +136,11 @@ class PlanningAvailabilityItem(BaseModel):
     linkedPlanningId: str | None = None
     linkedPlanningLabel: str | None = None
     handoverNote: str | None = None
-    handoverStatus: Literal["none", "planned", "missing_link"] = "none"
+    # "organizational" markiert eine bewusst dokumentierte Übergabe zwischen
+    # zwei Planungen OHNE Zeitraum-Überlapp (z. B. Südwestfalen → PSD HT). Sie
+    # entlastet keinen Konflikt (handoverCoveredQty bleibt 0), bleibt aber
+    # sichtbar, damit die Verbindung in der UI nachvollziehbar ist.
+    handoverStatus: Literal["none", "planned", "missing_link", "organizational"] = "none"
     handoverCoveredQty: int = 0
     shortageAfterHandoverQty: int = 0
 

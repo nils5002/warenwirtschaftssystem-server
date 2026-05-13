@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
 from ..routes.dependencies import AccessContext, get_access_context, require_roles
+
+logger = logging.getLogger("cloud_web.wms")
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
@@ -106,6 +110,7 @@ def upsert_asset(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> AssetItem:
+    existing = None
     if context.role in {"mitarbeiter", "projektmanager"}:
         existing = WmsService.get_asset(db, asset.id)
         movement_ok = _movement_only_allowed(existing, asset)
@@ -118,7 +123,30 @@ def upsert_asset(
                 status_code=403,
                 detail="Nur Ausgabe/Rückgabe-Statuswechsel sind in dieser Rolle erlaubt.",
             )
-    return WmsService.upsert_asset(db, asset, actor_user_id=context.user_id)
+    else:
+        existing = WmsService.get_asset(db, asset.id)
+    result = WmsService.upsert_asset(db, asset, actor_user_id=context.user_id)
+    if existing is not None:
+        if existing.status != "Verliehen" and result.status == "Verliehen":
+            logger.info(
+                "Asset-Ausgabe gebucht (asset_id=%s, user_id=%s, assignedTo=%s)",
+                result.id,
+                context.user_id,
+                result.assignedTo,
+            )
+        elif existing.status == "Verliehen" and result.status == "Verfuegbar":
+            logger.info(
+                "Asset-Rueckgabe gebucht (asset_id=%s, user_id=%s)",
+                result.id,
+                context.user_id,
+            )
+        if existing.status != "Defekt" and result.status == "Defekt":
+            logger.warning(
+                "Asset als defekt gemeldet (asset_id=%s, user_id=%s)",
+                result.id,
+                context.user_id,
+            )
+    return result
 
 
 @router.delete("/assets/{asset_id}")
@@ -255,7 +283,14 @@ def upsert_maintenance(
         maintenance.status = "Offen"
     elif context.role not in {"admin", "projektmanager"}:
         raise HTTPException(status_code=403, detail="Keine Berechtigung für Wartungsaktionen.")
-    return WmsService.upsert_maintenance(db, maintenance)
+    result = WmsService.upsert_maintenance(db, maintenance)
+    logger.info(
+        "Wartungs-/Defekt-Eintrag gespeichert (maintenance_id=%s, status=%s, user_id=%s)",
+        result.id,
+        result.status,
+        context.user_id,
+    )
+    return result
 
 
 @router.delete("/maintenance/{maintenance_id}")
