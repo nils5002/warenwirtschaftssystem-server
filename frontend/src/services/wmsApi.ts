@@ -778,9 +778,27 @@ export async function listPlannings(filters?: {
   return parseResponse<PlanningListItem[]>(response);
 }
 
-export async function getPlanning(planningId: string): Promise<PlanningResponse> {
-  const response = await apiFetch(`/api/wms/planning/${planningId}`);
-  return parseResponse<PlanningResponse>(response);
+// In-Flight-Dedup: wenn fuer dieselbe Planning-ID bereits ein Request
+// laeuft, wird der bestehende Promise wiederverwendet. Schuetzt gegen
+// Race Conditions, wenn mehrere Effects (z. B. Open + Save + Refresh)
+// quasi-zeitgleich denselben Detail-Endpoint anfragen. Sobald der Request
+// abgeschlossen ist (erfolgreich ODER mit Fehler), wird der Eintrag aus
+// der Map entfernt — kein Caching, nur Dedup.
+const inFlightGetPlanning = new Map<string, Promise<PlanningResponse>>();
+
+export function getPlanning(planningId: string): Promise<PlanningResponse> {
+  const existing = inFlightGetPlanning.get(planningId);
+  if (existing) return existing;
+
+  const pending = (async () => {
+    const response = await apiFetch(`/api/wms/planning/${planningId}`);
+    return parseResponse<PlanningResponse>(response);
+  })().finally(() => {
+    inFlightGetPlanning.delete(planningId);
+  });
+
+  inFlightGetPlanning.set(planningId, pending);
+  return pending;
 }
 
 export async function createPlanning(payload: PlanningUpsertPayload): Promise<PlanningResponse> {

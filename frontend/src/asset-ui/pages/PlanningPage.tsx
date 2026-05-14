@@ -8,7 +8,7 @@ import {
   Save,
   Trash2,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
@@ -796,130 +796,23 @@ export function PlanningPage({
     });
   }, [conflictFilterActive, listSearch, listStatus, plannings]);
 
-  useEffect(() => {
-    const candidateIds = visiblePlannings
-      .filter((item) => !item.handoverSummary)
-      .map((item) => item.id)
-      .filter((planningId) => !planningListDetails[planningId]);
-    if (!candidateIds.length) return;
-
-    let cancelled = false;
-    void Promise.all(
-      candidateIds.map(async (planningId) => {
-        try {
-          return await getPlanning(planningId);
-        } catch {
-          return null;
-        }
-      }),
-    ).then((results) => {
-      if (cancelled) return;
-      setPlanningListDetails((current) => {
-        const next = { ...current };
-        for (const planning of results) {
-          if (planning) next[planning.id] = planning;
-        }
-        return next;
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [planningListDetails, visiblePlannings]);
-
-  const planningListHandoverFallbackMap = useMemo(() => {
-    const map = new Map<string, PlanningListHandoverSummary>();
-    const visiblePlanningIds = new Set(visiblePlannings.map((item) => item.id));
-    const visiblePlanningById = new Map(visiblePlannings.map((item) => [item.id, item]));
-    const stateByPlanningId = new Map<
-      string,
-      {
-        directions: Set<'incoming' | 'outgoing'>;
-        partnerIds: Set<string>;
-        categoryKeys: Set<string>;
-      }
-    >();
-
-    const ensureState = (planningId: string) => {
-      let state = stateByPlanningId.get(planningId);
-      if (!state) {
-        state = {
-          directions: new Set<'incoming' | 'outgoing'>(),
-          partnerIds: new Set<string>(),
-          categoryKeys: new Set<string>(),
-        };
-        stateByPlanningId.set(planningId, state);
-      }
-      return state;
-    };
-
-    for (const planning of Object.values(planningListDetails)) {
-      for (const day of planning.days) {
-        for (const item of day.items) {
-          if (!item.handoverEnabled || !item.linkedPlanningId) continue;
-          const normalizedCategory = normalizeCategory(item.categoryKey);
-          const ownerState = ensureState(planning.id);
-          ownerState.directions.add('outgoing');
-          ownerState.partnerIds.add(item.linkedPlanningId);
-          ownerState.categoryKeys.add(normalizedCategory);
-
-          if (visiblePlanningIds.has(item.linkedPlanningId)) {
-            const partnerState = ensureState(item.linkedPlanningId);
-            partnerState.directions.add('incoming');
-            partnerState.partnerIds.add(planning.id);
-            partnerState.categoryKeys.add(normalizedCategory);
-          }
-        }
-      }
-    }
-
-    for (const [planningId, state] of stateByPlanningId.entries()) {
-      if (!visiblePlanningIds.has(planningId)) continue;
-      if (!state.partnerIds.size || !state.categoryKeys.size) continue;
-
-      const partnerIds = Array.from(state.partnerIds).sort((a, b) => {
-        const aLabel =
-          planningListDetails[a] ? buildPlanningLabel(planningListDetails[a]) : buildPlanningFallbackLabel(a, plannings);
-        const bLabel =
-          planningListDetails[b] ? buildPlanningLabel(planningListDetails[b]) : buildPlanningFallbackLabel(b, plannings);
-        return aLabel.localeCompare(bLabel, 'de');
-      });
-      const primaryPartnerId = partnerIds[0];
-      const primaryPartner =
-        planningListDetails[primaryPartnerId] ??
-        (primaryPartnerId ? visiblePlanningById.get(primaryPartnerId) : undefined);
-      const partnerLabel = primaryPartner
-        ? buildPlanningLabel(primaryPartner)
-        : buildPlanningFallbackLabel(primaryPartnerId, plannings);
-
-      let direction: PlanningListHandoverSummary['direction'] = 'outgoing';
-      if (state.directions.has('incoming') && state.directions.has('outgoing')) {
-        direction = 'mixed';
-      } else if (state.directions.has('incoming')) {
-        direction = 'incoming';
-      }
-
-      map.set(planningId, {
-        direction,
-        partnerPlanningId: primaryPartnerId,
-        partnerPlanningLabel: partnerLabel,
-        partnerPlanningCount: partnerIds.length,
-        categoryKeys: Array.from(state.categoryKeys).sort((a, b) => a.localeCompare(b, 'de')),
-      });
-    }
-
-    return map;
-  }, [planningListDetails, plannings, visiblePlannings]);
-
+  // Handover-Summary kommt ausschliesslich aus der Listen-API
+  // (GET /api/wms/planning). Frueher haben wir hier fuer jede Karte ohne
+  // ``handoverSummary`` zusaetzlich GET /api/wms/planning/{id} per Promise.all
+  // ausgeloest, um einen Fallback-Summary in der FE zu berechnen. Das war
+  // teuer (eine Detail-Welle beim Oeffnen der Seite) und inhaltlich folgenlos:
+  // wenn das Backend ``handoverSummary === null`` liefert, gibt es keine
+  // Handover-Verknuepfung — der Fallback fand auch keine.
+  // Falls ``item.handoverSummary`` ``null`` ist, wird kein Handover-Badge
+  // angezeigt. Details werden erst beim Oeffnen einer Planung geladen
+  // (openPlanning).
   const planningListHandoverSummaryById = useMemo(() => {
     const map = new Map<string, PlanningListHandoverSummary>();
     for (const item of visiblePlannings) {
-      const summary = item.handoverSummary ?? planningListHandoverFallbackMap.get(item.id);
-      if (summary) map.set(item.id, summary);
+      if (item.handoverSummary) map.set(item.id, item.handoverSummary);
     }
     return map;
-  }, [planningListHandoverFallbackMap, visiblePlannings]);
+  }, [visiblePlannings]);
 
   const planningListNetworkAccentById = useMemo(() => {
     const accentByPlanningId = new Map<string, HandoverNetworkAccent>();
@@ -1212,32 +1105,22 @@ export function PlanningPage({
     setConflictFilterActive(false);
   };
 
-  const requestCalendarPlanningData = (planningIds: string[]) => {
-    const missingDetailIds = planningIds.filter((planningId) => !planningListDetails[planningId]);
-    const missingAvailabilityIds = planningIds.filter((planningId) => !calendarAvailabilitiesByPlanningId[planningId]);
-    if (!missingDetailIds.length && !missingAvailabilityIds.length) return;
+  // Kalender laedt beim initialen Rendern KEINE Planungsdetails mehr —
+  // frueher loeste das eine Detail-Welle pro Wochenansicht aus. Detail-Daten
+  // (Tage/Items) werden nur dann benoetigt, wenn der User eine Planung
+  // tatsaechlich oeffnet → das laeuft ueber ``openPlanning`` und befuellt
+  // ``planningListDetails`` punktuell. Was der Kalender pro sichtbarer
+  // Woche braucht, ist Availability (gruen/gelb/rot pro Tag/Kategorie) — die
+  // wird hier weiter pro fehlender Planung nachgeladen.
+  // ``useCallback`` stabilisiert die Funktion, damit der Child-Effect in
+  // PlanningCalendarAddOn nicht bei jedem Parent-Render erneut feuert.
+  const requestCalendarPlanningData = useCallback(
+    (planningIds: string[]) => {
+      const missingAvailabilityIds = planningIds.filter(
+        (planningId) => !calendarAvailabilitiesByPlanningId[planningId],
+      );
+      if (!missingAvailabilityIds.length) return;
 
-    if (missingDetailIds.length) {
-      void Promise.all(
-        missingDetailIds.map(async (planningId) => {
-          try {
-            return await getPlanning(planningId);
-          } catch {
-            return null;
-          }
-        }),
-      ).then((results) => {
-        setPlanningListDetails((current) => {
-          const next = { ...current };
-          for (const planning of results) {
-            if (planning) next[planning.id] = planning;
-          }
-          return next;
-        });
-      });
-    }
-
-    if (missingAvailabilityIds.length) {
       void Promise.all(
         missingAvailabilityIds.map(async (planningId) => {
           try {
@@ -1258,8 +1141,9 @@ export function PlanningPage({
           return next;
         });
       });
-    }
-  };
+    },
+    [calendarAvailabilitiesByPlanningId],
+  );
 
   const persistPlanning = async (planning: EditablePlanning) => {
     if (!planning.customerName.trim() || !planning.projectName.trim()) {
