@@ -34,6 +34,18 @@ services:
     ports:
       - "${BACKEND_PORT:-8001}:8000"
 
+    # Healthcheck nutzt den schlanken /health-Endpoint (kein DB-Roundtrip),
+    # damit kurzzeitige DB-Last den Healthcheck nicht auf "unhealthy" zieht.
+    # Bei dauerhaftem Ausfall stoppt Docker/Portainer den Restart-Loop nicht —
+    # zusammen mit ``restart: unless-stopped`` wird ein toter Worker automatisch
+    # neugestartet.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).status == 200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
   frontend:
     build:
       context: ./frontend
