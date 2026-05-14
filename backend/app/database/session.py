@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from ..config.settings import get_settings
@@ -11,7 +12,19 @@ from .base import Base
 settings = get_settings()
 DATABASE_URL = settings.database_url
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# Bei SQLite:
+#   * ``check_same_thread=False`` ist notwendig, weil SQLAlchemy-Connections
+#     in FastAPI ueber mehrere Threads (Threadpool) wandern koennen.
+#   * ``timeout`` = wie lange das DBAPI-Modul (Python ``sqlite3``) auf ein
+#     freies Lock wartet, bevor ein OperationalError geworfen wird. Default
+#     ist 5s — fuer Produktion mit gleichzeitigem Polling + Schreibzugriffen
+#     deutlich zu kurz. 30s sind ein konservativer Standard, der reale
+#     Schreib-Spitzen abfaengt, ohne dass Requests "ewig" haengen.
+connect_args = (
+    {"check_same_thread": False, "timeout": 30}
+    if DATABASE_URL.startswith("sqlite")
+    else {}
+)
 
 engine = create_engine(
     DATABASE_URL,
@@ -19,6 +32,40 @@ engine = create_engine(
     future=True,
     connect_args=connect_args,
 )
+
+
+# PRAGMAs fuer jede neue SQLite-Connection. WAL erlaubt parallele Reader
+# waehrend ein Writer aktiv ist (im Default-Rollback-Journal sperrt jeder
+# Writer alle Reader). ``busy_timeout`` setzt zusaetzlich serverseitig die
+# Wartezeit auf ein Lock — auch wenn das DBAPI bereits einen ``timeout``
+# erhaelt, ist das Pragma die robustere Quelle, weil es auch fuer
+# direkte ``sqlite3``-Aufrufe waehrend des Connect greift.
+# ``synchronous=NORMAL`` ist die empfohlene Begleitung zu WAL: kein Datenverlust
+# bei App-Crashes, leicht schnellere Schreib-Performance als FULL.
+# Hinweis: ``foreign_keys=ON`` wird HIER bewusst NICHT gesetzt. SQLite hat das
+# FK-Enforcement historisch ausgeschaltet, und der bestehende Backup-Import
+# (services/backup_service.py) verlaesst sich auf diese Reihenfolge-Toleranz.
+# FK-Enforcement waere ein eigenes Mini-Projekt (Insert-Reihenfolge + Tests)
+# und gehoert nicht in dieses Stabilitaets-Paket.
+if DATABASE_URL.startswith("sqlite"):
+
+    @event.listens_for(Engine, "connect")
+    def _sqlite_set_pragmas(dbapi_connection, _connection_record):  # type: ignore[no-untyped-def]
+        try:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=10000")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+            finally:
+                cursor.close()
+        except Exception:
+            # PRAGMA-Fehler duerfen den App-Start nicht killen — z. B. bei
+            # ":memory:"-DBs in Tests sind manche Pragmas no-op. Ein Fehler
+            # hier wuerde sonst jeden Connection-Aufbau scheitern lassen.
+            pass
+
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

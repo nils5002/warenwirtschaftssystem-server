@@ -552,7 +552,18 @@ def mark_asset_returned(
 
 
 def list_activities(db: Session) -> list[ActivityItem]:
-    stmt = select(ActivityRecord).order_by(ActivityRecord.created_at.desc())
+    # Activities wachsen monoton (jeder Checkout/Checkin/Defekt erzeugt einen
+    # Eintrag) und werden im Overview-Endpoint bei jedem 15-s-Polling voll
+    # serialisiert. Wir liefern deshalb nur die juengsten 200 — das ist
+    # ausreichend fuer die Aktivitaeten-Anzeige im Dashboard und haelt das
+    # Payload klein. Es findet KEINE Datenmutation statt — der Backup-Export
+    # geht weiterhin direkt ueber das Repository / Schema, nicht ueber diese
+    # Sicht.
+    stmt = (
+        select(ActivityRecord)
+        .order_by(ActivityRecord.created_at.desc())
+        .limit(200)
+    )
     return [_activity_to_schema(item) for item in db.scalars(stmt).all()]
 
 
