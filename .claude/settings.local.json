@@ -35,7 +35,23 @@
       "PowerShell(py *)",
       "Bash(git -C /c/VS/warenwirtschaftssystem-server status --short)",
       "Bash(git -C /c/VS/warenwirtschaftssystem-server ls-files Hardwarebestand/*)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "PowerShell(python -c \"import fastapi, sqlalchemy, pydantic; print\\(fastapi.__version__, sqlalchemy.__version__, pydantic.VERSION\\)\" 2>&1)",
+      "PowerShell(python -c \"import pytest, jose, passlib; print\\('ok'\\)\" 2>&1)",
+      "PowerShell(python -c \"import pytest, passlib; print\\('ok'\\)\" 2>&1; python -c \"import jwt; print\\('pyjwt', jwt.__version__\\)\" 2>&1)",
+      "PowerShell(python -c \"from app.main import app; print\\('imported ok'\\)\" 2>&1)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\VS\\\\warenwirtschaftssystem-server\\\\backend\"; python -m pytest C:\\\\VS\\\\warenwirtschaftssystem-server\\\\backend\\\\tests --tb=short -q 2>&1 | Select-Object -First 200)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "PowerShell($env:PYTHONPATH = \"C:\\\\VS\\\\warenwirtschaftssystem-server\\\\backend\"; python -m pytest C:\\\\VS\\\\warenwirtschaftssystem-server\\\\backend\\\\tests\\\\test_stability_regressions.py -v --tb=short 2>&1 | Select-Object -First 100)",
+      "Bash(xargs grep -l \"handover\\\\|linkedPlanning\")",
+      "PowerShell(if \\(Test-Path \"C:\\\\VS\\\\warehouse-backup-2026-05-12-22-13.json\"\\) { Write-Output \\(\"size_kb=\" + [int]\\(\\(Get-Item 'C:\\\\VS\\\\warehouse-backup-2026-05-12-22-13.json'\\).Length / 1024\\)\\) } else { Write-Output \"missing\" })",
+      "PowerShell($f = Get-Item 'C:\\\\VS\\\\warehouse-backup-2026-05-12-22-13.json'; [pscustomobject]@{ Path=$f.FullName; SizeBytes=$f.Length; SizeKB=[int]\\($f.Length/1024\\); CreatedUtc=$f.CreationTimeUtc; LastWriteUtc=$f.LastWriteTimeUtc; LastAccessUtc=$f.LastAccessTimeUtc; ReadOnly=$f.IsReadOnly } | Format-List)",
+      "PowerShell($hash = \\(Get-FileHash 'C:\\\\VS\\\\warehouse-backup-2026-05-12-22-13.json' -Algorithm SHA256\\).Hash; Write-Output \"SHA256: $hash\")",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/test_admin_logs_download.py -x -q)",
+      "PowerShell(Get-ChildItem C:\\\\VS\\\\warenwirtschaftssystem-server\\\\backend\\\\ -Force | Where-Object { $_.Name -match 'venv|env' } | Select-Object Name, Mode)",
+      "Bash(python -m pytest tests/test_admin_logs_download.py -x)",
+      "Bash(python -m pytest tests)",
+      "Bash(python -m compileall app)"
     ]
   }
 }

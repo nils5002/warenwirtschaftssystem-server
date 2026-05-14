@@ -12,6 +12,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from ..database.models import AssetRecord
+from ..repositories import category_repository
 from ..schemas.hardware_import import (
     HardwareImportConfirmResponse,
     HardwareImportPreviewResponse,
@@ -60,6 +61,12 @@ class UploadImportService:
         finally:
             temp_path.unlink(missing_ok=True)
 
+        # Eigene (DB-)Kategorien aus dem Kategorien-Modul mitgeben, damit der
+        # Importer sie genauso akzeptiert wie die hartcodierten Standards.
+        # Sonst wuerde z. B. "DYMO" als "Zuordnung erforderlich" abgewiesen,
+        # obwohl der Operator die Kategorie zuvor sauber im UI angelegt hat.
+        known_extra_categories = category_repository.active_category_names(db)
+
         seen_serials: set[str] = set()
         mapped_payloads: list[dict[str, Any]] = []
         errors: list[HardwareImportRowError] = []
@@ -83,7 +90,8 @@ class UploadImportService:
                     sheet_name=parsed_file.sheet_name,
                     row_number=row.row_number,
                     data=row_data,
-                )
+                ),
+                known_extra_categories=known_extra_categories,
             )
             validation_errors = validate_mapped_payload(mapped.payload)
             if validation_errors:

@@ -118,6 +118,32 @@ def categorize_hardware(
     return CATEGORY_MISC
 
 
+def _match_known_extra_category(
+    value: str | None,
+    known_extra_categories: Iterable[str] | None,
+) -> str | None:
+    """Match value gegen eine Liste benutzerdefinierter (DB-)Kategorien.
+
+    Vergleicht case-insensitive und whitespace-normalisiert. Damit werden
+    Kategorien, die der User ueber das Kategorien-Modul angelegt hat, vom
+    Excel-Importer akzeptiert — nicht nur die hartcodierten Standards.
+    Gibt den Original-Casing-Namen aus der DB zurueck, damit Assets
+    konsistent mit dem Kategorien-Stammsatz angelegt werden.
+    """
+    if not value or not known_extra_categories:
+        return None
+    wanted = " ".join(str(value).strip().lower().split())
+    if not wanted:
+        return None
+    for candidate in known_extra_categories:
+        candidate_text = str(candidate or "").strip()
+        if not candidate_text:
+            continue
+        if " ".join(candidate_text.lower().split()) == wanted:
+            return candidate_text
+    return None
+
+
 def infer_category_with_source(
     *,
     explicit_category: str | None,
@@ -128,28 +154,44 @@ def infer_category_with_source(
     name: str | None,
     model: str | None,
     description: str | None,
+    known_extra_categories: Iterable[str] | None = None,
 ) -> tuple[str, str, str]:
     normalized_explicit = normalize_category_label(explicit_category)
     if normalized_explicit:
         return normalized_explicit, "category_column", (explicit_category or "").strip()
+    extra_match = _match_known_extra_category(explicit_category, known_extra_categories)
+    if extra_match:
+        return extra_match, "category_column", (explicit_category or "").strip()
     if explicit_category:
         return CATEGORY_MISC, "category_column", explicit_category.strip()
 
     normalized_header = normalize_category_label(header_category)
     if normalized_header:
         return normalized_header, "header", (header_category or "").strip()
+    extra_header = _match_known_extra_category(header_category, known_extra_categories)
+    if extra_header:
+        return extra_header, "header", (header_category or "").strip()
 
     normalized_sheet = normalize_category_label(sheet_name)
     if normalized_sheet:
         return normalized_sheet, "sheet_name", (sheet_name or "").strip()
+    extra_sheet = _match_known_extra_category(sheet_name, known_extra_categories)
+    if extra_sheet:
+        return extra_sheet, "sheet_name", (sheet_name or "").strip()
 
     normalized_file = normalize_category_label(file_name)
     if normalized_file:
         return normalized_file, "file_name", (file_name or "").strip()
+    extra_file = _match_known_extra_category(file_name, known_extra_categories)
+    if extra_file:
+        return extra_file, "file_name", (file_name or "").strip()
 
     normalized_title = normalize_category_label(title_hint)
     if normalized_title:
         return normalized_title, "title_row", (title_hint or "").strip()
+    extra_title = _match_known_extra_category(title_hint, known_extra_categories)
+    if extra_title:
+        return extra_title, "title_row", (title_hint or "").strip()
 
     category = categorize_hardware(
         file_name=file_name or "",
