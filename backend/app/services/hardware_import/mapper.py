@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from .categorizer import (
     CATEGORY_HANDHELDS,
@@ -19,7 +19,11 @@ from .types import HardwareImportMappedRow, ParsedExcelRow
 from .validator import clean_text, is_valid_ip, is_valid_mac
 
 
-def map_excel_row_to_asset(row: ParsedExcelRow) -> HardwareImportMappedRow:
+def map_excel_row_to_asset(
+    row: ParsedExcelRow,
+    *,
+    known_extra_categories: Iterable[str] | None = None,
+) -> HardwareImportMappedRow:
     raw_name = clean_text(row.data.get("name"))
     inventory_number = clean_text(row.data.get("inventory_number"))
     device_model = clean_text(row.data.get("model")) or None
@@ -43,6 +47,7 @@ def map_excel_row_to_asset(row: ParsedExcelRow) -> HardwareImportMappedRow:
         name=raw_name or inventory_number,
         model=device_model,
         description=description,
+        known_extra_categories=known_extra_categories,
     )
 
     ip_address = clean_text(row.data.get("ip_address")) or None
