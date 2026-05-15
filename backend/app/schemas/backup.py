@@ -54,6 +54,13 @@ class BackupAsset(BaseModel):
     returnDueDate: date | None = None
     returnedAt: date | None = None
     externalNote: str | None = None
+    # Planungsrelevante Flags. Beide optional mit Default True, damit ältere
+    # Backups OHNE diese Felder weiterhin importierbar bleiben und sich
+    # abwärtskompatibel verhalten (Gerät planbar / kartendrucker-kompatibel).
+    # Wichtig fuer reproduzierbare Restores: ohne Export fallen ausgeschlossene
+    # Geraete bzw. inkompatible Laptops nach einem Restore faelschlich auf True.
+    availableForPlanning: bool = True
+    cardPrinterCompatible: bool = True
 
 
 class BackupActivity(BaseModel):

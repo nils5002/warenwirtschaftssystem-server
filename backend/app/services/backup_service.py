@@ -109,6 +109,11 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "returnDueDate": item.return_due_date,
                     "returnedAt": item.returned_at,
                     "externalNote": item.external_note,
+                    # Planungsrelevante Flags mit ausgeben, damit Restores die
+                    # Verfügbarkeits-/Konfliktberechnung 1:1 reproduzieren und
+                    # nicht auf DB-Default True zurückfallen.
+                    "availableForPlanning": bool(item.available_for_planning),
+                    "cardPrinterCompatible": bool(item.card_printer_compatible),
                 }
                 for item in assets
             ],
@@ -275,6 +280,11 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     return_due_date=item.returnDueDate,
                     returned_at=item.returnedAt,
                     external_note=item.externalNote,
+                    # Planungsrelevante Flags beim Restore weitergeben. Der
+                    # BackupAsset-Default True greift bei alten Backups OHNE
+                    # diese Felder — sie bleiben damit importierbar.
+                    available_for_planning=bool(item.availableForPlanning),
+                    card_printer_compatible=bool(item.cardPrinterCompatible),
                 )
             )
 
