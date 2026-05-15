@@ -49,5 +49,8 @@ Thumbs.db
 Hardwarebestand/*.xlsx
 Hardwarebestand/*.xlsm
 Hardwareplannung/
+
+# Local-only backup files for restore/verify tests (never commit)
+.local-backups/
 .github
 actions-runner/
