@@ -35,6 +35,7 @@ def map_excel_row_to_asset(
     language = clean_text(row.data.get("language"))
 
     card_printer_compatible = _parse_optional_bool(row.data.get("card_printer_compatible"))
+    available_for_planning = _parse_optional_bool(row.data.get("available_for_planning"))
 
     explicit_category = clean_text(row.data.get("category"))
     category_from_header = clean_text(row.data.get("category_source"))
@@ -146,6 +147,10 @@ def map_excel_row_to_asset(
         # in der Excel-Spalte wird der Laptop für Projekte mit Kartendrucker
         # ausgeschlossen (z. B. MacBook Neo).
         "card_printer_compatible": True if card_printer_compatible is None else card_printer_compatible,
+        # Default True (= zählt normal in der Einsatzplanung). False = Asset
+        # bleibt im Inventar sichtbar, wird aber bei der Planungs-Verfügbarkeit
+        # komplett ignoriert (z. B. interne Server-Laptops).
+        "available_for_planning": True if available_for_planning is None else available_for_planning,
     }
     return HardwareImportMappedRow(
         file_name=row.file_name,

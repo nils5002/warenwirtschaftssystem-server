@@ -121,6 +121,9 @@ type AvailabilityVisual = {
   // wurden (z. B. Kartendrucker-inkompatible Laptops in Projekten mit
   // Kartendrucker-Bedarf). 0 für alle übrigen Kategorien.
   excludedQty: number;
+  // Anzahl Geräte, die GLOBAL aus der Einsatzplanung ausgeschlossen sind
+  // (availableForPlanning=false). 0 sonst.
+  excludedFromPlanningQty: number;
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -689,6 +692,7 @@ export function PlanningPage({
         handoverCoveredQty,
         handoverStatus: item.handoverStatus ?? 'none',
         excludedQty: Number(item.excludedQty ?? 0),
+        excludedFromPlanningQty: Number(item.excludedFromPlanningQty ?? 0),
       });
     }
 
@@ -2767,6 +2771,11 @@ export function PlanningPage({
                           {visual.excludedQty > 0 ? (
                             <p className="mt-2 rounded-lg border border-rose-300/60 bg-white/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-rose-800 dark:border-rose-700/70 dark:bg-rose-950/40 dark:text-rose-100">
                               <span className="font-semibold">Hinweis:</span> {visual.excludedQty} {visual.categoryKey === 'Laptop' ? 'Laptop(s)' : 'Gerät(e)'} wurden ausgeschlossen, weil im Projekt mindestens 1 Kartendrucker geplant ist (z. B. MacBook Neo).
+                            </p>
+                          ) : null}
+                          {visual.excludedFromPlanningQty > 0 ? (
+                            <p className="mt-2 rounded-lg border border-slate-300/70 bg-white/70 px-2.5 py-1.5 text-[12px] leading-relaxed text-slate-700 dark:border-slate-600/70 dark:bg-slate-900/50 dark:text-slate-200">
+                              <span className="font-semibold">Hinweis:</span> {visual.excludedFromPlanningQty} {visual.categoryKey === 'Laptop' ? 'Laptop(s)' : 'Gerät(e)'} sind global aus der Einsatzplanung ausgeschlossen (z. B. interne Server-Laptops). Sie bleiben im Inventar nutzbar.
                             </p>
                           ) : null}
                           <details className="mt-2">

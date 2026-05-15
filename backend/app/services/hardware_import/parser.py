@@ -75,6 +75,16 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
         "card printer compatible",
         "cardprintercompatible",
     ),
+    "available_for_planning": (
+        "in einsatzplanung verwenden",
+        "einsatzplanung",
+        "planbar",
+        "fuer einsatzplanung",
+        "für einsatzplanung",
+        "available for planning",
+        "use in planning",
+        "availableforplanning",
+    ),
 }
 
 
