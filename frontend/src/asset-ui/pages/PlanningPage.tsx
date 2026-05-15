@@ -83,6 +83,14 @@ type HandoverNetworkAccent = {
 
 type HandoverVisualStatus = 'ok' | 'handover' | 'review' | 'open';
 
+// Differenziert den visuellen 'review'-Status nach Ursache, damit der UI-Text
+// die tatsächliche Handlungsempfehlung trifft statt pauschal
+// "Projektverknüpfung prüfen" zu zeigen:
+// - 'incomplete_link': Übergabe aktiv, aber noch kein Partnerprojekt verknüpft.
+// - 'missing_link'   : verlinktes Partnerprojekt existiert nicht mehr.
+// - 'low_reserve'    : Bestand knapp (availabilityState 'yellow'), kein Link-Problem.
+type ReviewReason = 'incomplete_link' | 'missing_link' | 'low_reserve';
+
 type IncomingHandoverInfo = {
   partnerPlanningId: string;
   partnerLabel: string;
@@ -95,6 +103,9 @@ type AvailabilityVisual = {
   weekday: string;
   categoryKey: string;
   status: HandoverVisualStatus;
+  // Ursache für status === 'review'; null sonst. Treibt die differenzierten
+  // Review-Texte (Link-Problem vs. knapper Bestand).
+  reviewReason: ReviewReason | null;
   source: 'outgoing' | 'incoming' | 'none';
   partnerPlanningId: string;
   partnerLabel: string;
@@ -216,6 +227,26 @@ function buildPlanningLabel(planning: Pick<PlanningSummary, 'projectName' | 'eve
   const datePart = planning.startDate ? ` – ${formatGermanDate(planning.startDate)}` : '';
   if (planning.eventName?.trim()) return `${planning.projectName} (${planning.eventName})${datePart}`;
   return `${planning.projectName}${datePart}`;
+}
+
+// Zentralisiert die Texte für status === 'review', damit Badge-Card,
+// Detail-Card und Übergaben-Übersicht nicht auseinanderlaufen.
+function reviewBadgeLabel(reason: ReviewReason | null): string {
+  return reason === 'low_reserve' ? 'Bestand knapp' : 'Prüfung nötig';
+}
+
+function reviewShortText(reason: ReviewReason | null): string {
+  return reason === 'low_reserve' ? 'Bestand knapp' : 'Projektverknüpfung prüfen';
+}
+
+function reviewDetailText(reason: ReviewReason | null): string {
+  if (reason === 'low_reserve') {
+    return 'Der Bestand ist für diesen Tag knapp — es ist noch genug verfügbar, aber wenig Reserve. Keine Verknüpfung nötig, nur im Blick behalten.';
+  }
+  if (reason === 'missing_link') {
+    return 'Verknüpfte Planung nicht gefunden — das verlinkte Partnerprojekt existiert nicht mehr. Bitte Verknüpfung lösen oder neu auswählen.';
+  }
+  return 'Eine Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.';
 }
 
 function getPeriodEndExclusiveIso(startDate: string, endDate: string): string {
@@ -644,19 +675,32 @@ export function PlanningPage({
       const hasResolvedShortage = hasGlobalShortage && resolvedByHandover;
 
       let status: HandoverVisualStatus = 'ok';
+      let reviewReason: ReviewReason | null = null;
       let source: AvailabilityVisual['source'] = 'none';
       let partnerPlanningId = '';
       let partnerLabel = '';
       let note = '';
 
+      const hasMissingLink = (item.handoverStatus ?? 'none') === 'missing_link';
+
+      // Präzedenz: handover > incomplete_link > open (echter Engpass) >
+      // missing_link > low_reserve. Ein missing_link-Item mit echtem Engpass
+      // bleibt 'open' (Engpass-Anzeige unverändert), wird nicht herabgestuft.
+      // Der missing_link-Zweig ist unabhängig von availabilityState, damit ein
+      // kaputter Link auch bei grünem Bestand sichtbar wird (vorher 'ok').
       if (hasResolvedShortage) {
         status = 'handover';
       } else if (hasGlobalShortage && effectiveHandoverEnabled && !effectiveLinkedPlanningId) {
         status = 'review';
+        reviewReason = 'incomplete_link';
       } else if (hasOpenShortage) {
         status = 'open';
+      } else if (hasMissingLink) {
+        status = 'review';
+        reviewReason = 'missing_link';
       } else if (item.availabilityState === 'yellow') {
         status = 'review';
+        reviewReason = 'low_reserve';
       }
 
       if (effectiveHandoverEnabled && effectiveLinkedPlanningId) {
@@ -679,6 +723,7 @@ export function PlanningPage({
         weekday: item.weekday,
         categoryKey: item.categoryKey,
         status,
+        reviewReason,
         source,
         partnerPlanningId,
         partnerLabel,
@@ -2169,7 +2214,7 @@ export function PlanningPage({
                                           {visual.status === 'handover'
                                             ? 'Übergabe-Verbund'
                                             : visual.status === 'review'
-                                              ? 'Prüfung nötig'
+                                              ? reviewBadgeLabel(visual.reviewReason)
                                               : visual.status === 'open'
                                                 ? 'Offen'
                                                 : 'Verfügbar'}
@@ -2182,7 +2227,7 @@ export function PlanningPage({
                                         {visual.status === 'handover'
                                           ? `${visual.categoryKey} · ${visual.shortageQty} Stück abgestimmt`
                                           : visual.status === 'review'
-                                            ? `${visual.categoryKey} · Projektverknüpfung prüfen`
+                                            ? `${visual.categoryKey} · ${reviewShortText(visual.reviewReason)}`
                                             : visual.status === 'open'
                                               ? `${visual.categoryKey} · ${visual.shortageQty} Stück offen`
                                               : 'Kein offener Handlungsbedarf'}
@@ -2432,15 +2477,13 @@ export function PlanningPage({
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold">Prüfung nötig</p>
+                                          <p className="text-sm font-semibold">{reviewBadgeLabel(visual.reviewReason)}</p>
                                           <span className="rounded-full border border-orange-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-orange-700 dark:border-orange-700 dark:bg-slate-950/40 dark:text-orange-100">
-                                            Verknüpfung offen
+                                            {visual.reviewReason === 'low_reserve' ? 'Wenig Reserve' : 'Verknüpfung offen'}
                                           </span>
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed">
-                                          {visual.handoverStatus === 'missing_link' && visual.linkedPlanningId
-                                            ? 'Verknüpfte Planung nicht gefunden — das verlinkte Partnerprojekt existiert nicht mehr. Bitte Verknüpfung lösen oder neu auswählen.'
-                                            : 'Eine Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.'}
+                                          {reviewDetailText(visual.reviewReason)}
                                         </p>
                                         {visual.note ? <p className="mt-2 text-[11px]">Hinweis: {visual.note}</p> : null}
                                         <details className="mt-3">
@@ -2455,15 +2498,17 @@ export function PlanningPage({
                                             <p>Rest nach Gesamtplanung: {visual.remainingAfterAllPlanning}</p>
                                           </div>
                                         </details>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                          <button
-                                            type="button"
-                                            className="btn-secondary px-2.5 py-1.5 text-xs"
-                                            onClick={() => openHandoverEditor(dayIndex, itemIndex)}
-                                          >
-                                            Projekt auswählen
-                                          </button>
-                                        </div>
+                                        {visual.reviewReason !== 'low_reserve' ? (
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                              type="button"
+                                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                                              onClick={() => openHandoverEditor(dayIndex, itemIndex)}
+                                            >
+                                              Projekt auswählen
+                                            </button>
+                                          </div>
+                                        ) : null}
                                       </div>
                                     </div>
                                   </div>
@@ -2616,7 +2661,7 @@ export function PlanningPage({
                   </span>
                   <span className="status-chip border-orange-200 bg-orange-50 text-orange-700">
                     <Clock3 className="h-3.5 w-3.5" />
-                    Gelb = Prüfung nötig
+                    Gelb = Prüfung nötig oder Bestand knapp
                   </span>
                   <span className="status-chip border-rose-200 bg-rose-50 text-rose-700">
                     <AlertTriangle className="h-3.5 w-3.5" />
@@ -2649,7 +2694,9 @@ export function PlanningPage({
                         >
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold">
-                              {visual.status === 'review' ? 'Prüfung nötig' : 'Übergabe-Verbund aktiv'}
+                              {visual.status === 'review'
+                                ? reviewBadgeLabel(visual.reviewReason)
+                                : 'Übergabe-Verbund aktiv'}
                             </p>
                             <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
                               {visual.categoryKey}
@@ -2660,7 +2707,7 @@ export function PlanningPage({
                           </p>
                           <p className="mt-2 leading-relaxed text-slate-600 dark:text-slate-300">
                             {visual.status === 'review'
-                              ? 'Die Übergabe ist vorgemerkt, aber das Partnerprojekt fehlt noch. Bitte kurz prüfen.'
+                              ? reviewDetailText(visual.reviewReason)
                               : visual.source === 'incoming'
                                 ? `Dieses Projekt ist über ${visual.partnerLabel || 'ein Partnerprojekt'} bereits eingebunden. Kein offener Handlungsbedarf.`
                                 : `Diese Menge ist über eine geplante Übergabe mit ${visual.partnerLabel || 'einem Partnerprojekt'} berücksichtigt.`}
@@ -2702,13 +2749,15 @@ export function PlanningPage({
                           </details>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {visual.status === 'review' ? (
-                              <button
-                                type="button"
-                                className="btn-secondary px-2.5 py-1.5 text-xs"
-                                onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
-                              >
-                                Projekt auswählen
-                              </button>
+                              visual.reviewReason === 'low_reserve' ? null : (
+                                <button
+                                  type="button"
+                                  className="btn-secondary px-2.5 py-1.5 text-xs"
+                                  onClick={() => openHandoverEditorByKey(visual.planningDate, visual.categoryKey)}
+                                >
+                                  Projekt auswählen
+                                </button>
+                              )
                             ) : visual.source === 'incoming' ? (
                               <>
                               <button
