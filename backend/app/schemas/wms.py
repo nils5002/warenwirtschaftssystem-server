@@ -67,6 +67,10 @@ class AssetItem(BaseModel):
     # Nur in der Planungs-Verfügbarkeit relevant, wenn Kategorie "Laptop"
     # und mindestens 1 Kartendrucker im Projekt geplant ist.
     cardPrinterCompatible: bool = True
+    # Globaler Planungs-Ausschluss. Default True (= zählt normal). False =
+    # Asset bleibt im Inventar voll nutzbar, wird aber in der Planungs-
+    # Verfügbarkeit komplett ignoriert (z. B. interne Server-Laptops).
+    availableForPlanning: bool = True
 
 
 class ExternalPoolCreatePayload(BaseModel):

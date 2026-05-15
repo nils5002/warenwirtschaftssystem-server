@@ -262,6 +262,9 @@ export type PlanningAvailabilityItem = {
   // Anzahl Geräte, die für diese Bedarfszeile vom Bestand ausgeschlossen
   // wurden (z. B. Kartendrucker-inkompatible Laptops). 0 sonst.
   excludedQty?: number;
+  // Anzahl Geräte, die GLOBAL aus der Einsatzplanung ausgeschlossen sind
+  // (availableForPlanning=false, z. B. interne Server-Laptops). 0 sonst.
+  excludedFromPlanningQty?: number;
 };
 
 export type PlanningAvailabilityCategorySummary = {
@@ -271,6 +274,7 @@ export type PlanningAvailabilityCategorySummary = {
   totalStock: number;
   usableStock: number;
   excludedFromUsable?: number;
+  excludedFromPlanningTotal?: number;
 };
 
 export type PlanningAvailabilityResponse = {

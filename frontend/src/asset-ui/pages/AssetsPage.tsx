@@ -169,6 +169,7 @@ export function AssetsPage({
     location: 'Hauptlager',
     notes: '',
     cardPrinterCompatible: true,
+    availableForPlanning: true,
   });
 
   const categories = ['Alle Kategorien', ...new Set(assets.map((asset) => asset.category))];
@@ -429,6 +430,19 @@ export function AssetsPage({
     }
   };
 
+  const applyAdminAvailableForPlanning = async (next: boolean) => {
+    if (!adminActionAsset) return;
+    setAdminActionBusy(true);
+    setAdminActionError(null);
+    try {
+      await onAdminUpdateAsset(adminActionAsset.id, { availableForPlanning: next });
+    } catch {
+      setAdminActionError('Planungs-Einstellung konnte nicht gespeichert werden.');
+    } finally {
+      setAdminActionBusy(false);
+    }
+  };
+
   const applyAdminStatus = async () => {
     if (!adminActionAsset || !adminActionForm) return;
     setAdminActionBusy(true);
@@ -602,6 +616,9 @@ export function AssetsPage({
       // damit z. B. 7 MacBook Neo in Folge nicht jedes Mal neu deaktiviert
       // werden müssen.
       cardPrinterCompatible: current.cardPrinterCompatible,
+      // Globaler Planungs-Ausschluss bleibt ebenfalls erhalten — z. B. wenn
+      // mehrere Server-Laptops in Folge erfasst werden.
+      availableForPlanning: current.availableForPlanning,
     }));
     window.setTimeout(() => {
       serialRef.current?.focus();
@@ -650,6 +667,7 @@ export function AssetsPage({
         // Nur für Laptop fachlich relevant; für andere Kategorien ist der
         // Default-true-Wert bedeutungslos und wird nie ausgewertet.
         cardPrinterCompatible: form.category.trim() === 'Laptop' ? form.cardPrinterCompatible : true,
+        availableForPlanning: form.availableForPlanning,
       });
       setCreatedAsset(created);
       if (saveAndNext) {
@@ -901,6 +919,14 @@ export function AssetsPage({
                               : 'Extern'}
                         </span>
                       ) : null}
+                      {asset.availableForPlanning === false ? (
+                        <span
+                          className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
+                        >
+                          Nicht planbar
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-3 py-3">
@@ -994,7 +1020,17 @@ export function AssetsPage({
             <article key={asset.id} className="surface-muted p-3">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-900">{asset.name}</h4>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <h4 className="text-sm font-semibold text-slate-900">{asset.name}</h4>
+                    {asset.availableForPlanning === false ? (
+                      <span
+                        className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
+                        title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
+                      >
+                        Nicht planbar
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-xs text-slate-500 break-words">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
@@ -1146,6 +1182,26 @@ export function AssetsPage({
                     </label>
                   </div>
                 ) : null}
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="text-sm font-semibold text-slate-900">Planung</h4>
+                  <label className="mt-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                      checked={adminActionAsset.availableForPlanning !== false}
+                      disabled={adminActionBusy}
+                      onChange={(event) => void applyAdminAvailableForPlanning(event.target.checked)}
+                    />
+                    <span className="leading-snug">
+                      <span className="font-semibold text-slate-900">In Einsatzplanung verwenden</span>
+                      <br />
+                      Dieses Gerät bleibt im Inventar sichtbar und nutzbar (Checkout/Scan funktionieren), zählt aber
+                      nicht als verfügbarer Bestand in der Einsatzplanung. Deaktivieren z. B. für interne
+                      Server-Laptops. Änderungen werden sofort gespeichert.
+                    </span>
+                  </label>
+                </div>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <h4 className="text-sm font-semibold text-slate-900">Zuordnung & Korrektur</h4>
@@ -1491,6 +1547,27 @@ export function AssetsPage({
                         </span>
                       </label>
                     ) : null}
+                    <label className="mt-1 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        checked={form.availableForPlanning}
+                        onChange={(event) =>
+                          setForm((current) => ({ ...current, availableForPlanning: event.target.checked }))
+                        }
+                      />
+                      <span className="leading-snug">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">
+                          In Einsatzplanung verwenden
+                        </span>
+                        <span className="ml-1 text-slate-500 dark:text-slate-400">
+                          (Standard: aktiv)
+                        </span>
+                        <br />
+                        Dieses Gerät bleibt im Inventar sichtbar, zählt aber nicht als verfügbarer Bestand in der
+                        Einsatzplanung. Deaktivieren z. B. für interne Server-Laptops.
+                      </span>
+                    </label>
                   </div>
                 </div>
 

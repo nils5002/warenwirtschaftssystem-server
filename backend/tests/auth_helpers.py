@@ -82,6 +82,7 @@ def _ensure_test_schema_compat() -> None:
             ("returned_at", "DATE"),
             ("external_note", "TEXT"),
             ("card_printer_compatible", "BOOLEAN NOT NULL DEFAULT 1"),
+            ("available_for_planning", "BOOLEAN NOT NULL DEFAULT 1"),
         ]
         for column_name, definition in new_asset_columns:
             if column_name not in asset_columns:

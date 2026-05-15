@@ -290,6 +290,10 @@ def get_open_conflict_summaries_for_plannings(
         category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_seen:
             continue
+        # Globaler Planungs-Ausschluss: nicht-planbare Geräte zählen weder
+        # in stock_usable_by_day noch in stock_usable_compat_laptops_by_day.
+        if not bool(getattr(asset, "available_for_planning", True)):
+            continue
         is_compatible_laptop = category == "Laptop" and bool(
             getattr(asset, "card_printer_compatible", True)
         )
@@ -909,16 +913,30 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     # Tag mitgeführt, damit der UI-Hinweis genau so groß ist wie die
     # tatsächliche Reduktion an einem Tag mit Bedarf.
     excluded_by_day: dict[tuple[date, str], int] = defaultdict(int)
+    # Geräte, die global aus der Einsatzplanung ausgeschlossen sind
+    # (available_for_planning=False) — diese tauchen weder in stock_totals
+    # noch in stock_usable_by_day auf, werden aber separat gezählt, damit
+    # die UI einen Hinweis "X Geräte aus Einsatzplanung ausgeschlossen"
+    # anzeigen kann.
+    excluded_from_planning_by_day: dict[tuple[date, str], int] = defaultdict(int)
     categories_set = set(categories)
     card_printer_required = "Kartendrucker" in categories_set
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_set:
             continue
+        # SCHRITT 1 (global): nicht-planbare Geräte komplett aus dem
+        # Planungs-Universum entfernen. Sie erscheinen nicht in totalStock,
+        # nicht in usableStock, und triggern auch keine weitere Folgelogik.
+        if not bool(getattr(asset, "available_for_planning", True)):
+            for bound_date in bound_dates:
+                if _is_asset_usable_on_date(asset, bound_date):
+                    excluded_from_planning_by_day[(bound_date, category)] += 1
+            continue
         stock_totals[category] += 1
-        # Laptop ohne Kartendrucker-Kompatibilität in einer Planung mit
-        # Kartendrucker → vom nutzbaren Bestand ausschließen, in
-        # excluded_by_day zählen.
+        # SCHRITT 2 (spezial): Laptop ohne Kartendrucker-Kompatibilität in
+        # einer Planung mit Kartendrucker → vom nutzbaren Bestand ausschließen,
+        # in excluded_by_day zählen.
         is_excluded_laptop = (
             card_printer_required
             and category == "Laptop"
@@ -1179,6 +1197,9 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 handoverCoveredQty=handover_covered_qty,
                 shortageAfterHandoverQty=shortage_after_handover_qty,
                 excludedQty=excluded_by_day.get((planning_date, category), 0),
+                excludedFromPlanningQty=excluded_from_planning_by_day.get(
+                    (planning_date, category), 0
+                ),
             )
         )
         summary_requested[category] += requested_qty
@@ -1191,6 +1212,10 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     for (bound_date, category), qty in excluded_by_day.items():
         if qty > summary_excluded[category]:
             summary_excluded[category] = qty
+    summary_excluded_from_planning: dict[str, int] = defaultdict(int)
+    for (bound_date, category), qty in excluded_from_planning_by_day.items():
+        if qty > summary_excluded_from_planning[category]:
+            summary_excluded_from_planning[category] = qty
 
     category_summary = [
         PlanningAvailabilityCategorySummary(
@@ -1200,6 +1225,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             totalStock=stock_map.get(category, (0, 0))[0],
             usableStock=stock_map.get(category, (0, 0))[1],
             excludedFromUsable=summary_excluded.get(category, 0),
+            excludedFromPlanningTotal=summary_excluded_from_planning.get(category, 0),
         )
         for category in sorted(summary_requested)
     ]

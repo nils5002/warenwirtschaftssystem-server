@@ -72,6 +72,16 @@ class AssetRecord(TimestampMixin, Base):
         Boolean, nullable=False, default=True
     )
 
+    # Globaler Planungs-Ausschluss. Default True = Asset zählt normal in der
+    # Einsatzplanung. False = Asset bleibt im Inventar voll sichtbar/bearbeitbar
+    # (Checkout/Scan/Detail unverändert), wird aber in der Planungs-
+    # Verfügbarkeitsberechnung komplett übersprungen — weder in totalStock noch
+    # in usableStock noch in der Konfliktbatchlogik. Beispielanwendung:
+    # interne Server-Laptops, die nie für Projekte eingeplant werden dürfen.
+    available_for_planning: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"

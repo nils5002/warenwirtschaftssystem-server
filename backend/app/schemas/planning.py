@@ -148,6 +148,11 @@ class PlanningAvailabilityItem(BaseModel):
     # Kartendrucker). Ist 0 für alle Kategorien/Projekte, die keine
     # Inkompatibilität triggern — Frontend kann das Feld optional ignorieren.
     excludedQty: int = 0
+    # Anzahl Geräte, die GLOBAL aus der Einsatzplanung ausgeschlossen sind
+    # (available_for_planning=False, z. B. interne Server-Laptops). Wird VOR
+    # dem Kartendrucker-Filter berechnet — das heißt, ein global
+    # ausgeschlossenes Gerät zählt nie auch noch zusätzlich in excludedQty.
+    excludedFromPlanningQty: int = 0
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):
@@ -159,6 +164,9 @@ class PlanningAvailabilityCategorySummary(BaseModel):
     # Repräsentativwert (Maximum über alle Tage) der für diese Bedarfszeile
     # ausgeschlossenen Geräte. Default 0 = keine Einschränkung.
     excludedFromUsable: int = 0
+    # Repräsentativwert (Maximum über alle Tage) der global aus der Planung
+    # ausgeschlossenen Geräte dieser Kategorie.
+    excludedFromPlanningTotal: int = 0
 
 
 class PlanningAvailabilityResponse(BaseModel):

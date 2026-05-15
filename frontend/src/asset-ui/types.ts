@@ -82,6 +82,10 @@ export type Asset = {
   // Planung mindestens einen Kartendrucker fordert: inkompatible Laptops
   // (z. B. MacBook Neo) werden dann vom nutzbaren Bestand ausgeschlossen.
   cardPrinterCompatible?: boolean;
+  // Default true. False = Asset bleibt im Inventar sichtbar/bearbeitbar,
+  // wird aber in der Einsatzplanung komplett ignoriert (z. B. interne
+  // Server-Laptops). Greift global VOR der Kartendrucker-Logik.
+  availableForPlanning?: boolean;
 };
 
 export type ActivityItem = {
