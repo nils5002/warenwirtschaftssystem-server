@@ -75,6 +75,27 @@ export function AssetDetailPage({
           <p className="mt-1 text-sm text-slate-500">
             Inventarnummer {asset.tagNumber} • Seriennummer {asset.serialNumber}
           </p>
+          {(asset.availableForPlanning === false ||
+            (asset.category === 'Laptop' && asset.cardPrinterCompatible === false)) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {asset.availableForPlanning === false ? (
+                <span
+                  className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                  title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
+                >
+                  Nicht planbar
+                </span>
+              ) : null}
+              {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
+                <span
+                  className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-200"
+                  title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
+                >
+                  Nicht kartendrucker-kompatibel
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
           <button
