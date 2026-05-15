@@ -1369,7 +1369,7 @@ export function AssetsPage({
                         }}
                       >
                         {categoryOptions.map((item) => (
-                          <option key={item} value={item} />
+                          <option key={item} value={item}>{item}</option>
                         ))}
                       </select>
                     </label>
