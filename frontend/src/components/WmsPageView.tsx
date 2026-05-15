@@ -58,6 +58,9 @@ type WmsPageViewProps = {
     tagNumber?: string;
     location?: string;
     notes?: string;
+    // Planungsrelevante Asset-Flags (analog CreateAssetInput im Controller).
+    cardPrinterCompatible?: boolean;
+    availableForPlanning?: boolean;
   }) => Promise<Asset>;
   onReserveAsset: (assetId: string) => Promise<void>;
   onCheckoutAsset: (assetId: string) => Promise<void>;

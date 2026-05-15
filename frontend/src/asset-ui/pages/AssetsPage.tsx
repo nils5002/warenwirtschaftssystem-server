@@ -34,6 +34,9 @@ type AssetsPageProps = {
     tagNumber?: string;
     location?: string;
     notes?: string;
+    // Planungsrelevante Asset-Flags (analog CreateAssetInput im Controller).
+    cardPrinterCompatible?: boolean;
+    availableForPlanning?: boolean;
   }) => Promise<Asset>;
   onReserveAsset: (assetId: string) => void;
   onCheckoutAsset: (assetId: string) => void;
