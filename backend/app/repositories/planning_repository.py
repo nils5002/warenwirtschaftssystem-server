@@ -281,13 +281,23 @@ def get_open_conflict_summaries_for_plannings(
         for bound_date in _iter_bound_dates(record.start_date, record.end_date):
             bound_dates_for_active_plannings.add(bound_date)
     stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
+    # Zusätzlicher Counter: Laptops mit card_printer_compatible == True. Wird
+    # später für Planungen verwendet, die Kartendrucker fordern, damit
+    # inkompatible Laptops (z. B. MacBook Neo) für diese Planung nicht
+    # mitgezählt werden.
+    stock_usable_compat_laptops_by_day: dict[date, int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_seen:
             continue
+        is_compatible_laptop = category == "Laptop" and bool(
+            getattr(asset, "card_printer_compatible", True)
+        )
         for bound_date in bound_dates_for_active_plannings:
             if _is_asset_usable_on_date(asset, bound_date):
                 stock_usable_by_day[(bound_date, category)] += 1
+                if is_compatible_laptop:
+                    stock_usable_compat_laptops_by_day[bound_date] += 1
 
     # Effektive Tagesmenge je (Planung, Datum, Kategorie). Spiegelt die
     # gleiche Logik wie ``get_planning_availability`` wider: explizite
@@ -312,6 +322,17 @@ def get_open_conflict_summaries_for_plannings(
     for (ext_id, bound_date, category), qty in effective_qty.items():
         total_demand[(bound_date, category)] += qty
 
+    # Planungen, in denen mindestens ein Kartendrucker geplant ist. Für deren
+    # Laptop-Bedarf gilt: nur Kartendrucker-kompatible Laptops zählen als
+    # nutzbarer Bestand. Ist eine konservative Approximation in Cross-Planning-
+    # Szenarien (überschätzt ggf. die Fehlmenge minimal), aber unter-meldet
+    # nie einen echten Konflikt — fachlich der sichere Default.
+    card_printer_plannings: set[str] = {
+        ext_id
+        for ext_id, cats in planning_categories.items()
+        if "Kartendrucker" in cats
+    }
+
     counts: dict[str, int] = {ext_id: 0 for ext_id in target_external_ids}
     # Pro (planning, category) speichern wir die Tages-Auswertung mit der
     # höchsten verbleibenden Fehlmenge (shortage_after_handover_qty). Diese
@@ -323,7 +344,10 @@ def get_open_conflict_summaries_for_plannings(
     for (ext_id, bound_date, category), this_qty in effective_qty.items():
         if ext_id not in target_external_ids:
             continue
-        usable = stock_usable_by_day.get((bound_date, category), 0)
+        if category == "Laptop" and ext_id in card_printer_plannings:
+            usable = stock_usable_compat_laptops_by_day.get(bound_date, 0)
+        else:
+            usable = stock_usable_by_day.get((bound_date, category), 0)
         total_qty = total_demand.get((bound_date, category), 0)
         shortage_qty = max(0, total_qty - usable)
         if shortage_qty <= 0:
@@ -880,15 +904,32 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     # _is_asset_usable_on_date für ownership_type='owned' immer True liefert.
     stock_totals: dict[str, int] = defaultdict(int)
     stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
+    # Geräte, die wegen Kartendrucker-Inkompatibilität für DIESE Planung
+    # vom Bestand ausgeschlossen wurden (nur Kategorie "Laptop"). Wird per
+    # Tag mitgeführt, damit der UI-Hinweis genau so groß ist wie die
+    # tatsächliche Reduktion an einem Tag mit Bedarf.
+    excluded_by_day: dict[tuple[date, str], int] = defaultdict(int)
     categories_set = set(categories)
+    card_printer_required = "Kartendrucker" in categories_set
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_set:
             continue
         stock_totals[category] += 1
+        # Laptop ohne Kartendrucker-Kompatibilität in einer Planung mit
+        # Kartendrucker → vom nutzbaren Bestand ausschließen, in
+        # excluded_by_day zählen.
+        is_excluded_laptop = (
+            card_printer_required
+            and category == "Laptop"
+            and not bool(getattr(asset, "card_printer_compatible", True))
+        )
         for bound_date in bound_dates:
             if _is_asset_usable_on_date(asset, bound_date):
-                stock_usable_by_day[(bound_date, category)] += 1
+                if is_excluded_laptop:
+                    excluded_by_day[(bound_date, category)] += 1
+                else:
+                    stock_usable_by_day[(bound_date, category)] += 1
     # Repräsentativer Wert für categorySummary: Verfügbarkeit am Start des
     # Planungszeitraums (deckt 99 % der Praxisfälle korrekt ab und entspricht
     # der bisherigen "ein Wert pro Kategorie"-Semantik).
@@ -1137,10 +1178,19 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 handoverStatus=handover_status,
                 handoverCoveredQty=handover_covered_qty,
                 shortageAfterHandoverQty=shortage_after_handover_qty,
+                excludedQty=excluded_by_day.get((planning_date, category), 0),
             )
         )
         summary_requested[category] += requested_qty
         summary_max_per_day[category] = max(summary_max_per_day[category], requested_qty)
+
+    # Repräsentativer Wert für die Übersicht: das Maximum über alle Tage,
+    # damit der Hinweis im UI auch dann sichtbar wird, wenn an einzelnen
+    # Tagen kein Bedarf bestand.
+    summary_excluded: dict[str, int] = defaultdict(int)
+    for (bound_date, category), qty in excluded_by_day.items():
+        if qty > summary_excluded[category]:
+            summary_excluded[category] = qty
 
     category_summary = [
         PlanningAvailabilityCategorySummary(
@@ -1149,6 +1199,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             maxRequestedPerDay=summary_max_per_day[category],
             totalStock=stock_map.get(category, (0, 0))[0],
             usableStock=stock_map.get(category, (0, 0))[1],
+            excludedFromUsable=summary_excluded.get(category, 0),
         )
         for category in sorted(summary_requested)
     ]

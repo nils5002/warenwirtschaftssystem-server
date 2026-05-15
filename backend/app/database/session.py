@@ -110,6 +110,7 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("assets", "return_due_date", "DATE"),
     ("assets", "returned_at", "DATE"),
     ("assets", "external_note", "TEXT"),
+    ("assets", "card_printer_compatible", "BOOLEAN NOT NULL DEFAULT 1"),
 )
 
 

@@ -117,6 +117,10 @@ type AvailabilityVisual = {
   // einen Konflikt entschärfen kann (planned) oder rein dokumentarisch
   // ist (organizational, z. B. Südwestfalen → PSD HT ohne Datums-Überlapp).
   handoverStatus: 'none' | 'planned' | 'missing_link' | 'organizational';
+  // Anzahl Geräte, die für diese Bedarfszeile vom Bestand ausgeschlossen
+  // wurden (z. B. Kartendrucker-inkompatible Laptops in Projekten mit
+  // Kartendrucker-Bedarf). 0 für alle übrigen Kategorien.
+  excludedQty: number;
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -684,6 +688,7 @@ export function PlanningPage({
         linkedPlanningLabel: effectiveLinkedPlanningLabel,
         handoverCoveredQty,
         handoverStatus: item.handoverStatus ?? 'none',
+        excludedQty: Number(item.excludedQty ?? 0),
       });
     }
 
@@ -2759,6 +2764,11 @@ export function PlanningPage({
                           <p className="mt-2 leading-relaxed text-rose-800 dark:text-rose-100">
                             Für diese Kategorie reicht der Bestand trotz aktueller Planung nicht aus. Hier besteht offener Handlungsbedarf.
                           </p>
+                          {visual.excludedQty > 0 ? (
+                            <p className="mt-2 rounded-lg border border-rose-300/60 bg-white/60 px-2.5 py-1.5 text-[12px] leading-relaxed text-rose-800 dark:border-rose-700/70 dark:bg-rose-950/40 dark:text-rose-100">
+                              <span className="font-semibold">Hinweis:</span> {visual.excludedQty} {visual.categoryKey === 'Laptop' ? 'Laptop(s)' : 'Gerät(e)'} wurden ausgeschlossen, weil im Projekt mindestens 1 Kartendrucker geplant ist (z. B. MacBook Neo).
+                            </p>
+                          ) : null}
                           <details className="mt-2">
                             <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
                               Details anzeigen

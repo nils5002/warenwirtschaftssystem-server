@@ -70,6 +70,7 @@ type CreateAssetInput = {
   tagNumber?: string;
   location?: string;
   notes?: string;
+  cardPrinterCompatible?: boolean;
 };
 type UserUpsertInput = {
   id?: string;
@@ -608,6 +609,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       notes: metaParts.join('\n'),
       lastCheckout: '-',
       nextReservation: '-',
+      cardPrinterCompatible: input.cardPrinterCompatible ?? true,
     };
 
     const normalizedAsset = { ...newAsset, qrCode: getAssetQrCode(newAsset) };
