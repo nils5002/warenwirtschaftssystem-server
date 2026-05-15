@@ -34,6 +34,8 @@ def map_excel_row_to_asset(
     power_supply = clean_text(row.data.get("power_supply"))
     language = clean_text(row.data.get("language"))
 
+    card_printer_compatible = _parse_optional_bool(row.data.get("card_printer_compatible"))
+
     explicit_category = clean_text(row.data.get("category"))
     category_from_header = clean_text(row.data.get("category_source"))
     sheet_name = clean_text(row.data.get("_sheet_name")) or row.sheet_name
@@ -140,6 +142,10 @@ def map_excel_row_to_asset(
         "last_checkout": "-",
         "next_reservation": "-",
         "source_file": row.file_name,
+        # Default True (= keine Einschränkung). Nur bei explizit "nein"/"false"
+        # in der Excel-Spalte wird der Laptop für Projekte mit Kartendrucker
+        # ausgeschlossen (z. B. MacBook Neo).
+        "card_printer_compatible": True if card_printer_compatible is None else card_printer_compatible,
     }
     return HardwareImportMappedRow(
         file_name=row.file_name,
@@ -290,3 +296,23 @@ def infer_location(file_name: str) -> str:
 
 def _prefers_wlan_mac(category: str) -> bool:
     return category in {CATEGORY_IPADS, "Smartphone", CATEGORY_HANDHELDS}
+
+
+_TRUTHY_BOOL_TOKENS = {"ja", "yes", "true", "wahr", "x", "1", "kompatibel", "compatible"}
+_FALSY_BOOL_TOKENS = {"nein", "no", "false", "falsch", "0", "inkompatibel", "incompatible"}
+
+
+def _parse_optional_bool(value: Any) -> bool | None:
+    """Liest einen optionalen Bool-Wert aus einer Excel-Zelle.
+
+    Leere/unbekannte Werte → ``None`` (= "nicht gesetzt", Aufrufer entscheidet
+    über den Default). Vermeidet stilles Ja/Nein bei Tippfehlern.
+    """
+    text = clean_text(value).strip().lower()
+    if not text:
+        return None
+    if text in _TRUTHY_BOOL_TOKENS:
+        return True
+    if text in _FALSY_BOOL_TOKENS:
+        return False
+    return None

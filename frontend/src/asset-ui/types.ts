@@ -78,6 +78,10 @@ export type Asset = {
   returnDueDate?: string | null;
   returnedAt?: string | null;
   externalNote?: string | null;
+  // Default true. Wird in der Planungs-Verfügbarkeit ausgewertet, wenn die
+  // Planung mindestens einen Kartendrucker fordert: inkompatible Laptops
+  // (z. B. MacBook Neo) werden dann vom nutzbaren Bestand ausgeschlossen.
+  cardPrinterCompatible?: boolean;
 };
 
 export type ActivityItem = {

@@ -63,6 +63,10 @@ class AssetItem(BaseModel):
     returnDueDate: Optional[date] = None
     returnedAt: Optional[date] = None
     externalNote: Optional[str] = None
+    # Kompatibilität mit Kartendruckern. Default True (= keine Einschränkung).
+    # Nur in der Planungs-Verfügbarkeit relevant, wenn Kategorie "Laptop"
+    # und mindestens 1 Kartendrucker im Projekt geplant ist.
+    cardPrinterCompatible: bool = True
 
 
 class ExternalPoolCreatePayload(BaseModel):

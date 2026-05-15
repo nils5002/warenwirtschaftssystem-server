@@ -143,6 +143,11 @@ class PlanningAvailabilityItem(BaseModel):
     handoverStatus: Literal["none", "planned", "missing_link", "organizational"] = "none"
     handoverCoveredQty: int = 0
     shortageAfterHandoverQty: int = 0
+    # Anzahl Geräte, die für DIESE Bedarfszeile vom Bestand ausgeschlossen
+    # wurden (z. B. Kartendrucker-inkompatible Laptops in Projekten mit
+    # Kartendrucker). Ist 0 für alle Kategorien/Projekte, die keine
+    # Inkompatibilität triggern — Frontend kann das Feld optional ignorieren.
+    excludedQty: int = 0
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):
@@ -151,6 +156,9 @@ class PlanningAvailabilityCategorySummary(BaseModel):
     maxRequestedPerDay: int
     totalStock: int
     usableStock: int
+    # Repräsentativwert (Maximum über alle Tage) der für diese Bedarfszeile
+    # ausgeschlossenen Geräte. Default 0 = keine Einschränkung.
+    excludedFromUsable: int = 0
 
 
 class PlanningAvailabilityResponse(BaseModel):

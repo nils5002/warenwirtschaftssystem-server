@@ -259,6 +259,9 @@ export type PlanningAvailabilityItem = {
   handoverStatus?: "none" | "planned" | "missing_link" | "organizational";
   handoverCoveredQty?: number;
   shortageAfterHandoverQty?: number;
+  // Anzahl Geräte, die für diese Bedarfszeile vom Bestand ausgeschlossen
+  // wurden (z. B. Kartendrucker-inkompatible Laptops). 0 sonst.
+  excludedQty?: number;
 };
 
 export type PlanningAvailabilityCategorySummary = {
@@ -267,6 +270,7 @@ export type PlanningAvailabilityCategorySummary = {
   maxRequestedPerDay: number;
   totalStock: number;
   usableStock: number;
+  excludedFromUsable?: number;
 };
 
 export type PlanningAvailabilityResponse = {

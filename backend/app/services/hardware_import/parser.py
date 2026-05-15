@@ -66,6 +66,15 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     ),
     "mac_generic": ("mac", "macadresse", "mac adresse", "mac-adresse", "mac address", "hardwareadresse"),
     "status": ("status", "zustand"),
+    "card_printer_compatible": (
+        "kartendrucker kompatibel",
+        "kartendrucker-kompatibel",
+        "kartendruckerkompatibel",
+        "kartendruckerkompatibilitaet",
+        "kartendrucker kompatibilität",
+        "card printer compatible",
+        "cardprintercompatible",
+    ),
 }
 
 

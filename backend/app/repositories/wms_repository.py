@@ -160,6 +160,7 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         returnDueDate=record.return_due_date,
         returnedAt=record.returned_at,
         externalNote=record.external_note,
+        cardPrinterCompatible=bool(getattr(record, "card_printer_compatible", True)),
     )
 
 
@@ -368,6 +369,7 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         "return_due_date": item.returnDueDate,
         "returned_at": item.returnedAt,
         "external_note": item.externalNote,
+        "card_printer_compatible": bool(item.cardPrinterCompatible),
     }
     if record:
         for key, value in payload.items():

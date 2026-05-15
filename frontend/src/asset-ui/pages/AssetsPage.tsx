@@ -168,6 +168,7 @@ export function AssetsPage({
     tagNumber: '',
     location: 'Hauptlager',
     notes: '',
+    cardPrinterCompatible: true,
   });
 
   const categories = ['Alle Kategorien', ...new Set(assets.map((asset) => asset.category))];
@@ -415,6 +416,19 @@ export function AssetsPage({
     setAdminActionBusy(false);
   };
 
+  const applyAdminCardPrinterCompatible = async (next: boolean) => {
+    if (!adminActionAsset) return;
+    setAdminActionBusy(true);
+    setAdminActionError(null);
+    try {
+      await onAdminUpdateAsset(adminActionAsset.id, { cardPrinterCompatible: next });
+    } catch {
+      setAdminActionError('Kompatibilitäts-Einstellung konnte nicht gespeichert werden.');
+    } finally {
+      setAdminActionBusy(false);
+    }
+  };
+
   const applyAdminStatus = async () => {
     if (!adminActionAsset || !adminActionForm) return;
     setAdminActionBusy(true);
@@ -584,6 +598,10 @@ export function AssetsPage({
       tagNumber: '',
       location: current.location || 'Hauptlager',
       notes: '',
+      // Kompatibilitäts-Flag bleibt im Schnellerfassungsmodus erhalten,
+      // damit z. B. 7 MacBook Neo in Folge nicht jedes Mal neu deaktiviert
+      // werden müssen.
+      cardPrinterCompatible: current.cardPrinterCompatible,
     }));
     window.setTimeout(() => {
       serialRef.current?.focus();
@@ -629,6 +647,9 @@ export function AssetsPage({
         tagNumber: form.tagNumber.trim() || undefined,
         location: form.location.trim() || undefined,
         notes: form.notes.trim() || undefined,
+        // Nur für Laptop fachlich relevant; für andere Kategorien ist der
+        // Default-true-Wert bedeutungslos und wird nie ausgewertet.
+        cardPrinterCompatible: form.category.trim() === 'Laptop' ? form.cardPrinterCompatible : true,
       });
       setCreatedAsset(created);
       if (saveAndNext) {
@@ -1104,6 +1125,28 @@ export function AssetsPage({
                   </div>
                 </div>
 
+                {adminActionAsset.category === 'Laptop' ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <h4 className="text-sm font-semibold text-slate-900">Kompatibilität</h4>
+                    <label className="mt-2 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                        checked={adminActionAsset.cardPrinterCompatible !== false}
+                        disabled={adminActionBusy}
+                        onChange={(event) => void applyAdminCardPrinterCompatible(event.target.checked)}
+                      />
+                      <span className="leading-snug">
+                        <span className="font-semibold text-slate-900">Kartendrucker-kompatibel</span>
+                        <br />
+                        Deaktivieren, wenn dieses Gerät keine Kartendrucker bedienen kann (z. B. MacBook Neo).
+                        Solche Laptops werden in Projekten mit Kartendrucker-Bedarf nicht eingeplant. Änderungen
+                        werden sofort gespeichert.
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
+
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <h4 className="text-sm font-semibold text-slate-900">Zuordnung & Korrektur</h4>
                   <div className="mt-2 grid gap-2">
@@ -1425,6 +1468,29 @@ export function AssetsPage({
                         onChange={(event) => setForm((current) => ({ ...current, macWlan: event.target.value }))}
                       />
                     </label>
+                    {form.category === 'Laptop' ? (
+                      <label className="mt-1 flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          checked={form.cardPrinterCompatible}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, cardPrinterCompatible: event.target.checked }))
+                          }
+                        />
+                        <span className="leading-snug">
+                          <span className="font-semibold text-slate-900 dark:text-slate-100">
+                            Kartendrucker-kompatibel
+                          </span>
+                          <span className="ml-1 text-slate-500 dark:text-slate-400">
+                            (Standard: aktiv)
+                          </span>
+                          <br />
+                          Deaktivieren, wenn der Laptop keine Kartendrucker bedienen kann (z. B. MacBook Neo). Solche
+                          Geräte werden in Projekten mit Kartendrucker-Bedarf nicht eingeplant.
+                        </span>
+                      </label>
+                    ) : null}
                   </div>
                 </div>
 

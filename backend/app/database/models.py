@@ -63,6 +63,15 @@ class AssetRecord(TimestampMixin, Base):
     returned_at: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     external_note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Kompatibilität mit Kartendruckern. Default True = abwärtskompatibel,
+    # bestehende Geräte verhalten sich unverändert. Wird in der Planungs-
+    # Verfügbarkeitslogik nur ausgewertet, wenn die Planung mindestens einen
+    # Kartendrucker fordert UND das Asset Kategorie "Laptop" hat (z. B. um
+    # MacBook Neo aus Projekten mit Kartendrucker auszuschließen).
+    card_printer_compatible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"
