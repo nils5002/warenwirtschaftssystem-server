@@ -322,6 +322,20 @@ def get_open_conflict_summaries_for_plannings(
             effective_qty[(ext_id, bound_date, category)] = qty
             planning_categories[ext_id].add(category)
 
+    # Kartendrucker-Mindestbedarf-Uplift: pro Planung muss der Laptop-Bedarf
+    # pro Tag mindestens so hoch sein wie der Kartendrucker-Bedarf desselben
+    # Tages (1:1-Kopplung). Falls die Planung keinen expliziten Laptop-Bedarf
+    # hat, wird die Laptop-Zeile synthetisiert.
+    card_printer_qty_by_planning_day: dict[tuple[str, date], int] = defaultdict(int)
+    for (ext_id, bound_date, category), qty in list(effective_qty.items()):
+        if category == "Kartendrucker" and qty > 0:
+            card_printer_qty_by_planning_day[(ext_id, bound_date)] += qty
+    for (ext_id, bound_date), cp_qty in card_printer_qty_by_planning_day.items():
+        current = int(effective_qty.get((ext_id, bound_date, "Laptop"), 0))
+        if cp_qty > current:
+            effective_qty[(ext_id, bound_date, "Laptop")] = cp_qty
+            planning_categories[ext_id].add("Laptop")
+
     total_demand: dict[tuple[date, str], int] = defaultdict(int)
     for (ext_id, bound_date, category), qty in effective_qty.items():
         total_demand[(bound_date, category)] += qty
@@ -902,6 +916,22 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     active_names = category_repository.active_category_names(db)
     categories = sorted({category_repository.normalize_category_value(item.category_key, active_names) for item in relevant_item_rows})
 
+    # Kartendrucker-Tagesbedarf vorab erfassen, damit:
+    #  (a) "Laptop" ins categories_set kommt, falls die Planung KEINE
+    #      expliziten Laptops fordert (Edge-Case "0 Laptops + N Kartendrucker"),
+    #  (b) der Asset-Loop unten Laptops korrekt aggregiert,
+    #  (c) der Uplift später per Tag wirkt.
+    # Fachregel: pro geplantem Kartendrucker wird mindestens 1 kompatibler
+    # Laptop benötigt (1:1-Kopplung).
+    card_printer_required_by_day: dict[date, int] = defaultdict(int)
+    for item in relevant_item_rows:
+        cat = category_repository.normalize_category_value(item.category_key, active_names)
+        if cat == "Kartendrucker":
+            day = days_by_id[item.planning_day_id]
+            card_printer_required_by_day[day.planning_date] += int(item.qty or 0)
+    if card_printer_required_by_day and "Laptop" not in set(categories):
+        categories = sorted(set(categories) | {"Laptop"})
+
     # Bestand wird DATUMSABHÄNGIG ermittelt, damit Fremdbestand
     # (Miet-/Leih-/Externe Geräte) nur in seinem Verfügbarkeitsfenster
     # mitgezählt wird. Eigenbestand kommt jeden Tag mit, weil
@@ -992,6 +1022,23 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 current_meta["handoverNote"] = handover_note
         if linked_planning_id:
             linked_ids.add(linked_planning_id)
+
+    # Kartendrucker-Mindestbedarf-Uplift: pro Tag muss der Laptop-Bedarf
+    # mindestens so hoch sein wie der Kartendrucker-Bedarf. Wir setzen den
+    # Tageswert explizit (überschreibt die Default-Spread-Logik unten für
+    # diesen Tag) und bumpen den Maximum-Default, damit auch Tage ohne
+    # explizite Laptop-Eintragung den korrekten Mindestbedarf sehen.
+    laptop_uplift_by_day: dict[date, int] = defaultdict(int)
+    for day, cp_qty in card_printer_required_by_day.items():
+        if cp_qty <= 0:
+            continue
+        current_laptop_qty = int(explicit_requested_qty_by_day_category.get((day, "Laptop"), 0))
+        if cp_qty > current_laptop_qty:
+            laptop_uplift_by_day[day] = cp_qty - current_laptop_qty
+            explicit_requested_qty_by_day_category[(day, "Laptop")] = cp_qty
+            max_requested_qty_by_category["Laptop"] = max(
+                max_requested_qty_by_category["Laptop"], cp_qty
+            )
 
     requested_by_day_category: dict[tuple[date, str], dict[str, object]] = {}
     for category in categories:
@@ -1199,6 +1246,14 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 excludedQty=excluded_by_day.get((planning_date, category), 0),
                 excludedFromPlanningQty=excluded_from_planning_by_day.get(
                     (planning_date, category), 0
+                ),
+                cardPrinterRequiredQty=(
+                    card_printer_required_by_day.get(planning_date, 0)
+                    if category == "Laptop" else 0
+                ),
+                cardPrinterUpliftQty=(
+                    laptop_uplift_by_day.get(planning_date, 0)
+                    if category == "Laptop" else 0
                 ),
             )
         )

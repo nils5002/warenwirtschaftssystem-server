@@ -297,8 +297,14 @@ def test_handover_non_overlapping_is_organizational() -> None:
         headers=_headers(client, "Projektmanager", owner_user_id),
     )
     assert reference_availability.status_code == 200
-    reference_items = reference_availability.json()["items"]
-    assert reference_items, "Referenz-Planung muss mindestens ein Availability-Item haben"
+    reference_items_all = reference_availability.json()["items"]
+    assert reference_items_all, "Referenz-Planung muss mindestens ein Availability-Item haben"
+    # Test bezieht sich nur auf Kartendrucker (handover wurde dafür gesetzt).
+    # Seit der Kartendrucker→Laptop-Kopplung enthält die Antwort zusätzlich
+    # eine synthetisierte Laptop-Zeile, die für diese handover-Prüfung
+    # irrelevant ist.
+    reference_items = [i for i in reference_items_all if i["categoryKey"] == "Kartendrucker"]
+    assert reference_items, "Mindestens eine Kartendrucker-Zeile in der Referenz erwartet"
     reference_first = reference_items[0]
     reference_usable_stock = reference_first["usableStock"]
     reference_shortage_qty = reference_first["shortageQty"]
@@ -353,8 +359,10 @@ def test_handover_non_overlapping_is_organizational() -> None:
         headers=_headers(client, "Projektmanager", owner_user_id),
     )
     assert availability.status_code == 200
-    items = availability.json()["items"]
-    assert items, "Availability muss mindestens ein Item enthalten"
+    items_all = availability.json()["items"]
+    assert items_all, "Availability muss mindestens ein Item enthalten"
+    items = [i for i in items_all if i["categoryKey"] == "Kartendrucker"]
+    assert items, "Mindestens eine Kartendrucker-Zeile erwartet"
     for entry in items:
         assert entry["handoverStatus"] == "organizational", (
             f"Erwartet 'organizational' ohne Datums-Ueberlapp, bekommen: {entry['handoverStatus']!r}"
