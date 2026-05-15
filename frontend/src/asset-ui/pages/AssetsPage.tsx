@@ -927,6 +927,14 @@ export function AssetsPage({
                           Nicht planbar
                         </span>
                       ) : null}
+                      {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
+                        <span
+                          className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-200"
+                          title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
+                        >
+                          Kein Kartendrucker
+                        </span>
+                      ) : null}
                     </div>
                   </td>
                   <td className="px-3 py-3">
@@ -1028,6 +1036,14 @@ export function AssetsPage({
                         title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
                       >
                         Nicht planbar
+                      </span>
+                    ) : null}
+                    {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
+                      <span
+                        className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
+                        title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
+                      >
+                        Kein Kartendrucker
                       </span>
                     ) : null}
                   </div>
