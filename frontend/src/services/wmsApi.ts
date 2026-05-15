@@ -626,6 +626,16 @@ export async function listCategories(): Promise<CategoryItem[]> {
   return parseResponse<CategoryItem[]>(response);
 }
 
+// Legt eine neue Kategorie serverseitig an (POST /api/wms/categories).
+// Das Backend ist die Quelle der Wahrheit: nur so bleibt die Kategorie
+// nach einem Reload erhalten (GET /api/wms/categories). Die Antwort trägt
+// die vergebene id, sodass die Kategorie sofort löschbar ist. Bei einem
+// Alias/Duplikat antwortet das Backend mit HTTP 409, bei leerem Namen mit
+// 422 — die Meldung steht jeweils im detail.
+export function createCategory(name: string): Promise<CategoryItem> {
+  return postJson<CategoryItem>('/api/wms/categories', { name });
+}
+
 // Löscht eine Kategorie. Wirft mit verständlicher Meldung, wenn die
 // Kategorie noch von Geräten verwendet wird (Backend liefert HTTP 409).
 export async function deleteCategory(categoryId: number): Promise<{ deleted: boolean; id: number }> {
