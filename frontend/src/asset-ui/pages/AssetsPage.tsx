@@ -6,10 +6,13 @@ import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
-import type { AppPage, Asset } from '../types';
+import type { AppPage, Asset, CategoryItem } from '../types';
 
 type AssetsPageProps = {
   assets: Asset[];
+  // Backend-Kategorien (Stammdaten). Damit erscheinen im Onboarding-Dropdown
+  // auch frisch angelegte Kategorien, die noch keinem Asset zugeordnet sind.
+  categories?: CategoryItem[];
   isMobile?: boolean;
   canManageAssets?: boolean;
   initialSearch?: string;
@@ -113,6 +116,7 @@ function createBulkActionForm(): BulkActionForm {
 
 export function AssetsPage({
   assets,
+  categories: backendCategories = [],
   isMobile = false,
   canManageAssets = true,
   initialSearch,
@@ -176,8 +180,22 @@ export function AssetsPage({
   const locations = ['Alle Standorte', ...new Set(assets.map((asset) => asset.location))];
   const statuses = ['Alle Status', ...new Set(assets.map((asset) => asset.status))];
   const categoryOptions = useMemo(() => {
-    return [...new Set([...DEFAULT_CATEGORIES, ...assets.map((asset) => asset.category).filter(Boolean)])];
-  }, [assets]);
+    // DEFAULT_CATEGORIES als Fallback, falls die Backend-Kategorien noch
+    // nicht geladen sind. Aktive Backend-Kategorien sorgen dafür, dass neu
+    // angelegte Stammdaten sofort wählbar sind — auch ohne zugeordnetes
+    // Asset. Asset-Kategorien decken Altbestand/abweichende Schreibweisen ab.
+    const backendNames = backendCategories
+      .filter((item) => item.isActive !== false)
+      .map((item) => item.name.trim())
+      .filter(Boolean);
+    return [
+      ...new Set([
+        ...DEFAULT_CATEGORIES,
+        ...backendNames,
+        ...assets.map((asset) => asset.category).filter(Boolean),
+      ]),
+    ];
+  }, [assets, backendCategories]);
 
   const filteredAssets = useMemo(
     () =>

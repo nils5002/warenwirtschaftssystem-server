@@ -232,6 +232,7 @@ export function WmsPageView({
       return (
         <AssetsPage
           assets={assets}
+          categories={categories}
           isMobile={isMobile}
           isInitialLoading={isInitialLoading}
           onNavigate={onNavigate}

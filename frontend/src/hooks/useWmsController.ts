@@ -13,6 +13,7 @@ import type {
   UserItem,
 } from '../asset-ui/types';
 import {
+  createCategory as createCategoryRequest,
   deleteAsset,
   deleteCategory as deleteCategoryRequest,
   deleteUser as deleteUserRequest,
@@ -174,7 +175,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const [locations, setLocations] = useState<LocationItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [planningSummary, setPlanningSummary] = useState<WmsOverview['planningSummary']>(null);
-  const [extraCategories, setExtraCategories] = useState<CategoryItem[]>([]);
   // Backend-Stammdaten der Kategorien (mit ids), damit das Frontend bei
   // Delete die richtige id mitschicken kann. Wird einmal nach Login
   // geladen und nach create/delete neu eingespielt.
@@ -429,22 +429,41 @@ export function useWmsController(options: UseWmsControllerOptions) {
     for (const name of fromAssets) {
       if (!merged.has(name)) merged.set(name, { name, isActive: true });
     }
-    for (const item of extraCategories) {
-      if (!merged.has(item.name)) merged.set(item.name, item);
-    }
     return [...merged.values()];
-  }, [assets, extraCategories, categoryRecords]);
+  }, [assets, categoryRecords]);
 
   const createCategory = useCallback(
     async (name: string): Promise<CategoryItem> => {
       const trimmed = name.trim();
       if (!trimmed) throw new Error('Kategoriename darf nicht leer sein.');
-      const item: CategoryItem = { name: trimmed, isActive: true };
-      setExtraCategories((prev) => (prev.some((existing) => existing.name === trimmed) ? prev : [...prev, item]));
-      // Backend-Records nachladen, damit die neue Kategorie ihre id bekommt
-      // und im UI gelöscht werden kann.
+      let created: CategoryItem;
+      try {
+        // Kategorie serverseitig persistieren. Ohne diesen POST ginge die
+        // Kategorie nach F5 verloren, weil GET /api/wms/categories sie
+        // nicht kennt.
+        created = await createCategoryRequest(trimmed);
+      } catch (error) {
+        // Backend antwortet bei Alias/Duplikat mit 409, bei leerem Namen
+        // mit 422 — die verständliche Meldung im detail nach oben
+        // durchreichen, damit die CategoriesPage sie anzeigen kann.
+        if (isWmsApiError(error) && error.detail) {
+          throw new Error(error.detail);
+        }
+        throw error instanceof Error
+          ? error
+          : new Error('Kategorie konnte nicht angelegt werden.');
+      }
+      // Backend-Record (inkl. id) sofort übernehmen, damit die Kategorie
+      // ohne Wartezeit im UI erscheint und löschbar ist.
+      setCategoryRecords((prev) => {
+        const next = prev.filter(
+          (item) => item.id !== created.id && item.name !== created.name,
+        );
+        return [...next, created];
+      });
+      // Vollständigen Stand nachladen, damit Sortierung/Flags konsistent sind.
       void refreshCategoryRecords();
-      return item;
+      return created;
     },
     [refreshCategoryRecords],
   );
@@ -457,7 +476,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
       await deleteCategoryRequest(categoryId);
       // Optimistisch lokal entfernen + Backend-Records frisch nachladen.
       setCategoryRecords((prev) => prev.filter((item) => item.id !== categoryId));
-      setExtraCategories((prev) => prev.filter((item) => item.id !== categoryId));
       void refreshCategoryRecords();
     },
     [refreshCategoryRecords],
