@@ -265,6 +265,13 @@ export type PlanningAvailabilityItem = {
   // Anzahl Geräte, die GLOBAL aus der Einsatzplanung ausgeschlossen sind
   // (availableForPlanning=false, z. B. interne Server-Laptops). 0 sonst.
   excludedFromPlanningQty?: number;
+  // Mindestbedarf-Kopplung Kartendrucker → Laptop (1:1).
+  // cardPrinterRequiredQty: Anzahl Kartendrucker an diesem Tag (informativ,
+  //   nur auf Laptop-Zeilen > 0).
+  // cardPrinterUpliftQty: Differenz, um die der Laptop-Bedarf wegen der
+  //   Kopplung angehoben wurde — > 0 triggert den UI-Hinweis.
+  cardPrinterRequiredQty?: number;
+  cardPrinterUpliftQty?: number;
 };
 
 export type PlanningAvailabilityCategorySummary = {

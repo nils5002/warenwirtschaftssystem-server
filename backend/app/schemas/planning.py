@@ -153,6 +153,14 @@ class PlanningAvailabilityItem(BaseModel):
     # dem Kartendrucker-Filter berechnet — das heißt, ein global
     # ausgeschlossenes Gerät zählt nie auch noch zusätzlich in excludedQty.
     excludedFromPlanningQty: int = 0
+    # Mindestbedarf-Kopplung Kartendrucker → Laptop (1:1). Auf Laptop-Zeilen
+    # gesetzt: Anzahl Kartendrucker an diesem Tag (informativ). Auf allen
+    # anderen Kategorien 0.
+    cardPrinterRequiredQty: int = 0
+    # Differenz, um die der Laptop-Bedarf wegen der Kartendrucker-Kopplung
+    # angehoben wurde. > 0 triggert den UI-Hinweis "Für N Kartendrucker
+    # werden mindestens N kompatible Laptops benötigt".
+    cardPrinterUpliftQty: int = 0
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):

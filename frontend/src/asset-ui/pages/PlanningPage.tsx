@@ -124,6 +124,11 @@ type AvailabilityVisual = {
   // Anzahl Geräte, die GLOBAL aus der Einsatzplanung ausgeschlossen sind
   // (availableForPlanning=false). 0 sonst.
   excludedFromPlanningQty: number;
+  // Mindestbedarf-Kopplung Kartendrucker → Laptop (nur auf Laptop-Zeilen).
+  // cardPrinterRequiredQty: Anzahl Kartendrucker an diesem Tag (informativ).
+  // cardPrinterUpliftQty: angehobener Anteil — > 0 triggert UI-Hinweis.
+  cardPrinterRequiredQty: number;
+  cardPrinterUpliftQty: number;
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -693,6 +698,8 @@ export function PlanningPage({
         handoverStatus: item.handoverStatus ?? 'none',
         excludedQty: Number(item.excludedQty ?? 0),
         excludedFromPlanningQty: Number(item.excludedFromPlanningQty ?? 0),
+        cardPrinterRequiredQty: Number(item.cardPrinterRequiredQty ?? 0),
+        cardPrinterUpliftQty: Number(item.cardPrinterUpliftQty ?? 0),
       });
     }
 
@@ -764,6 +771,16 @@ export function PlanningPage({
 
   const shortageVisuals = useMemo(
     () => availabilityVisuals.filter((item) => item.status === 'open'),
+    [availabilityVisuals],
+  );
+
+  // Uplift-Hinweise, die NICHT bereits im Engpass-Card erscheinen — z. B.
+  // wenn der Bedarf ausreichend gedeckt ist, der Nutzer aber trotzdem sehen
+  // soll, dass der Laptop-Bedarf wegen Kartendruckern angehoben wurde.
+  const cardPrinterUpliftVisuals = useMemo(
+    () => availabilityVisuals.filter(
+      (item) => item.cardPrinterUpliftQty > 0 && item.status !== 'open',
+    ),
     [availabilityVisuals],
   );
 
@@ -2738,6 +2755,22 @@ export function PlanningPage({
                     </div>
                   </div>
 
+                  {cardPrinterUpliftVisuals.length ? (
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/20">
+                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Kartendrucker-Mindestbedarf</p>
+                      <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
+                        Pro Kartendrucker wird mindestens 1 kompatibler Laptop benötigt. Der Laptop-Bedarf wurde automatisch angehoben — der Bestand reicht aktuell aus.
+                      </p>
+                      <ul className="mt-2 space-y-1 text-[12px] text-amber-900 dark:text-amber-100">
+                        {cardPrinterUpliftVisuals.map((visual) => (
+                          <li key={`uplift-${visual.key}`} className="rounded-lg border border-amber-200/80 bg-white/70 px-2.5 py-1.5 dark:border-amber-700/60 dark:bg-amber-950/40">
+                            {formatGermanDate(visual.planningDate)} · Für {visual.cardPrinterRequiredQty} Kartendrucker werden mindestens {visual.cardPrinterRequiredQty} kompatible Laptops benötigt (+{visual.cardPrinterUpliftQty}).
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   <div className="rounded-2xl border border-rose-200 bg-white p-3 shadow-sm dark:border-rose-800 dark:bg-slate-950">
                     <div className="flex items-start gap-3">
                       <span className="rounded-2xl bg-rose-100 p-2 text-rose-700 dark:bg-rose-900/40 dark:text-rose-100">
@@ -2776,6 +2809,11 @@ export function PlanningPage({
                           {visual.excludedFromPlanningQty > 0 ? (
                             <p className="mt-2 rounded-lg border border-slate-300/70 bg-white/70 px-2.5 py-1.5 text-[12px] leading-relaxed text-slate-700 dark:border-slate-600/70 dark:bg-slate-900/50 dark:text-slate-200">
                               <span className="font-semibold">Hinweis:</span> {visual.excludedFromPlanningQty} {visual.categoryKey === 'Laptop' ? 'Laptop(s)' : 'Gerät(e)'} sind global aus der Einsatzplanung ausgeschlossen (z. B. interne Server-Laptops). Sie bleiben im Inventar nutzbar.
+                            </p>
+                          ) : null}
+                          {visual.cardPrinterUpliftQty > 0 ? (
+                            <p className="mt-2 rounded-lg border border-amber-300/60 bg-white/70 px-2.5 py-1.5 text-[12px] leading-relaxed text-amber-800 dark:border-amber-600/60 dark:bg-amber-950/40 dark:text-amber-100">
+                              <span className="font-semibold">Hinweis:</span> Für {visual.cardPrinterRequiredQty} Kartendrucker werden mindestens {visual.cardPrinterRequiredQty} kompatible Laptops benötigt. Der Laptop-Bedarf wurde automatisch um {visual.cardPrinterUpliftQty} angehoben.
                             </p>
                           ) : null}
                           <details className="mt-2">
