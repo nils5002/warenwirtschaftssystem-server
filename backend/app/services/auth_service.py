@@ -190,13 +190,22 @@ def _auth_secret() -> str:
     return settings.auth_token_secret
 
 
-def issue_access_token(user: AuthUserInfo, *, expires_in: int = AUTH_TOKEN_EXPIRY_SECONDS) -> str:
+def issue_access_token(
+    user: AuthUserInfo,
+    *,
+    token_version: int = 0,
+    expires_in: int = AUTH_TOKEN_EXPIRY_SECONDS,
+) -> str:
     now = datetime.now(UTC)
     payload = {
         "sub": user.userId,
         "role": normalize_role_for_db(user.role),
         "name": user.name,
         "email": user.email,
+        # token_version (Security-Audit Paket B2): serverseitige
+        # Invalidierung. Der Token gilt nur, solange "tv" zur token_version
+        # des Benutzers in der DB passt.
+        "tv": int(token_version),
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
     }
@@ -207,7 +216,12 @@ def issue_access_token(user: AuthUserInfo, *, expires_in: int = AUTH_TOKEN_EXPIR
     return f"{payload_part}.{signature_part}"
 
 
-def decode_access_token(token: str) -> AuthUserInfo:
+def _decode_token_payload(token: str) -> dict:
+    """Validiert Signatur + Ablauf und liefert die Roh-Claims zurueck.
+
+    Stateless — kein DB-Zugriff. Wirft 401 bei kaputtem, manipuliertem oder
+    abgelaufenem Token.
+    """
     try:
         payload_part, signature_part = token.split(".", 1)
     except ValueError as exc:
@@ -227,12 +241,83 @@ def decode_access_token(token: str) -> AuthUserInfo:
     now_ts = int(datetime.now(UTC).timestamp())
     if int(payload.get("exp", 0)) < now_ts:
         raise HTTPException(status_code=401, detail="Session abgelaufen. Bitte erneut einloggen.")
+    return payload
+
+
+def _payload_to_user_info(payload: dict) -> AuthUserInfo:
     return AuthUserInfo(
         userId=str(payload.get("sub", "")).strip(),
         name=str(payload.get("name", "")).strip(),
         email=str(payload.get("email", "")).strip(),
         role=normalize_user_role(payload.get("role")),
     )
+
+
+def decode_access_token(token: str) -> AuthUserInfo:
+    """Stateless-Dekodierung (Signatur + Ablauf, OHNE token_version-Pruefung).
+
+    Wird fuer das reine Request-Logging in der Middleware genutzt — dort soll
+    bewusst kein DB-Zugriff erfolgen. Fuer die echte Zugriffspruefung dient
+    ``authenticate_token``.
+    """
+    return _payload_to_user_info(_decode_token_payload(token))
+
+
+def _coerce_token_version(value: object) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        # Ein Token ohne/mit kaputtem "tv"-Claim wird wie Version 0 behandelt
+        # — passt zum DB-Default und haelt Alt-Tokens bis zum ersten Bump gueltig.
+        return 0
+
+
+def authenticate_token(db: Session, token: str) -> AuthUserInfo:
+    """Vollstaendige Token-Pruefung inkl. serverseitiger token_version.
+
+    Zusaetzlich zu Signatur/Ablauf wird geprueft, ob der Benutzer noch
+    existiert, aktiv ist und ob die im Token eingebettete token_version noch
+    zur DB passt. Bei Logout, Passwortwechsel, Rollenwechsel oder
+    Deaktivierung wird die token_version erhoeht — alte Tokens werden damit
+    sofort ungueltig.
+    """
+    payload = _decode_token_payload(token)
+    external_id = str(payload.get("sub", "")).strip()
+    user = (
+        db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
+        if external_id
+        else None
+    )
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=401,
+            detail="Sitzung ist nicht mehr gültig. Bitte erneut anmelden.",
+        )
+    if _coerce_token_version(payload.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(
+            status_code=401,
+            detail="Sitzung ist nicht mehr gültig. Bitte erneut anmelden.",
+        )
+    return AuthUserInfo(
+        userId=user.external_id,
+        name=user.name,
+        email=user.email,
+        role=normalize_user_role(user.role),
+    )
+
+
+def invalidate_sessions(db: Session, external_id: str) -> None:
+    """Erhoeht die token_version eines Benutzers.
+
+    Damit werden alle bereits ausgestellten Tokens dieses Benutzers
+    ungueltig. Wird beim Logout aufgerufen; die Repository-Schicht erhoeht
+    die token_version zusaetzlich direkt bei Passwort-/Rollen-/Statusaenderung.
+    """
+    user = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
+    if user is None:
+        return
+    user.token_version = int(user.token_version or 0) + 1
+    db.commit()
 
 
 def ensure_user_passwords(db: Session) -> None:
@@ -325,7 +410,12 @@ def register_user(db: Session, name: str, email: str, password: str) -> None:
     db.commit()
 
 
-def authenticate_user(db: Session, email: str, password: str) -> AuthUserInfo:
+def authenticate_user(db: Session, email: str, password: str) -> tuple[AuthUserInfo, int]:
+    """Prueft Zugangsdaten und liefert (Benutzerinfo, aktuelle token_version).
+
+    Die token_version wird vom Aufrufer in den ausgestellten Token
+    eingebettet, damit serverseitige Invalidierung greift.
+    """
     needle = email.strip().lower()
     if not needle:
         # Bewusst KEIN Passwort/Token im Log — nur fachliches Ereignis.
@@ -347,12 +437,13 @@ def authenticate_user(db: Session, email: str, password: str) -> AuthUserInfo:
     user.last_active = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
     db.commit()
     logger.info("Login erfolgreich (user_id=%s, role=%s)", user.external_id, user.role)
-    return AuthUserInfo(
+    info = AuthUserInfo(
         userId=user.external_id,
         name=user.name,
         email=user.email,
         role=normalize_user_role(user.role),
     )
+    return info, int(user.token_version or 0)
 
 
 def generate_temporary_password(length: int = 14) -> str:

@@ -768,8 +768,14 @@ def upsert_user(db: Session, item: UserItem, *, actor_user_id: str | None = None
             next_is_active=next_is_active,
             actor_user_id=actor_user_id,
         )
+        previous_role = record.role
+        previous_is_active = record.is_active
         for key, value in payload.items():
             setattr(record, key, value)
+        # Security-Audit Paket B2: Rollen- oder Aktiv-Status-Aenderung
+        # invalidiert alle bestehenden Tokens dieses Benutzers.
+        if record.role != previous_role or record.is_active != previous_is_active:
+            record.token_version = int(record.token_version or 0) + 1
     else:
         record = UserRecord(
             external_id=item.id,
@@ -833,6 +839,9 @@ def update_user(
         actor_user_id=actor_user_id,
     )
 
+    previous_role = record.role
+    previous_is_active = record.is_active
+
     if name is not None:
         record.name = name.strip()
     if email is not None:
@@ -846,6 +855,13 @@ def update_user(
         record.department = department.strip() or None
     if location is not None:
         record.location = location.strip() or None
+
+    # Security-Audit Paket B2: Rollenwechsel oder (De-)Aktivierung
+    # invalidiert alle bestehenden Tokens dieses Benutzers. Reine
+    # Stammdaten-Aenderungen (Name, E-Mail, Abteilung, Standort) nicht.
+    if record.role != previous_role or record.is_active != previous_is_active:
+        record.token_version = int(record.token_version or 0) + 1
+
     db.commit()
     db.refresh(record)
     return _user_to_schema(record)
@@ -871,6 +887,9 @@ def reset_user_password(
         if len(password) < 8:
             raise HTTPException(status_code=400, detail="Passwort muss mindestens 8 Zeichen lang sein.")
         record.password_hash = hash_password(password)
+    # Security-Audit Paket B2: Passwortwechsel invalidiert alle bestehenden
+    # Tokens dieses Benutzers.
+    record.token_version = int(record.token_version or 0) + 1
     db.commit()
     return temporary_password
 

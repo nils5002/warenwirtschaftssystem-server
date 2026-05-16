@@ -158,6 +158,13 @@ class UserRecord(TimestampMixin, Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     role: Mapped[str] = mapped_column(String(64), nullable=False, default="Mitarbeiter")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Serverseitige Session-Invalidierung (Security-Audit Paket B2):
+    # Ein Auth-Token gilt nur, solange seine eingebettete token_version mit
+    # diesem Wert uebereinstimmt. Erhoehen invalidiert alle bestehenden Tokens
+    # des Benutzers (Logout, Passwortwechsel, Rollenwechsel, Deaktivierung).
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     last_active: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="Aktiv")
     department: Mapped[str | None] = mapped_column(String(120), nullable=True)

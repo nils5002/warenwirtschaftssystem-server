@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 
 from ..config.settings import get_settings
-from ..services.auth_service import decode_access_token
+from ..database.session import get_db
+from ..services.auth_service import authenticate_token
 from ..services.job_manager import JobManager
 
 RoleName = Literal["admin", "projektmanager", "mitarbeiter"]
@@ -37,14 +39,19 @@ def _parse_project_contexts(value: str | None) -> tuple[str, ...]:
     return tuple(item for item in parts if item)
 
 
-def get_access_context(request: Request) -> AccessContext:
+def get_access_context(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AccessContext:
     project_contexts = _parse_project_contexts(request.headers.get("x-project-context"))
     auth_header = request.headers.get("authorization", "").strip()
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
         if not token:
             raise HTTPException(status_code=401, detail="Nicht authentifiziert.")
-        user = decode_access_token(token)
+        # authenticate_token prueft zusaetzlich serverseitig die token_version
+        # — abgemeldete/invalidierte Tokens werden hier mit 401 abgewiesen.
+        user = authenticate_token(db, token)
         return AccessContext(
             role=_normalize_role(user.role),
             user_id=user.userId,
