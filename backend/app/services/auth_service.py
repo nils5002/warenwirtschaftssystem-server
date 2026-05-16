@@ -16,18 +16,58 @@ from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..config.settings import get_settings
+from ..config.settings import Settings, get_settings
 from ..database.models import UserRecord
 from ..schemas.auth import AuthUserInfo
 from ..schemas.job import LoginRequest, LoginResponse
 
 logger = logging.getLogger("cloud_web.auth")
-AUTH_TOKEN_EXPIRY_SECONDS = 60 * 60 * 12
+# Token-Lebensdauer (Security-Audit Paket A): von 12 h auf 2 h reduziert.
+# Kürzere Gültigkeit begrenzt das Zeitfenster eines abgegriffenen Tokens,
+# ohne dass dafür eine Refresh-Token-Architektur nötig wäre.
+AUTH_TOKEN_EXPIRY_SECONDS = 60 * 60 * 2
 pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 ROLE_ADMIN = "admin"
 ROLE_PROJECT_MANAGER = "project_manager"
 ROLE_EMPLOYEE = "employee"
+
+# Unsicherer Default des Auth-Secrets (siehe config/settings.py).
+DEFAULT_AUTH_SECRET = "change-me-in-production"
+# Umgebungen, in denen ein fehlendes Secret nur eine Warnung auslöst.
+_DEV_ENVIRONMENTS = {"development", "dev", "local", "test", "testing"}
+
+
+def verify_auth_secret(settings: Settings) -> None:
+    """Schützt vor einem produktiven Start mit unsicherem Auth-Secret.
+
+    Läuft die App außerhalb einer Dev-Umgebung noch mit dem Default-Secret
+    (oder leer), könnte jeder gültige Tokens — inklusive Admin-Rolle —
+    selbst signieren. In dem Fall wird der Start hart abgebrochen, statt
+    unsicher online zu gehen. In Dev-Umgebungen genügt eine Warnung.
+
+    Es wird bewusst KEIN Secret-Wert geloggt — nur die Tatsache.
+    """
+    env = (settings.app_env or "").strip().lower()
+    secret = (settings.auth_token_secret or "").strip()
+    secret_is_insecure = secret in {"", DEFAULT_AUTH_SECRET}
+    if not secret_is_insecure:
+        return
+    if env in _DEV_ENVIRONMENTS:
+        logger.warning(
+            "AUTH_TOKEN_SECRET ist nicht sicher gesetzt (Umgebung '%s'). "
+            "Für den Produktivbetrieb zwingend ein eigenes Secret per ENV setzen.",
+            env or "?",
+        )
+        return
+    logger.error(
+        "AUTH_TOKEN_SECRET ist in Umgebung '%s' nicht sicher gesetzt — App-Start abgebrochen.",
+        env,
+    )
+    raise RuntimeError(
+        "AUTH_TOKEN_SECRET muss außerhalb der Entwicklung auf einen geheimen "
+        "Wert gesetzt werden (ENV). Start mit Default-Secret abgebrochen."
+    )
 
 
 def test_login(payload: LoginRequest) -> LoginResponse:
@@ -75,8 +115,12 @@ def test_login(payload: LoginRequest) -> LoginResponse:
             message=message,
         )
     except Exception as exc:  # noqa: BLE001
+        # Technische Fehlerdetails nur ins Server-Log, nie roh an den Client.
         logger.exception("Login fehlgeschlagen")
-        raise HTTPException(status_code=502, detail=str(exc) or "Login fehlgeschlagen") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Login fehlgeschlagen. Bitte später erneut versuchen.",
+        ) from exc
     finally:
         sorter.input = original_input
 
@@ -260,7 +304,12 @@ def register_user(db: Session, name: str, email: str, password: str) -> None:
         raise HTTPException(status_code=400, detail="Passwort ist erforderlich.")
     existing = db.scalar(select(UserRecord).where(UserRecord.email.ilike(normalized_email)))
     if existing:
-        raise HTTPException(status_code=409, detail="Diese E-Mail ist bereits registriert.")
+        # Account-Enumeration vermeiden: keine 409-Auskunft, dass die E-Mail
+        # bereits vergeben ist. Der Aufrufer erhält dieselbe generische
+        # Erfolgsmeldung wie bei einer echten Neuregistrierung — es wird
+        # bewusst kein zweites Konto angelegt.
+        logger.info("Registrierung ignoriert: E-Mail bereits vergeben")
+        return
 
     user = UserRecord(
         external_id=f"usr-{secrets.token_hex(6)}",
@@ -283,15 +332,18 @@ def authenticate_user(db: Session, email: str, password: str) -> AuthUserInfo:
         logger.warning("Login fehlgeschlagen (leere E-Mail)")
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     user = db.scalar(select(UserRecord).where(UserRecord.email.ilike(needle)))
-    if user is None:
-        logger.warning("Login fehlgeschlagen: Benutzer unbekannt (email=%s)", needle)
+    # Account-Enumeration vermeiden: unbekannte E-Mail und falsches Passwort
+    # liefern dieselbe 401-Antwort. Erst NACH erfolgreicher Passwortprüfung
+    # darf sich ein abweichender Zustand (Konto nicht freigegeben) zeigen.
+    if user is None or not verify_password(password, user.password_hash):
+        if user is None:
+            logger.warning("Login fehlgeschlagen: Benutzer unbekannt")
+        else:
+            logger.warning("Login fehlgeschlagen: Passwort ungueltig (user_id=%s)", user.external_id)
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     if not user.is_active:
         logger.warning("Login abgelehnt: Konto inaktiv (user_id=%s)", user.external_id)
         raise HTTPException(status_code=403, detail="Dein Konto wurde noch nicht freigegeben.")
-    if not verify_password(password, user.password_hash):
-        logger.warning("Login fehlgeschlagen: Passwort ungueltig (user_id=%s)", user.external_id)
-        raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     user.last_active = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
     db.commit()
     logger.info("Login erfolgreich (user_id=%s, role=%s)", user.external_id, user.role)
