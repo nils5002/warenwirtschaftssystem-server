@@ -30,6 +30,40 @@ setup_logging()
 logger = logging.getLogger("cloud_web.main")
 
 
+# Content-Security-Policy (Security-Audit Paket B3 — gehaertet).
+#
+# Diese CSP setzt das Backend auf alle EIGENEN Antworten — also JSON-API-
+# Antworten sowie die interaktive API-Doku (/docs, /redoc). Die ausgelieferte
+# SPA wird NICHT vom Backend bedient; deren CSP gehoert auf die statische
+# Ausliefer-/Reverse-Proxy-Schicht und ist bewusst nicht Teil dieses Schritts
+# (keine Nginx-/Cloudflare-Aenderung).
+#
+# Gehaertet gegenueber dem Vorzustand:
+#   * 'unsafe-eval' aus script-src ENTFERNT — weder Swagger UI / ReDoc noch
+#     eine JSON-API-Antwort benoetigt eval / new Function.
+#   * connect-src: Klartext-Schema 'http:' und WebSocket-Schemata 'ws:'/'wss:'
+#     ENTFERNT — kein Downgrade auf unverschluesselte Verbindungen mehr.
+#   * img-src: 'blob:' entfernt (auf der Backend-Oberflaeche nicht benoetigt).
+#   * object-src 'none' ERGAENZT — blockiert Plugins / <object> / <embed>.
+#
+# Bewusst beibehalten: 'unsafe-inline' (script-src/style-src) und 'https:' —
+# die von FastAPI generierte API-Doku nutzt einen Inline-Bootstrap-Script und
+# laedt Swagger-/ReDoc-Assets vom CDN. Ohne Nonce-Injektion in dieses
+# FastAPI-HTML laesst sich 'unsafe-inline' nicht entfernen, ohne /docs zu
+# zerstoeren.
+_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'; "
+    "img-src 'self' data: https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "script-src 'self' 'unsafe-inline' https:; "
+    "connect-src 'self' https:; "
+    "form-action 'self'"
+)
+
+
 def _ensure_cloud_package_on_path() -> None:
     current_file = Path(__file__).resolve()
     cloud_package = None
@@ -126,18 +160,9 @@ def create_app() -> FastAPI:
             "Permissions-Policy",
             "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
         )
-        # Keep CSP pragmatic to avoid breaking API docs and existing frontend delivery.
-        response.headers.setdefault(
-            "Content-Security-Policy",
-            "default-src 'self'; "
-            "base-uri 'self'; "
-            "frame-ancestors 'none'; "
-            "img-src 'self' data: blob: https:; "
-            "style-src 'self' 'unsafe-inline' https:; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; "
-            "connect-src 'self' https: http: ws: wss:; "
-            "form-action 'self'",
-        )
+        # Gehaertete CSP (Paket B3) — Definition + Begruendung siehe
+        # _CONTENT_SECURITY_POLICY am Modulanfang.
+        response.headers.setdefault("Content-Security-Policy", _CONTENT_SECURITY_POLICY)
         if request.url.scheme == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
         return response
