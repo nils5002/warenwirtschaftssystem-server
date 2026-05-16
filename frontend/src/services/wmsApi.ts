@@ -604,6 +604,26 @@ export async function fetchAuthMe(): Promise<AuthUser> {
   }
 }
 
+/**
+ * Stößt die serverseitige Token-Invalidierung an (Security-Audit Paket B2).
+ *
+ * Best-effort: Der Aufruf muss VOR `clearAuthSession()` erfolgen, solange der
+ * Token noch im Authorization-Header mitgeht. Ein Fehler oder Timeout hier
+ * darf das lokale Abmelden NICHT blockieren — die Session wird ohnehin lokal
+ * verworfen. Der Logout-Endpunkt ist serverseitig idempotent.
+ */
+export async function logout(): Promise<void> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), AUTH_ME_TIMEOUT_MS);
+  try {
+    await apiFetch('/api/auth/logout', { method: 'POST', signal: controller.signal });
+  } catch {
+    // Bewusst ignoriert — das lokale Logout passiert in jedem Fall.
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
 export function upsertAsset(asset: Asset): Promise<Asset> {
   return postJson<Asset>('/api/wms/assets', asset);
 }

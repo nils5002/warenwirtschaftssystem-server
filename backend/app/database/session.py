@@ -112,6 +112,8 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("assets", "external_note", "TEXT"),
     ("assets", "card_printer_compatible", "BOOLEAN NOT NULL DEFAULT 1"),
     ("assets", "available_for_planning", "BOOLEAN NOT NULL DEFAULT 1"),
+    # Security-Audit Paket B2: serverseitige Token-Invalidierung pro Benutzer.
+    ("users", "token_version", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 

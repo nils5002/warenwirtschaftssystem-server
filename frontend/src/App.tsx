@@ -14,6 +14,7 @@ import {
   fetchAuthMe,
   getAuthSession,
   login,
+  logout,
   register,
   setAuthSession,
   setUnauthorizedHandler,
@@ -152,7 +153,10 @@ function App() {
     return response.message;
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Erst serverseitig invalidieren (token_version erhöhen), solange der
+    // Token noch vorhanden ist — danach die lokale Session verwerfen.
+    await logout();
     clearAuthSession();
     setAuthState(null);
     setAuthUser(null);

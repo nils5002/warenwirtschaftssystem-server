@@ -14,8 +14,10 @@ from ..schemas.auth import (
 from ..schemas.job import LoginRequest, LoginResponse
 from ..services.auth_service import (
     AUTH_TOKEN_EXPIRY_SECONDS,
+    authenticate_token,
     authenticate_user,
     decode_access_token,
+    invalidate_sessions,
     issue_access_token,
     register_user,
     test_login,
@@ -73,7 +75,7 @@ def login(
         raise too_many_requests(blocked.retry_after)
 
     try:
-        user = authenticate_user(db, payload.email, payload.password)
+        user, token_version = authenticate_user(db, payload.email, payload.password)
     except HTTPException as exc:
         # Nur echte Fehlversuche (401) zaehlen. Ein 403 ("Konto nicht
         # freigegeben") bedeutet, dass das Passwort korrekt war — das ist
@@ -82,7 +84,12 @@ def login(
             login_rate_limiter.record_attempt(rate_key)
         raise
 
-    token = issue_access_token(user, expires_in=AUTH_TOKEN_EXPIRY_SECONDS)
+    # token_version wird in den Token eingebettet -> serverseitige Invalidierung.
+    token = issue_access_token(
+        user,
+        token_version=token_version,
+        expires_in=AUTH_TOKEN_EXPIRY_SECONDS,
+    )
     # Erfolgreicher Login: Fehlerzaehler fuer diese IP/E-Mail zuruecksetzen.
     login_rate_limiter.reset(rate_key)
     return AuthLoginResponse(
@@ -113,12 +120,26 @@ def register(
 
 
 @router.get("/me", response_model=AuthUserInfo)
-def auth_me(request: Request) -> AuthUserInfo:
+def auth_me(request: Request, db: Session = Depends(get_db)) -> AuthUserInfo:
     token = _extract_bearer_token(request)
-    return decode_access_token(token)
+    # Vollpruefung inkl. token_version — ein invalidierter Token liefert 401.
+    return authenticate_token(db, token)
 
 
 @router.post("/logout")
-def logout() -> dict[str, bool]:
-    # JWT ist stateless. Frontend verwirft den Token.
+def logout(request: Request, db: Session = Depends(get_db)) -> dict[str, bool]:
+    # Serverseitige Invalidierung (Security-Audit Paket B2): die token_version
+    # des Benutzers wird erhoeht, wodurch der verwendete — und jeder andere —
+    # Token dieses Users sofort ungueltig wird. Ein fehlender, abgelaufener
+    # oder kaputter Token fuehrt NICHT zu einem Fehler: Logout ist idempotent.
+    header = request.headers.get("authorization", "").strip()
+    if header.lower().startswith("bearer "):
+        token = header[7:].strip()
+        if token:
+            try:
+                info = decode_access_token(token)
+            except HTTPException:
+                info = None
+            if info is not None and info.userId:
+                invalidate_sessions(db, info.userId)
     return {"ok": True}
