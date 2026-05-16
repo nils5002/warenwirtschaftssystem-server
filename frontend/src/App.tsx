@@ -16,6 +16,7 @@ import {
   login,
   register,
   setAuthSession,
+  setUnauthorizedHandler,
   type AuthSession,
   type AuthUser,
 } from './services/wmsApi';
@@ -61,6 +62,20 @@ function App() {
       cancelled = true;
     };
   }, [authSession]);
+
+  // Zentrales 401-Handling: antwortet das Backend auf irgendeinen Request
+  // mit 401, verwirft der API-Client die Session und meldet das hierher.
+  // Dann wird der React-Auth-State zurückgesetzt, sodass die App sauber
+  // auf die Login-Seite zurückwechselt — statt mit ungültigem Token in
+  // einem halb eingeloggten Zustand zu verharren.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearAuthSession();
+      setAuthState(null);
+      setAuthUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, []);
 
   const visibleNavigation = useMemo(() => {
     if (activeRole === 'Admin') return navigation;

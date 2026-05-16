@@ -456,6 +456,29 @@ export function clearAuthSession(): void {
 }
 
 /**
+ * Zentrales 401-Handling (Security-Audit Paket A).
+ *
+ * Antwortet das Backend mit 401 (Token abgelaufen, ungültig oder
+ * widerrufen), wird die lokale Session verworfen und die registrierte
+ * App-Komponente informiert, damit sie sauber auf den Login-State
+ * zurückwechselt — statt mit ungültigem Token weiterzulaufen.
+ */
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function notifyUnauthorized(): void {
+  if (!unauthorizedHandler) return;
+  try {
+    unauthorizedHandler();
+  } catch {
+    // Handler-Fehler dürfen den ursprünglichen Request-Fehlerpfad nicht stören.
+  }
+}
+
+/**
  * Typisierter Fehler für API-Antworten. Anders als `Error` trägt diese
  * Klasse den HTTP-Statuscode mit, damit aufrufende Komponenten z. B. zwischen
  * "Backend antwortet nicht (5xx)" und "Aktion abgelehnt (4xx)" unterscheiden
@@ -492,6 +515,13 @@ export function isBackendUnreachableError(value: unknown): boolean {
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
+    if (response.status === 401) {
+      // Token ungültig/abgelaufen: Session lokal verwerfen und die App
+      // zurück in den Login-State zwingen, statt unauthentifiziert
+      // weiterzulaufen.
+      clearAuthSession();
+      notifyUnauthorized();
+    }
     let detailMessage = '';
     try {
       const payload = (await response.json()) as {

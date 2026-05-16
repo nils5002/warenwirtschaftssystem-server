@@ -22,7 +22,7 @@ from .logging_setup import (
 from .repositories import category_repository
 from .routes import api_router
 from .services.auth_service import decode_access_token, ensure_user_passwords
-from .services.auth_service import ensure_initial_admin
+from .services.auth_service import ensure_initial_admin, verify_auth_secret
 from .services.job_manager import JobManager
 from .services.wms_service import WmsService
 
@@ -47,6 +47,11 @@ def _ensure_cloud_package_on_path() -> None:
 def create_app() -> FastAPI:
     _ensure_cloud_package_on_path()
     settings = get_settings()
+
+    # Security-Audit Paket A: Start außerhalb der Entwicklung mit dem
+    # unsicheren Default-Auth-Secret hart abbrechen, statt unsicher online
+    # zu gehen. In Dev-Umgebungen wird nur gewarnt.
+    verify_auth_secret(settings)
 
     app = FastAPI(title=settings.app_name, version=settings.app_version)
     app.add_middleware(
