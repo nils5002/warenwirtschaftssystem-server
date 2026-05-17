@@ -13,12 +13,43 @@ from ..services.job_manager import JobManager
 
 RoleName = Literal["admin", "projektmanager", "mitarbeiter"]
 
+# Name des HttpOnly-Auth-Cookies (Security-Audit Paket B4).
+#
+# Die Browser-SPA legt den Auth-Token nicht mehr im localStorage ab, sondern
+# bekommt ihn vom Backend als HttpOnly-Cookie gesetzt. Dieser Name wird sowohl
+# beim Setzen/Loeschen (routes/auth.py) als auch beim Lesen (hier sowie in der
+# Logging-Middleware) verwendet.
+AUTH_COOKIE_NAME = "wms_auth"
+
 
 @dataclass(frozen=True)
 class AccessContext:
     role: RoleName
     user_id: str | None
     project_contexts: tuple[str, ...]
+
+
+def extract_request_token(request: Request) -> str | None:
+    """Liefert den Auth-Token aus dem Request — Header hat Vorrang vor Cookie.
+
+    Reihenfolge:
+      1. ``Authorization: Bearer <token>`` — fuer API-/Test-Clients, die
+         bewusst einen Token mitschicken.
+      2. HttpOnly-Cookie ``wms_auth`` — der Weg der Browser-SPA
+         (Security-Audit Paket B4: Token nicht mehr im localStorage).
+
+    Der Header hat bewusst Vorrang: schickt ein Client explizit einen
+    Bearer-Token, darf ein nebenher gesetztes Cookie ihn nicht ueberstimmen.
+    Liefert ``None``, wenn weder Header noch Cookie einen nutzbaren Token
+    enthalten.
+    """
+    header = request.headers.get("authorization", "").strip()
+    if header.lower().startswith("bearer "):
+        token = header[7:].strip()
+        if token:
+            return token
+    cookie_token = (request.cookies.get(AUTH_COOKIE_NAME) or "").strip()
+    return cookie_token or None
 
 
 def _normalize_role(value: str | None) -> RoleName:
@@ -44,11 +75,9 @@ def get_access_context(
     db: Session = Depends(get_db),
 ) -> AccessContext:
     project_contexts = _parse_project_contexts(request.headers.get("x-project-context"))
-    auth_header = request.headers.get("authorization", "").strip()
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header[7:].strip()
-        if not token:
-            raise HTTPException(status_code=401, detail="Nicht authentifiziert.")
+    # Token aus Authorization-Header ODER HttpOnly-Cookie (Paket B4).
+    token = extract_request_token(request)
+    if token:
         # authenticate_token prueft zusaetzlich serverseitig die token_version
         # — abgemeldete/invalidierte Tokens werden hier mit 401 abgewiesen.
         user = authenticate_token(db, token)

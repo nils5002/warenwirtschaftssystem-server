@@ -25,7 +25,6 @@ const apiUrls = (path: string): string[] => {
   return primary === path ? [path] : [primary, path];
 };
 const ACCESS_STORAGE_KEY = 'wms.accessContext';
-const AUTH_STORAGE_KEY = 'wms.authSession';
 const LOGIN_TIMEOUT_MS = 10_000;
 const AUTH_ME_TIMEOUT_MS = 8_000;
 
@@ -40,10 +39,19 @@ export type AuthUser = {
   role: AppRole;
 };
 
-export type AuthSession = {
-  accessToken: string;
-  tokenType: 'bearer';
-  expiresIn: number;
+/**
+ * Antwortform von POST /api/auth/login.
+ *
+ * Seit Security-Audit Paket B4 setzt das Backend den Auth-Token zusaetzlich
+ * als HttpOnly-Cookie. Der Browser-Client verwendet `accessToken`/`expiresIn`
+ * NICHT mehr — die Authentifizierung laeuft ueber das Cookie, das der Browser
+ * automatisch mitschickt. Die Felder bleiben optional typisiert, weil das
+ * Backend sie fuer API-/Test-Clients weiterhin mitliefert.
+ */
+type AuthLoginResponseBody = {
+  accessToken?: string;
+  tokenType?: string;
+  expiresIn?: number;
   user: AuthUser;
 };
 
@@ -307,17 +315,18 @@ let currentAccessContext: ApiAccessContext = (() => {
   }
 })();
 
-let currentAuthSession: AuthSession | null = (() => {
-  try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AuthSession;
-    if (!parsed?.accessToken || !parsed?.user?.userId || !parsed?.user?.role) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-})();
+/**
+ * In-Memory-Auth-Status (Security-Audit Paket B4).
+ *
+ * Der Auth-Token liegt NICHT mehr im localStorage, sondern in einem
+ * HttpOnly-Cookie, das der Browser automatisch mitschickt und das fuer
+ * JavaScript unsichtbar ist. Im Frontend wird daher nur noch das
+ * (unkritische) Benutzerprofil gehalten — rein im Speicher, ohne Persistenz.
+ * Nach einem echten Reload ist `currentUser` zunaechst `null`; der
+ * Login-Status wird dann ueber GET /api/auth/me anhand des Cookies neu
+ * ermittelt.
+ */
+let currentUser: AuthUser | null = null;
 
 const umlautPairs: Array<[string, string]> = [
   ['Verfuegbar', 'Verfügbar'],
@@ -390,9 +399,10 @@ function normalizeOutbound<T>(value: T): T {
 
 function buildAccessHeaders(): HeadersInit {
   const headers: Record<string, string> = {};
-  if (currentAuthSession?.accessToken) {
-    headers.Authorization = `Bearer ${currentAuthSession.accessToken}`;
-  }
+  // Kein Authorization-Header mehr (Paket B4): der Auth-Token reist als
+  // HttpOnly-Cookie, das der Browser bei same-origin-Requests automatisch
+  // anhaengt. Der Projektkontext ist nicht sicherheitskritisch und bleibt
+  // ein expliziter Header.
   if (currentAccessContext.projectContext) {
     headers['X-Project-Context'] = currentAccessContext.projectContext;
   }
@@ -410,6 +420,11 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
       return await fetch(url, {
         ...init,
         headers,
+        // Das HttpOnly-Auth-Cookie bei jedem Request mitschicken. Bei
+        // same-origin ist das zwar der fetch-Default, wird hier aber explizit
+        // gesetzt, damit der Auth-Pfad nicht von einer (geaenderten)
+        // Default-Policy abhaengt.
+        credentials: 'same-origin',
       });
     } catch (error) {
       lastNetworkError = error;
@@ -433,26 +448,24 @@ export function setApiAccessContext(context: ApiAccessContext): void {
   }
 }
 
-export function getAuthSession(): AuthSession | null {
-  return currentAuthSession;
+/** Liefert das aktuell im Speicher gehaltene Benutzerprofil (oder null). */
+export function getCurrentUser(): AuthUser | null {
+  return currentUser;
 }
 
-export function setAuthSession(session: AuthSession): void {
-  currentAuthSession = session;
-  try {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-  } catch {
-    // ignore storage write errors
-  }
+function setCurrentUser(user: AuthUser): void {
+  currentUser = user;
 }
 
-export function clearAuthSession(): void {
-  currentAuthSession = null;
-  try {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch {
-    // ignore storage write errors
-  }
+/**
+ * Verwirft den lokalen Auth-Status.
+ *
+ * Loescht NUR das in-memory Benutzerprofil — das HttpOnly-Cookie ist fuer
+ * JavaScript ohnehin nicht erreichbar und wird serverseitig (Logout-Endpoint)
+ * bzw. durch Ablauf entfernt.
+ */
+export function clearCurrentUser(): void {
+  currentUser = null;
 }
 
 /**
@@ -516,10 +529,10 @@ export function isBackendUnreachableError(value: unknown): boolean {
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
-      // Token ungültig/abgelaufen: Session lokal verwerfen und die App
-      // zurück in den Login-State zwingen, statt unauthentifiziert
-      // weiterzulaufen.
-      clearAuthSession();
+      // Token ungültig/abgelaufen/widerrufen: lokalen Auth-Status verwerfen
+      // und die App zurück in den Login-State zwingen, statt
+      // unauthentifiziert weiterzulaufen.
+      clearCurrentUser();
       notifyUnauthorized();
     }
     let detailMessage = '';
@@ -560,7 +573,7 @@ export async function fetchWmsOverview(): Promise<WmsOverview> {
   return parseResponse<WmsOverview>(response);
 }
 
-export async function login(payload: AuthLoginPayload): Promise<AuthSession> {
+export async function login(payload: AuthLoginPayload): Promise<AuthUser> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
   try {
@@ -570,9 +583,12 @@ export async function login(payload: AuthLoginPayload): Promise<AuthSession> {
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    const session = await parseResponse<AuthSession>(response);
-    setAuthSession(session);
-    return session;
+    // Das Backend setzt bei Erfolg das HttpOnly-Auth-Cookie. Hier wird nur
+    // das Benutzerprofil aus der Antwort uebernommen — der Token im Body
+    // wird vom Browser-Client bewusst ignoriert und nicht gespeichert.
+    const body = await parseResponse<AuthLoginResponseBody>(response);
+    setCurrentUser(body.user);
+    return body.user;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('Anmeldung fehlgeschlagen: Backend nicht erreichbar oder Server antwortet nicht.');
@@ -593,7 +609,11 @@ export async function fetchAuthMe(): Promise<AuthUser> {
     const response = await apiFetch('/api/auth/me', {
       signal: controller.signal,
     });
-    return parseResponse<AuthUser>(response);
+    const user = await parseResponse<AuthUser>(response);
+    // Profil aktuell halten, damit getCurrentUser() nach einem Reload
+    // wieder den eingeloggten Benutzer kennt.
+    setCurrentUser(user);
+    return user;
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw new Error('Sitzung konnte nicht geprüft werden: Backend antwortet nicht.');
@@ -605,12 +625,13 @@ export async function fetchAuthMe(): Promise<AuthUser> {
 }
 
 /**
- * Stößt die serverseitige Token-Invalidierung an (Security-Audit Paket B2).
+ * Meldet den Benutzer ab.
  *
- * Best-effort: Der Aufruf muss VOR `clearAuthSession()` erfolgen, solange der
- * Token noch im Authorization-Header mitgeht. Ein Fehler oder Timeout hier
- * darf das lokale Abmelden NICHT blockieren — die Session wird ohnehin lokal
- * verworfen. Der Logout-Endpunkt ist serverseitig idempotent.
+ * Serverseitig (Paket B2/B4): erhoeht die token_version — wodurch jeder
+ * ausgestellte Token ungueltig wird — und loescht das HttpOnly-Auth-Cookie.
+ * Der Logout-Endpunkt ist idempotent; ein Fehler oder Timeout hier darf das
+ * Abmelden NICHT blockieren, daher wird der lokale Auth-Status in jedem Fall
+ * (auch im Fehlerpfad) verworfen.
  */
 export async function logout(): Promise<void> {
   const controller = new AbortController();
@@ -621,6 +642,7 @@ export async function logout(): Promise<void> {
     // Bewusst ignoriert — das lokale Logout passiert in jedem Fall.
   } finally {
     window.clearTimeout(timeout);
+    clearCurrentUser();
   }
 }
 

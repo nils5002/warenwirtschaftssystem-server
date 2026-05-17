@@ -23,7 +23,7 @@ import {
   deleteUsersBulk,
   fetchWmsOverview,
   getApiAccessContext,
-  getAuthSession,
+  getCurrentUser,
   resetUserPassword,
   setApiAccessContext,
   upsertActivity,
@@ -195,7 +195,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // Setzen keine Re-Renders auslöst — andernfalls würde jeder Poll-Cycle
   // den Effekt neu starten und der Backoff-Zähler liefe zurück.
   const lastLoadSuccessRef = useRef<boolean>(true);
-  const currentOperatorName = getAuthSession()?.user.name?.trim() || 'Unbekannt';
+  const currentOperatorName = getCurrentUser()?.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
     setActivePageState(page);
@@ -1070,7 +1070,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   };
 
   const adminBulkDeleteUsers = async (userIds: string[]): Promise<BulkUserDeleteResponse> => {
-    const sessionUserId = getAuthSession()?.user.userId;
+    const sessionUserId = getCurrentUser()?.userId;
     const trimmed = userIds
       .map((id) => id.trim())
       .filter((id, index, arr) => Boolean(id) && arr.indexOf(id) === index);
@@ -1106,7 +1106,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   };
 
   const adminDeleteUser = async (userId: string) => {
-    const currentUserId = getAuthSession()?.user.userId;
+    const currentUserId = getCurrentUser()?.userId;
     if (currentUserId && currentUserId === userId) {
       throw new Error('Du kannst deinen eigenen Benutzer nicht löschen.');
     }
