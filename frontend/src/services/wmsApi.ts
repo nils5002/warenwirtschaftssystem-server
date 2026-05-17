@@ -184,6 +184,48 @@ export type PlanningListMissingItem = {
   availableQty?: number;
 };
 
+// Schweregrad-Klassifikation einer Konfliktzelle (Backend:
+// app/domain/conflict_classification.py). Additiv — alte Responses ohne diese
+// Felder bleiben gültig.
+export type PlanningConflictSeverity =
+  | "kompatible_laptops_fehlen"
+  | "teilweise_geloest"
+  | "handover_review"
+  | "nicht_planbare_ausgeschlossen"
+  | "echter_engpass"
+  | "hinweis";
+
+export type PlanningConflictReason =
+  | "compat_laptops_missing"
+  | "handover_partial"
+  | "handover_review"
+  | "non_plannable_excluded"
+  | "real_shortage"
+  | "context";
+
+export type ConflictBadge = {
+  severity: PlanningConflictSeverity;
+  reason: PlanningConflictReason;
+  label: string;
+};
+
+export type PlanningConflictDetail = {
+  categoryKey: string;
+  conflictDay: string;
+  shortageReason: PlanningConflictReason;
+  conflictSeverity: PlanningConflictSeverity;
+  conflictLabel: string;
+  unresolvedShortageQty: number;
+  handoverCoverageQty?: number;
+  handoverStatus?: "none" | "planned" | "missing_link" | "organizational";
+  handoverEnabled?: boolean;
+  excludedQty?: number;
+  excludedFromPlanningQty?: number;
+  cardPrinterRequiredQty?: number;
+  cardPrinterUpliftQty?: number;
+  secondary?: ConflictBadge[];
+};
+
 export type PlanningListItem = {
   id: string;
   customerName: string;
@@ -204,6 +246,9 @@ export type PlanningListItem = {
   } | null;
   openConflictCount?: number;
   missingItems?: PlanningListMissingItem[];
+  // Additiv: je Konfliktzelle (Tag x Kategorie) ein klassifizierter Eintrag.
+  // Anzahl harter Einträge entspricht openConflictCount.
+  conflicts?: PlanningConflictDetail[];
 };
 
 export type PlanningItemResponse = {
@@ -280,6 +325,12 @@ export type PlanningAvailabilityItem = {
   //   Kopplung angehoben wurde — > 0 triggert den UI-Hinweis.
   cardPrinterRequiredQty?: number;
   cardPrinterUpliftQty?: number;
+  // Schweregrad-Einordnung (additiv). Bei reinen grünen Zellen null/leer.
+  conflictDay?: string | null;
+  shortageReason?: PlanningConflictReason | null;
+  conflictSeverity?: PlanningConflictSeverity | null;
+  conflictLabel?: string | null;
+  secondary?: ConflictBadge[];
 };
 
 export type PlanningAvailabilityCategorySummary = {
