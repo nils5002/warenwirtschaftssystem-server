@@ -9,11 +9,17 @@ from sqlalchemy.orm import Session
 
 from ..database.models import AssetRecord, PlanningDayRecord, PlanningItemRecord, PlanningRecord
 from ..domain.categories import normalize_category_or_self
+from ..domain.conflict_classification import (
+    ConflictCellFacts,
+    classify_conflict_cell,
+)
 from . import category_repository
 from ..schemas.planning import (
+    ConflictBadge,
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
     PlanningAvailabilityResponse,
+    PlanningConflictDetail,
     PlanningDayResponse,
     PlanningItemResponse,
     PlanningListHandoverSummary,
@@ -27,6 +33,16 @@ from ..schemas.planning import (
 # Include "Entwurf" so planning conflicts are visible early during project preparation.
 # Keep both confirmed variants for legacy rows that may still contain umlauts.
 ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt", "Bestätigt"}
+
+
+def _to_conflict_badges(classification) -> list[ConflictBadge]:
+    """Wandelt die Sekundaer-Badges einer Klassifikation ins Response-Schema."""
+    if classification is None:
+        return []
+    return [
+        ConflictBadge(severity=badge.severity, reason=badge.reason, label=badge.label)
+        for badge in classification.secondary
+    ]
 
 
 def _normalize_status(value: str | PlanningStatus) -> PlanningStatus:
@@ -67,6 +83,7 @@ def _planning_to_list_item(
     handover_summary: PlanningListHandoverSummary | None = None,
     open_conflict_count: int = 0,
     missing_items: list[PlanningListMissingItem] | None = None,
+    conflicts: list[PlanningConflictDetail] | None = None,
 ) -> PlanningListItem:
     return PlanningListItem(
         id=record.external_id,
@@ -82,6 +99,7 @@ def _planning_to_list_item(
         handoverSummary=handover_summary,
         openConflictCount=int(open_conflict_count),
         missingItems=list(missing_items or []),
+        conflicts=list(conflicts or []),
     )
 
 
@@ -165,7 +183,14 @@ def get_open_conflict_summaries_for_plannings(
     Tag, ``availableQty = max(0, requiredQty - missingQty)``.
 
     Rückgabe-Schema:
-        ``{ ext_id: { "count": int, "missing": list[PlanningListMissingItem] } }``
+        ``{ ext_id: { "count": int,
+                      "missing": list[PlanningListMissingItem],
+                      "conflicts": list[PlanningConflictDetail] } }``
+
+    ``missing`` ist unverändert (eine Zeile je Kategorie, schlimmster Tag).
+    ``conflicts`` ist additiv: eine klassifizierte Zeile je Konfliktzelle
+    (Tag x Kategorie). Die Anzahl der ``conflicts``-Einträge entspricht exakt
+    ``count`` — die Klassifikation ändert die Zählung nicht.
 
     ``external_ids=None`` liefert die Summaries aller aktiven Planungen.
     Stornierte/abgeschlossene Planungen werden ausgeklammert.
@@ -177,7 +202,7 @@ def get_open_conflict_summaries_for_plannings(
         )
     ).all()
     def _empty_summary() -> dict[str, object]:
-        return {"count": 0, "missing": []}
+        return {"count": 0, "missing": [], "conflicts": []}
 
     if not all_active_records:
         if external_ids is None:
@@ -286,15 +311,29 @@ def get_open_conflict_summaries_for_plannings(
     # inkompatible Laptops (z. B. MacBook Neo) für diese Planung nicht
     # mitgezählt werden.
     stock_usable_compat_laptops_by_day: dict[date, int] = defaultdict(int)
+    # Kontextzähler für die Schweregrad-Klassifikation (rein additiv — ändern
+    # die Konfliktzählung NICHT): global aus der Planung ausgeschlossene Geräte
+    # sowie kartendrucker-inkompatible Laptops je Tag. Spiegelt SCHRITT 1/2 aus
+    # ``get_planning_availability``, damit Listen- und Detailpfad konsistent sind.
+    excluded_from_planning_by_day: dict[tuple[date, str], int] = defaultdict(int)
+    incompat_laptops_by_day: dict[date, int] = defaultdict(int)
     for asset in db.scalars(select(AssetRecord)).all():
         category = category_repository.normalize_category_value(asset.category, active_names)
         if category not in categories_seen:
             continue
         # Globaler Planungs-Ausschluss: nicht-planbare Geräte zählen weder
-        # in stock_usable_by_day noch in stock_usable_compat_laptops_by_day.
+        # in stock_usable_by_day noch in stock_usable_compat_laptops_by_day —
+        # werden aber separat erfasst, damit die Konfliktanzeige einen Hinweis
+        # ableiten kann.
         if not bool(getattr(asset, "available_for_planning", True)):
+            for bound_date in bound_dates_for_active_plannings:
+                if _is_asset_usable_on_date(asset, bound_date):
+                    excluded_from_planning_by_day[(bound_date, category)] += 1
             continue
         is_compatible_laptop = category == "Laptop" and bool(
+            getattr(asset, "card_printer_compatible", True)
+        )
+        is_incompatible_laptop = category == "Laptop" and not bool(
             getattr(asset, "card_printer_compatible", True)
         )
         for bound_date in bound_dates_for_active_plannings:
@@ -302,6 +341,8 @@ def get_open_conflict_summaries_for_plannings(
                 stock_usable_by_day[(bound_date, category)] += 1
                 if is_compatible_laptop:
                     stock_usable_compat_laptops_by_day[bound_date] += 1
+                if is_incompatible_laptop:
+                    incompat_laptops_by_day[bound_date] += 1
 
     # Effektive Tagesmenge je (Planung, Datum, Kategorie). Spiegelt die
     # gleiche Logik wie ``get_planning_availability`` wider: explizite
@@ -330,9 +371,13 @@ def get_open_conflict_summaries_for_plannings(
     for (ext_id, bound_date, category), qty in list(effective_qty.items()):
         if category == "Kartendrucker" and qty > 0:
             card_printer_qty_by_planning_day[(ext_id, bound_date)] += qty
+    # Uplift-Betrag je (Planung, Tag) mitschreiben — additiv für die
+    # Konfliktanzeige, ändert die Effektivmenge nicht.
+    laptop_uplift_by_planning_day: dict[tuple[str, date], int] = defaultdict(int)
     for (ext_id, bound_date), cp_qty in card_printer_qty_by_planning_day.items():
         current = int(effective_qty.get((ext_id, bound_date, "Laptop"), 0))
         if cp_qty > current:
+            laptop_uplift_by_planning_day[(ext_id, bound_date)] = cp_qty - current
             effective_qty[(ext_id, bound_date, "Laptop")] = cp_qty
             planning_categories[ext_id].add("Laptop")
 
@@ -358,6 +403,9 @@ def get_open_conflict_summaries_for_plannings(
     # Planungs-Kachel: sie zeigt, wie viele Geräte minimal fehlen, damit die
     # Planung in jedem Tag des Zeitraums gedeckt wäre.
     worst_missing_by_planning_category: dict[tuple[str, str], dict[str, int]] = {}
+    # Additiv: je Konfliktzelle (Tag x Kategorie) ein klassifizierter Eintrag.
+    # Eine Zeile pro counts-Inkrement -> Anzahl == openConflictCount.
+    conflicts_by_planning: dict[str, list[PlanningConflictDetail]] = defaultdict(list)
 
     for (ext_id, bound_date, category), this_qty in effective_qty.items():
         if ext_id not in target_external_ids:
@@ -375,17 +423,25 @@ def get_open_conflict_summaries_for_plannings(
         handover_enabled = bool(handover_meta.get("handover_enabled"))
         linked_planning_id = handover_meta.get("linked_planning_id")
         handover_covered_qty = 0
-        if (
-            handover_enabled
-            and isinstance(linked_planning_id, str)
-            and linked_planning_id
-            and linked_planning_id in active_external_ids
-        ):
-            previous_day = bound_date - timedelta(days=1)
-            source_capacity = effective_qty.get(
-                (linked_planning_id, previous_day, category), 0
-            )
-            handover_covered_qty = min(shortage_qty, max(0, source_capacity))
+        # handover_status konsistent zu get_planning_availability ableiten:
+        # none / missing_link / planned / organizational. source_capacity bleibt
+        # 0, wenn kein gültiger Partner existiert -> handover_covered_qty == 0
+        # (identisch zum bisherigen Verhalten, die Zählung ändert sich nicht).
+        handover_status = "none"
+        if handover_enabled:
+            if (
+                isinstance(linked_planning_id, str)
+                and linked_planning_id
+                and linked_planning_id in active_external_ids
+            ):
+                previous_day = bound_date - timedelta(days=1)
+                source_capacity = effective_qty.get(
+                    (linked_planning_id, previous_day, category), 0
+                )
+                handover_covered_qty = min(shortage_qty, max(0, source_capacity))
+                handover_status = "planned" if source_capacity > 0 else "organizational"
+            else:
+                handover_status = "missing_link"
 
         shortage_after_handover_qty = max(0, shortage_qty - handover_covered_qty)
         if shortage_after_handover_qty <= 0:
@@ -400,6 +456,59 @@ def get_open_conflict_summaries_for_plannings(
                 "missingQty": int(shortage_after_handover_qty),
                 "requiredQty": int(this_qty),
             }
+
+        # Konfliktzelle additiv klassifizieren. excludedQty greift nur für
+        # Laptop-Zeilen von Kartendrucker-Planungen (analog SCHRITT 2 im
+        # Detailpfad). Die Klassifikation beeinflusst die Zählung NICHT.
+        excluded_qty = (
+            incompat_laptops_by_day.get(bound_date, 0)
+            if category == "Laptop" and ext_id in card_printer_plannings
+            else 0
+        )
+        excluded_from_planning_qty = excluded_from_planning_by_day.get(
+            (bound_date, category), 0
+        )
+        card_printer_required_qty = (
+            card_printer_qty_by_planning_day.get((ext_id, bound_date), 0)
+            if category == "Laptop" else 0
+        )
+        card_printer_uplift_qty = (
+            laptop_uplift_by_planning_day.get((ext_id, bound_date), 0)
+            if category == "Laptop" else 0
+        )
+        classification = classify_conflict_cell(
+            ConflictCellFacts(
+                category_key=category,
+                conflict_day=bound_date,
+                unresolved_shortage_qty=shortage_after_handover_qty,
+                handover_covered_qty=handover_covered_qty,
+                handover_status=handover_status,
+                handover_enabled=handover_enabled,
+                excluded_qty=excluded_qty,
+                excluded_from_planning_qty=excluded_from_planning_qty,
+                card_printer_required_qty=card_printer_required_qty,
+                card_printer_uplift_qty=card_printer_uplift_qty,
+            )
+        )
+        # Eine gezählte Konfliktzelle liefert immer eine Klassifikation.
+        conflicts_by_planning[ext_id].append(
+            PlanningConflictDetail(
+                categoryKey=category,
+                conflictDay=bound_date,
+                shortageReason=classification.reason,
+                conflictSeverity=classification.severity,
+                conflictLabel=classification.label,
+                unresolvedShortageQty=int(shortage_after_handover_qty),
+                handoverCoverageQty=int(handover_covered_qty),
+                handoverStatus=handover_status,
+                handoverEnabled=handover_enabled,
+                excludedQty=int(excluded_qty),
+                excludedFromPlanningQty=int(excluded_from_planning_qty),
+                cardPrinterRequiredQty=int(card_printer_required_qty),
+                cardPrinterUpliftQty=int(card_printer_uplift_qty),
+                secondary=_to_conflict_badges(classification),
+            )
+        )
 
     missing_by_planning: dict[str, list[PlanningListMissingItem]] = defaultdict(list)
     for (ext_id, category), values in worst_missing_by_planning_category.items():
@@ -420,7 +529,14 @@ def get_open_conflict_summaries_for_plannings(
         # Stabile, deterministische Reihenfolge: größte Fehlmenge zuerst,
         # bei Gleichstand alphabetisch.
         items.sort(key=lambda item: (-item.missingQty, item.categoryKey.lower()))
-        result[ext_id] = {"count": counts.get(ext_id, 0), "missing": items}
+        conflicts = conflicts_by_planning.get(ext_id, [])
+        # Deterministische Reihenfolge: nach Tag, dann Kategorie.
+        conflicts.sort(key=lambda detail: (detail.conflictDay, detail.categoryKey.lower()))
+        result[ext_id] = {
+            "count": counts.get(ext_id, 0),
+            "missing": items,
+            "conflicts": conflicts,
+        }
     return result
 
 
@@ -637,6 +753,7 @@ def list_plannings(
             handover_summary_map.get(item.external_id),
             int(conflict_summary_map.get(item.external_id, {}).get("count", 0) or 0),
             list(conflict_summary_map.get(item.external_id, {}).get("missing", []) or []),
+            list(conflict_summary_map.get(item.external_id, {}).get("conflicts", []) or []),
         )
         for item in records
     ]
@@ -1218,6 +1335,36 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         if availability_state == "red" and shortage_qty > 0 and handover_enabled:
             availability_state = "yellow"
 
+        excluded_qty = excluded_by_day.get((planning_date, category), 0)
+        excluded_from_planning_qty = excluded_from_planning_by_day.get(
+            (planning_date, category), 0
+        )
+        card_printer_required_qty = (
+            card_printer_required_by_day.get(planning_date, 0)
+            if category == "Laptop" else 0
+        )
+        card_printer_uplift_qty = (
+            laptop_uplift_by_day.get(planning_date, 0)
+            if category == "Laptop" else 0
+        )
+        # Schweregrad-Einordnung über den zentralen Klassifikator. Rein
+        # additiv — has_global_shortage / shortageQty bleiben die Wahrheit der
+        # Konfliktzählung; classify_conflict_cell entscheidet nichts darüber.
+        classification = classify_conflict_cell(
+            ConflictCellFacts(
+                category_key=category,
+                conflict_day=planning_date,
+                unresolved_shortage_qty=shortage_after_handover_qty,
+                handover_covered_qty=handover_covered_qty,
+                handover_status=handover_status,
+                handover_enabled=handover_enabled,
+                excluded_qty=excluded_qty,
+                excluded_from_planning_qty=excluded_from_planning_qty,
+                card_printer_required_qty=card_printer_required_qty,
+                card_printer_uplift_qty=card_printer_uplift_qty,
+            )
+        )
+
         availability_items.append(
             PlanningAvailabilityItem(
                 planningDate=planning_date,
@@ -1243,18 +1390,15 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 handoverStatus=handover_status,
                 handoverCoveredQty=handover_covered_qty,
                 shortageAfterHandoverQty=shortage_after_handover_qty,
-                excludedQty=excluded_by_day.get((planning_date, category), 0),
-                excludedFromPlanningQty=excluded_from_planning_by_day.get(
-                    (planning_date, category), 0
-                ),
-                cardPrinterRequiredQty=(
-                    card_printer_required_by_day.get(planning_date, 0)
-                    if category == "Laptop" else 0
-                ),
-                cardPrinterUpliftQty=(
-                    laptop_uplift_by_day.get(planning_date, 0)
-                    if category == "Laptop" else 0
-                ),
+                excludedQty=excluded_qty,
+                excludedFromPlanningQty=excluded_from_planning_qty,
+                cardPrinterRequiredQty=card_printer_required_qty,
+                cardPrinterUpliftQty=card_printer_uplift_qty,
+                conflictDay=planning_date if classification else None,
+                shortageReason=classification.reason if classification else None,
+                conflictSeverity=classification.severity if classification else None,
+                conflictLabel=classification.label if classification else None,
+                secondary=_to_conflict_badges(classification),
             )
         )
         summary_requested[category] += requested_qty

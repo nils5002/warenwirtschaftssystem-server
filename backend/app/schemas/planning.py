@@ -5,9 +5,12 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from ..domain.conflict_classification import ConflictReason, ConflictSeverity
+
 
 PlanningStatus = Literal["Entwurf", "Geplant", "Bestaetigt", "Abgeschlossen", "Storniert"]
 AvailabilityState = Literal["green", "yellow", "red"]
+HandoverStatusValue = Literal["none", "planned", "missing_link", "organizational"]
 
 
 class PlanningItemPayload(BaseModel):
@@ -99,6 +102,39 @@ class PlanningListMissingItem(BaseModel):
     availableQty: int = 0
 
 
+class ConflictBadge(BaseModel):
+    """Ein einzelnes Schweregrad-Badge (Primaer oder Sekundaer)."""
+
+    severity: ConflictSeverity
+    reason: ConflictReason
+    label: str
+
+
+class PlanningConflictDetail(BaseModel):
+    """Eine einzelne Konfliktzelle (Tag x Kategorie) mit Schweregrad-Einordnung.
+
+    Additiv zu ``missingItems``: ``missingItems`` bleibt unveraendert (eine Zeile
+    je Kategorie, schlimmster Tag), ``conflicts`` haelt jede Konfliktzelle
+    einzeln samt Klassifikation. Aendert nicht, was als Konflikt zaehlt — die
+    Anzahl harter Eintraege entspricht ``openConflictCount``.
+    """
+
+    categoryKey: str
+    conflictDay: date
+    shortageReason: ConflictReason
+    conflictSeverity: ConflictSeverity
+    conflictLabel: str
+    unresolvedShortageQty: int
+    handoverCoverageQty: int = 0
+    handoverStatus: HandoverStatusValue = "none"
+    handoverEnabled: bool = False
+    excludedQty: int = 0
+    excludedFromPlanningQty: int = 0
+    cardPrinterRequiredQty: int = 0
+    cardPrinterUpliftQty: int = 0
+    secondary: list[ConflictBadge] = Field(default_factory=list)
+
+
 class PlanningListItem(BaseModel):
     id: str
     customerName: str
@@ -113,6 +149,10 @@ class PlanningListItem(BaseModel):
     handoverSummary: PlanningListHandoverSummary | None = None
     openConflictCount: int = 0
     missingItems: list[PlanningListMissingItem] = Field(default_factory=list)
+    # Additiv (Konfliktanzeige-Verbesserung): je Konfliktzelle ein klassifizierter
+    # Eintrag. Anzahl harter Eintraege == openConflictCount. Alte Clients ignorieren
+    # das Feld; neue Clients nutzen es fuer die kompakte Konfliktliste der Karte.
+    conflicts: list[PlanningConflictDetail] = Field(default_factory=list)
 
 
 class PlanningAvailabilityItem(BaseModel):
@@ -161,6 +201,15 @@ class PlanningAvailabilityItem(BaseModel):
     # angehoben wurde. > 0 triggert den UI-Hinweis "Für N Kartendrucker
     # werden mindestens N kompatible Laptops benötigt".
     cardPrinterUpliftQty: int = 0
+    # Schweregrad-Einordnung (additiv, Konfliktanzeige-Verbesserung). Bei reinen
+    # grünen Zellen bleiben diese Felder None/leer. Bei einer Konfliktzelle bzw.
+    # einer erklärenden Kontextzeile liefert der zentrale Klassifikator
+    # (domain/conflict_classification.py) Primär-Severity + Sekundär-Badges.
+    conflictDay: date | None = None
+    shortageReason: ConflictReason | None = None
+    conflictSeverity: ConflictSeverity | None = None
+    conflictLabel: str | None = None
+    secondary: list[ConflictBadge] = Field(default_factory=list)
 
 
 class PlanningAvailabilityCategorySummary(BaseModel):

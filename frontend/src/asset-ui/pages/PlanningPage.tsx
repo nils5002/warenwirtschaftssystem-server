@@ -22,7 +22,9 @@ import {
   listPlannings,
   updatePlanning,
   updatePlanningStatus,
+  type ConflictBadge,
   type PlanningAvailabilityResponse,
+  type PlanningConflictSeverity,
   type PlanningListItem,
   type PlanningStatus,
   type PlanningResponse,
@@ -30,6 +32,7 @@ import {
   type WmsOverview,
 } from '../../services/wmsApi';
 import { categoryOptionsFromRecords, normalizeCategory } from '../categories';
+import { conflictSeverityRank, conflictSeverityVisual } from './conflictSeverityVisuals';
 import type { Asset, CategoryItem, UserItem } from '../types';
 
 type PlanningPageProps = {
@@ -140,6 +143,11 @@ type AvailabilityVisual = {
   // cardPrinterUpliftQty: angehobener Anteil — > 0 triggert UI-Hinweis.
   cardPrinterRequiredQty: number;
   cardPrinterUpliftQty: number;
+  // Backend-Schweregrad-Einordnung (Konfliktanzeige-Paket). null bei reinen
+  // grünen Zellen; treibt die Severity-Badges in der Detailansicht.
+  conflictSeverity: PlanningConflictSeverity | null;
+  conflictLabel: string | null;
+  conflictSecondary: ConflictBadge[];
 };
 
 const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
@@ -409,6 +417,7 @@ function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): st
 }
 
 const MISSING_SUMMARY_VISIBLE_LIMIT = 3;
+const CONFLICT_LINES_VISIBLE_LIMIT = 3;
 
 function getMissingHardwareSummary(
   missingItems: PlanningListMissingItem[] | null | undefined,
@@ -421,6 +430,38 @@ function getMissingHardwareSummary(
   const parts = visible.map((item) => `${item.missingQty}× ${item.categoryKey}`);
   const overflowSuffix = overflow > 0 ? ` + ${overflow} weitere` : '';
   return `Fehlt: ${parts.join(', ')}${overflowSuffix}`;
+}
+
+// "2026-06-08" -> "08.06" für die kompakte Konfliktzeile auf der Karte.
+function formatConflictDay(iso: string): string {
+  const parts = String(iso).split('-');
+  return parts.length === 3 ? `${parts[2]}.${parts[1]}` : String(iso);
+}
+
+function conflictShortageText(qty: number): string {
+  return qty === 1 ? '1 fehlt' : `${qty} fehlen`;
+}
+
+// Kompaktes farbiges Schweregrad-Badge. `label` überschreibt das Fallback-Label
+// (das Backend liefert conflictLabel mit).
+function ConflictSeverityChip({
+  severity,
+  label,
+  size = 'md',
+}: {
+  severity: PlanningConflictSeverity | null | undefined;
+  label?: string | null;
+  size?: 'sm' | 'md';
+}) {
+  const visual = conflictSeverityVisual(severity);
+  const sizing = size === 'sm' ? 'px-1.5 py-[1px] text-[10px]' : 'px-2 py-0.5 text-[11px]';
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border font-semibold ${sizing} ${visual.chipClass}`}
+    >
+      {label?.trim() || visual.label}
+    </span>
+  );
 }
 
 function updatePlanningItemInEditor(
@@ -745,6 +786,9 @@ export function PlanningPage({
         excludedFromPlanningQty: Number(item.excludedFromPlanningQty ?? 0),
         cardPrinterRequiredQty: Number(item.cardPrinterRequiredQty ?? 0),
         cardPrinterUpliftQty: Number(item.cardPrinterUpliftQty ?? 0),
+        conflictSeverity: item.conflictSeverity ?? null,
+        conflictLabel: item.conflictLabel ?? null,
+        conflictSecondary: item.secondary ?? [],
       });
     }
 
@@ -818,6 +862,19 @@ export function PlanningPage({
     () => availabilityVisuals.filter((item) => item.status === 'open'),
     [availabilityVisuals],
   );
+
+  // Schweregrad-Zusammenfassung über alle klassifizierten Zellen — treibt die
+  // kompakte "3 Echte Engpässe · 2 Übergabe prüfen · …"-Kopfzeile.
+  const conflictSeveritySummary = useMemo(() => {
+    const counts = new Map<PlanningConflictSeverity, number>();
+    for (const visual of availabilityVisuals) {
+      if (!visual.conflictSeverity) continue;
+      counts.set(visual.conflictSeverity, (counts.get(visual.conflictSeverity) ?? 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([severity, count]) => ({ severity, count }))
+      .sort((a, b) => conflictSeverityRank(a.severity) - conflictSeverityRank(b.severity));
+  }, [availabilityVisuals]);
 
   // Uplift-Hinweise, die NICHT bereits im Engpass-Card erscheinen — z. B.
   // wenn der Bedarf ausreichend gedeckt ist, der Nutzer aber trotzdem sehen
@@ -1770,6 +1827,10 @@ export function PlanningPage({
               const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
               const itemConflictCount = item.openConflictCount ?? 0;
               const hasOpenConflict = itemConflictCount > 0;
+              // Klassifizierte Konfliktzeilen (Backend-sortiert nach Tag/Kategorie).
+              // Fallback auf die alte "Fehlt: ..."-Zeile, wenn das Backend noch
+              // kein conflicts-Feld liefert.
+              const conflictLines = item.conflicts ?? [];
               const missingSummary = getMissingHardwareSummary(item.missingItems);
               return (
                 <div
@@ -1820,7 +1881,42 @@ export function PlanningPage({
                   {hasOpenConflict ? (
                     <p className="mt-1 text-[11px] font-medium text-rose-700 dark:text-rose-200">Offener Konflikt</p>
                   ) : null}
-                  {missingSummary ? (
+                  {conflictLines.length > 0 ? (
+                    <div
+                      className="mt-1 flex flex-col gap-1"
+                      data-testid={`planning-conflict-list-${item.id}`}
+                    >
+                      {conflictLines.slice(0, CONFLICT_LINES_VISIBLE_LIMIT).map((conflict, index) => (
+                        <div
+                          key={`${conflict.conflictDay}-${conflict.categoryKey}-${index}`}
+                          data-testid={`planning-conflict-line-${item.id}-${index}`}
+                          className="flex flex-wrap items-center gap-1"
+                        >
+                          <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
+                            {conflict.categoryKey} · {formatConflictDay(conflict.conflictDay)} ·{' '}
+                            {conflictShortageText(Number(conflict.unresolvedShortageQty) || 0)}
+                          </span>
+                          <ConflictSeverityChip
+                            severity={conflict.conflictSeverity}
+                            label={conflict.conflictLabel}
+                          />
+                          {(conflict.secondary ?? []).map((badge) => (
+                            <ConflictSeverityChip
+                              key={badge.severity}
+                              severity={badge.severity}
+                              label={badge.label}
+                              size="sm"
+                            />
+                          ))}
+                        </div>
+                      ))}
+                      {conflictLines.length > CONFLICT_LINES_VISIBLE_LIMIT ? (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                          + {conflictLines.length - CONFLICT_LINES_VISIBLE_LIMIT} weitere
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : missingSummary ? (
                     <p
                       data-testid={`planning-missing-summary-${item.id}`}
                       className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-400/40 dark:bg-rose-950/55 dark:text-rose-100"
@@ -2266,10 +2362,25 @@ export function PlanningPage({
                                       </span>
                                       <div className="flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                          <p className="text-sm font-semibold">Offener Engpass</p>
+                                          {visual.conflictSeverity ? (
+                                            <ConflictSeverityChip
+                                              severity={visual.conflictSeverity}
+                                              label={visual.conflictLabel}
+                                            />
+                                          ) : (
+                                            <p className="text-sm font-semibold">Offener Engpass</p>
+                                          )}
                                           <span className="rounded-full border border-rose-200 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
                                             {visual.categoryKey}
                                           </span>
+                                          {visual.conflictSecondary.map((badge) => (
+                                            <ConflictSeverityChip
+                                              key={badge.severity}
+                                              severity={badge.severity}
+                                              label={badge.label}
+                                              size="sm"
+                                            />
+                                          ))}
                                         </div>
                                         <p className="mt-1 text-[13px] leading-relaxed text-rose-800 dark:text-rose-100">
                                           {visual.categoryKey} · {visual.shortageQty} Stück fehlen im Projektzeitraum.
@@ -2650,6 +2761,28 @@ export function PlanningPage({
                   </div>
                 </div>
 
+                {conflictSeveritySummary.length > 0 ? (
+                  <div
+                    className="mt-3 flex flex-wrap items-center gap-1.5"
+                    data-testid="planning-detail-severity-summary"
+                  >
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Schweregrade:
+                    </span>
+                    {conflictSeveritySummary.map(({ severity, count }) => {
+                      const visual = conflictSeverityVisual(severity);
+                      return (
+                        <span
+                          key={severity}
+                          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${visual.chipClass}`}
+                        >
+                          {count}× {visual.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
                   <span className="status-chip border-emerald-200 bg-emerald-50 text-emerald-700">
                     <Clock3 className="h-3.5 w-3.5" />
@@ -2839,10 +2972,25 @@ export function PlanningPage({
                           className="rounded-2xl border border-rose-200 bg-rose-50/85 px-3 py-3 text-xs text-rose-900 shadow-sm dark:border-rose-700 dark:bg-rose-950/30 dark:text-rose-100"
                         >
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold">Offener Engpass</p>
+                            {visual.conflictSeverity ? (
+                              <ConflictSeverityChip
+                                severity={visual.conflictSeverity}
+                                label={visual.conflictLabel}
+                              />
+                            ) : (
+                              <p className="text-sm font-semibold">Offener Engpass</p>
+                            )}
                             <span className="rounded-full border border-white/80 bg-white/75 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-700 dark:bg-slate-950/40 dark:text-rose-100">
                               {visual.categoryKey}
                             </span>
+                            {visual.conflictSecondary.map((badge) => (
+                              <ConflictSeverityChip
+                                key={badge.severity}
+                                severity={badge.severity}
+                                label={badge.label}
+                                size="sm"
+                              />
+                            ))}
                           </div>
                           <p className="mt-1 text-[13px]">
                             {visual.categoryKey} · {visual.shortageQty} Stück fehlen · {formatGermanDate(visual.planningDate)}
