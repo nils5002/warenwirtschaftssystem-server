@@ -10,37 +10,35 @@ import { useWmsController } from './hooks/useWmsController';
 import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
 import {
-  clearAuthSession,
   fetchAuthMe,
-  getAuthSession,
   login,
   logout,
   register,
-  setAuthSession,
   setUnauthorizedHandler,
-  type AuthSession,
   type AuthUser,
 } from './services/wmsApi';
 
 function App() {
-  const [authSession, setAuthState] = useState<AuthSession | null>(() => getAuthSession());
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() => getAuthSession()?.user ?? null);
-  const [authBooting, setAuthBooting] = useState<boolean>(!!getAuthSession());
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  // authBooting bleibt true, bis per GET /api/auth/me geklaert ist, ob ein
+  // gueltiges HttpOnly-Auth-Cookie vorliegt (Security-Audit Paket B4). Da das
+  // Cookie fuer JavaScript unsichtbar ist, ist dieser Server-Roundtrip beim
+  // Start unvermeidbar — der lokale Auth-Status kann nicht vorab feststehen.
+  const [authBooting, setAuthBooting] = useState<boolean>(true);
 
   const activeRole = authUser?.role ?? 'Mitarbeiter';
+  const isAuthenticated = !!authUser;
   const isMobile = useIsMobile();
   const controller = useWmsController({
     activeRole,
-    isAuthenticated: !!authSession,
+    isAuthenticated,
   });
 
+  // Beim Start einmalig pruefen, ob das Auth-Cookie eine gueltige Sitzung
+  // traegt. Erfolg -> eingeloggt; 401/Fehler -> Login-Seite.
   useEffect(() => {
     let cancelled = false;
-    if (!authSession) {
-      setAuthBooting(false);
-      return;
-    }
-    const validate = async () => {
+    const bootstrap = async () => {
       try {
         const user = await fetchAuthMe();
         if (!cancelled) {
@@ -48,8 +46,6 @@ function App() {
         }
       } catch {
         if (!cancelled) {
-          clearAuthSession();
-          setAuthState(null);
           setAuthUser(null);
         }
       } finally {
@@ -58,11 +54,11 @@ function App() {
         }
       }
     };
-    void validate();
+    void bootstrap();
     return () => {
       cancelled = true;
     };
-  }, [authSession]);
+  }, []);
 
   // Zentrales 401-Handling: antwortet das Backend auf irgendeinen Request
   // mit 401, verwirft der API-Client die Session und meldet das hierher.
@@ -71,8 +67,6 @@ function App() {
   // einem halb eingeloggten Zustand zu verharren.
   useEffect(() => {
     setUnauthorizedHandler(() => {
-      clearAuthSession();
-      setAuthState(null);
       setAuthUser(null);
     });
     return () => setUnauthorizedHandler(null);
@@ -109,7 +103,6 @@ function App() {
   useEffect(() => {
     if (typeof window === 'undefined' || authBooting) return;
     const currentPath = normalizePathname(window.location.pathname);
-    const isAuthenticated = Boolean(authSession && authUser);
 
     if (!isAuthenticated) {
       if (currentPath !== '/login') {
@@ -121,7 +114,7 @@ function App() {
     if (currentPath === '/login' || currentPath === '/') {
       window.history.replaceState(null, '', '/dashboard');
     }
-  }, [authBooting, authSession, authUser]);
+  }, [authBooting, isAuthenticated]);
 
   const activeItem = visibleNavigation.find((item) => item.key === controller.activePage);
   const mobileNavItems = visibleNavigation.filter((item) =>
@@ -142,10 +135,10 @@ function App() {
   };
 
   const handleLogin = async (payload: { email: string; password: string }) => {
-    const session = await login(payload);
-    setAuthSession(session);
-    setAuthState(session);
-    setAuthUser(session.user);
+    // login() setzt serverseitig das HttpOnly-Auth-Cookie und liefert das
+    // Benutzerprofil zurueck. Kein Token wird im Client gespeichert.
+    const user = await login(payload);
+    setAuthUser(user);
   };
 
   const handleRegister = async (payload: { name: string; email: string; password: string }) => {
@@ -154,11 +147,9 @@ function App() {
   };
 
   const handleLogout = async () => {
-    // Erst serverseitig invalidieren (token_version erhöhen), solange der
-    // Token noch vorhanden ist — danach die lokale Session verwerfen.
+    // Serverseitig invalidieren (token_version erhöhen) und das Auth-Cookie
+    // löschen — danach den lokalen Auth-Status verwerfen.
     await logout();
-    clearAuthSession();
-    setAuthState(null);
     setAuthUser(null);
   };
 
@@ -170,7 +161,7 @@ function App() {
     );
   }
 
-  if (!authSession || !authUser) {
+  if (!authUser) {
     return <LoginPage onLogin={handleLogin} onRegister={handleRegister} />;
   }
 

@@ -21,6 +21,7 @@ from .logging_setup import (
 )
 from .repositories import category_repository
 from .routes import api_router
+from .routes.dependencies import extract_request_token
 from .services.auth_service import decode_access_token, ensure_user_passwords
 from .services.auth_service import ensure_initial_admin, verify_auth_secret
 from .services.job_manager import JobManager
@@ -107,21 +108,21 @@ def create_app() -> FastAPI:
         incoming = request.headers.get("x-request-id", "").strip()
         request_id = incoming if incoming else uuid.uuid4().hex[:16]
 
-        # Auth NICHT aus dem Header in den Log schreiben — nur die abgeleitete
-        # User-ID / Rolle. Das vermeidet Token-Leaks in der Logdatei.
+        # Auth NICHT roh in den Log schreiben — nur die abgeleitete User-ID /
+        # Rolle. Das vermeidet Token-Leaks in der Logdatei. Der Token kommt
+        # je nach Client aus dem Authorization-Header oder dem HttpOnly-Cookie
+        # (Security-Audit Paket B4).
         user_id: str | None = None
         role: str | None = None
-        auth_header = request.headers.get("authorization", "").strip()
-        if auth_header.lower().startswith("bearer "):
-            token = auth_header[7:].strip()
-            if token:
-                try:
-                    info = decode_access_token(token)
-                    user_id = info.userId or None
-                    role = info.role or None
-                except Exception:  # noqa: BLE001
-                    user_id = None
-                    role = None
+        token = extract_request_token(request)
+        if token:
+            try:
+                info = decode_access_token(token)
+                user_id = info.userId or None
+                role = info.role or None
+            except Exception:  # noqa: BLE001
+                user_id = None
+                role = None
 
         bind_request_context(
             request_id=request_id,
