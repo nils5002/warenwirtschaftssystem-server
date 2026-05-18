@@ -150,6 +150,32 @@ class ConflictGroupDay(BaseModel):
     affectedPlanningIds: list[str] = Field(default_factory=list)
 
 
+RecommendationType = Literal[
+    "procurement",
+    "planning_adjustment",
+    "handover",
+    "schedule",
+    "data_quality",
+]
+RecommendationPriority = Literal["high", "medium", "low"]
+
+
+class Recommendation(BaseModel):
+    """Ein regelbasierter, nachvollziehbarer Lösungs-Hinweis zu einer Ursache.
+
+    Bewusst als HINWEIS formuliert ("prüfen", "beschaffen oder mieten") — keine
+    automatische Entscheidung. Wird im Backend rein regelbasiert aus den
+    vorhandenen ConflictGroup-Daten + Planungsstatus erzeugt; kein AI/LLM.
+    """
+
+    type: RecommendationType
+    priority: RecommendationPriority
+    title: str
+    description: str
+    suggestedQty: int | None = None
+    affectedPlanningIds: list[str] = Field(default_factory=list)
+
+
 class ConflictGroup(BaseModel):
     """Eine fachliche Konfliktursache — gebündelt über mehrere Planungen.
 
@@ -171,6 +197,9 @@ class ConflictGroup(BaseModel):
     affectedPlanningIds: list[str] = Field(default_factory=list)
     affectedPlanningLabels: list[str] = Field(default_factory=list)
     days: list[ConflictGroupDay] = Field(default_factory=list)
+    # Additiv: regelbasierte Lösungs-Hinweise. Ändert nichts an der
+    # Konfliktzählung; alte Clients ignorieren das Feld.
+    recommendations: list[Recommendation] = Field(default_factory=list)
 
 
 class PlanningListItem(BaseModel):

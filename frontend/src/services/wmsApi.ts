@@ -242,6 +242,25 @@ export type ConflictGroupDay = {
   affectedPlanningIds: string[];
 };
 
+// Regelbasierter Lösungs-Hinweis zu einer Konfliktursache (Backend-erzeugt).
+export type RecommendationType =
+  | 'procurement'
+  | 'planning_adjustment'
+  | 'handover'
+  | 'schedule'
+  | 'data_quality';
+
+export type RecommendationPriority = 'high' | 'medium' | 'low';
+
+export type Recommendation = {
+  type: RecommendationType;
+  priority: RecommendationPriority;
+  title: string;
+  description: string;
+  suggestedQty?: number | null;
+  affectedPlanningIds?: string[];
+};
+
 export type ConflictGroup = {
   id: string;
   categoryKey: string;
@@ -253,6 +272,7 @@ export type ConflictGroup = {
   affectedPlanningIds: string[];
   affectedPlanningLabels: string[];
   days: ConflictGroupDay[];
+  recommendations?: Recommendation[];
 };
 
 export type PlanningListItem = {
