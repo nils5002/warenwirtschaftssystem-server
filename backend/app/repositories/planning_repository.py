@@ -16,6 +16,8 @@ from ..domain.conflict_classification import (
 from . import category_repository
 from ..schemas.planning import (
     ConflictBadge,
+    ConflictGroup,
+    ConflictGroupDay,
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
     PlanningAvailabilityResponse,
@@ -499,6 +501,8 @@ def get_open_conflict_summaries_for_plannings(
                 conflictSeverity=classification.severity,
                 conflictLabel=classification.label,
                 unresolvedShortageQty=int(shortage_after_handover_qty),
+                totalRequiredQty=int(total_qty),
+                usableStock=int(usable),
                 handoverCoverageQty=int(handover_covered_qty),
                 handoverStatus=handover_status,
                 handoverEnabled=handover_enabled,
@@ -538,6 +542,116 @@ def get_open_conflict_summaries_for_plannings(
             "conflicts": conflicts,
         }
     return result
+
+
+# Konflikttage derselben Kategorie gelten als zusammenhängend (= eine Ursache),
+# wenn die Lücke höchstens so groß ist. Größere Lücken trennen zu eigenen
+# Ursachen. Bewusst klein gehalten; bei Bedarf eine fachliche Justierung.
+_CONFLICT_GROUP_MAX_GAP_DAYS = 1
+
+
+def group_conflict_causes(
+    summaries: dict[str, dict[str, object]],
+    planning_labels: dict[str, str],
+) -> list[ConflictGroup]:
+    """Bündelt technische Konfliktzellen zu fachlichen Konfliktursachen.
+
+    Reine Funktion (kein DB-/IO-Zugriff). Eingabe ist die Rückgabe von
+    ``get_open_conflict_summaries_for_plannings`` plus eine Label-Map
+    ``{ext_id: "Kunde / Projekt"}``.
+
+    Gruppierung: nach Kategorie, dann in zusammenhängende Datums-Läufe
+    (Lücke <= ``_CONFLICT_GROUP_MAX_GAP_DAYS`` Tage = dieselbe Ursache; größere
+    Lücke startet eine neue Ursache). Ändert nichts an der Konfliktzählung —
+    jede Konfliktzelle landet in genau einer Gruppe, daher entspricht die Summe
+    aller ``totalConflictEvents`` exakt ``openConflictCount``.
+    """
+    # Pro (Kategorie, Tag) die Konfliktzellen aggregieren.
+    by_category_day: dict[tuple[str, date], dict[str, object]] = {}
+    for ext_id, summary in summaries.items():
+        for detail in summary.get("conflicts", []) or []:
+            key = (detail.categoryKey, detail.conflictDay)
+            info = by_category_day.get(key)
+            if info is None:
+                info = {
+                    "required": 0,
+                    "usable": None,
+                    "missing": 0,
+                    "plannings": set(),
+                    "events": 0,
+                }
+                by_category_day[key] = info
+            info["required"] = max(int(info["required"]), int(detail.totalRequiredQty))
+            usable_value = int(detail.usableStock)
+            info["usable"] = (
+                usable_value
+                if info["usable"] is None
+                else min(int(info["usable"]), usable_value)
+            )
+            info["missing"] = max(int(info["missing"]), int(detail.unresolvedShortageQty))
+            plannings: set[str] = info["plannings"]  # type: ignore[assignment]
+            plannings.add(ext_id)
+            info["events"] = int(info["events"]) + 1
+
+    groups: list[ConflictGroup] = []
+    categories = sorted({category for (category, _day) in by_category_day})
+    for category in categories:
+        days = sorted(day for (cat, day) in by_category_day if cat == category)
+        # Zusammenhängende Datums-Läufe bilden.
+        runs: list[list[date]] = []
+        current_run: list[date] = []
+        for day in days:
+            if current_run and (day - current_run[-1]).days > _CONFLICT_GROUP_MAX_GAP_DAYS:
+                runs.append(current_run)
+                current_run = []
+            current_run.append(day)
+        if current_run:
+            runs.append(current_run)
+
+        for run in runs:
+            day_objs: list[ConflictGroupDay] = []
+            affected: set[str] = set()
+            total_events = 0
+            max_missing = 0
+            for day in run:
+                info = by_category_day[(category, day)]
+                day_plannings: set[str] = info["plannings"]  # type: ignore[assignment]
+                day_objs.append(
+                    ConflictGroupDay(
+                        date=day,
+                        requiredQty=int(info["required"]),
+                        usableStock=int(info["usable"] or 0),
+                        missingQty=int(info["missing"]),
+                        affectedPlanningIds=sorted(day_plannings),
+                    )
+                )
+                affected |= day_plannings
+                total_events += int(info["events"])
+                max_missing = max(max_missing, int(info["missing"]))
+            affected_sorted = sorted(
+                affected,
+                key=lambda pid: (planning_labels.get(pid, pid).lower(), pid),
+            )
+            groups.append(
+                ConflictGroup(
+                    id=f"{category}:{run[0].isoformat()}:{run[-1].isoformat()}",
+                    categoryKey=category,
+                    dateFrom=run[0],
+                    dateTo=run[-1],
+                    maxMissingQty=max_missing,
+                    totalConflictEvents=total_events,
+                    affectedPlanningCount=len(affected_sorted),
+                    affectedPlanningIds=affected_sorted,
+                    affectedPlanningLabels=[
+                        planning_labels.get(pid, pid) for pid in affected_sorted
+                    ],
+                    days=day_objs,
+                )
+            )
+
+    # Stabile, fachlich sinnvolle Reihenfolge: größte Fehlmenge zuerst.
+    groups.sort(key=lambda group: (-group.maxMissingQty, group.dateFrom, group.categoryKey.lower()))
+    return groups
 
 
 def _build_handover_list_summary_map(

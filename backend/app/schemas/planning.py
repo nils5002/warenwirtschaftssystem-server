@@ -125,6 +125,11 @@ class PlanningConflictDetail(BaseModel):
     conflictSeverity: ConflictSeverity
     conflictLabel: str
     unresolvedShortageQty: int
+    # Globale konkurrierende Tagesmenge (Summe über ALLE Planungen) und der an
+    # diesem Tag/dieser Kategorie nutzbare Bestand. Additiv — speisen die
+    # Konfliktursachen-Gruppierung. NICHT der Eigenbedarf dieser Planung.
+    totalRequiredQty: int = 0
+    usableStock: int = 0
     handoverCoverageQty: int = 0
     handoverStatus: HandoverStatusValue = "none"
     handoverEnabled: bool = False
@@ -133,6 +138,39 @@ class PlanningConflictDetail(BaseModel):
     cardPrinterRequiredQty: int = 0
     cardPrinterUpliftQty: int = 0
     secondary: list[ConflictBadge] = Field(default_factory=list)
+
+
+class ConflictGroupDay(BaseModel):
+    """Tagesdetail innerhalb einer Konfliktursache."""
+
+    date: date
+    requiredQty: int
+    usableStock: int
+    missingQty: int
+    affectedPlanningIds: list[str] = Field(default_factory=list)
+
+
+class ConflictGroup(BaseModel):
+    """Eine fachliche Konfliktursache — gebündelt über mehrere Planungen.
+
+    Mehrere technische Konflikte (Tag x Kategorie x Planung) können dieselbe
+    Ursache haben (z. B. ein gemeinsamer Pool-Engpass an aufeinanderfolgenden
+    Tagen). Eine ConflictGroup fasst die zusammenhängenden Konfliktzellen einer
+    Kategorie zusammen. Rein additiv: ändert ``openConflictCount`` nicht — die
+    Summe von ``totalConflictEvents`` über alle Gruppen entspricht exakt
+    ``openConflictCount``.
+    """
+
+    id: str
+    categoryKey: str
+    dateFrom: date
+    dateTo: date
+    maxMissingQty: int
+    totalConflictEvents: int
+    affectedPlanningCount: int
+    affectedPlanningIds: list[str] = Field(default_factory=list)
+    affectedPlanningLabels: list[str] = Field(default_factory=list)
+    days: list[ConflictGroupDay] = Field(default_factory=list)
 
 
 class PlanningListItem(BaseModel):

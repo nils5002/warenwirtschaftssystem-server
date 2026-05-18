@@ -97,6 +97,9 @@ export type WmsOverview = {
       remainingAfterPlanning: number;
       shortageQty: number;
     }>;
+    // Additiv: fachliche Konfliktursachen. Alte Clients ignorieren die Felder.
+    conflictGroups?: ConflictGroup[];
+    conflictCauseCount?: number;
   } | null;
 };
 
@@ -216,6 +219,8 @@ export type PlanningConflictDetail = {
   conflictSeverity: PlanningConflictSeverity;
   conflictLabel: string;
   unresolvedShortageQty: number;
+  totalRequiredQty?: number;
+  usableStock?: number;
   handoverCoverageQty?: number;
   handoverStatus?: "none" | "planned" | "missing_link" | "organizational";
   handoverEnabled?: boolean;
@@ -224,6 +229,30 @@ export type PlanningConflictDetail = {
   cardPrinterRequiredQty?: number;
   cardPrinterUpliftQty?: number;
   secondary?: ConflictBadge[];
+};
+
+// Fachliche Konfliktursache — bündelt zusammenhängende technische Konflikte
+// (Tag x Kategorie x Planung) zu einer gemeinsamen Ursache. Additiv; ändert
+// openConflictCount nicht.
+export type ConflictGroupDay = {
+  date: string;
+  requiredQty: number;
+  usableStock: number;
+  missingQty: number;
+  affectedPlanningIds: string[];
+};
+
+export type ConflictGroup = {
+  id: string;
+  categoryKey: string;
+  dateFrom: string;
+  dateTo: string;
+  maxMissingQty: number;
+  totalConflictEvents: number;
+  affectedPlanningCount: number;
+  affectedPlanningIds: string[];
+  affectedPlanningLabels: string[];
+  days: ConflictGroupDay[];
 };
 
 export type PlanningListItem = {
