@@ -156,6 +156,15 @@ function isHiddenLegacyCheckoutCheckinActivity(title: string): boolean {
   return normalized === 'asset ausgegeben' || normalized === 'asset zurückgenommen';
 }
 
+/**
+ * True, wenn der Fehler ein abgebrochener fetch ist (AbortController.abort()).
+ * Ein abgebrochener Overview-Request ist kein echter Fehler — er wurde bewusst
+ * durch einen neueren Request ersetzt und darf keine Fehlermeldung auslösen.
+ */
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 export function useWmsController(options: UseWmsControllerOptions) {
   const accessContext = getApiAccessContext();
   const { activeRole, isAuthenticated } = options;
@@ -195,6 +204,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // Setzen keine Re-Renders auslöst — andernfalls würde jeder Poll-Cycle
   // den Effekt neu starten und der Backoff-Zähler liefe zurück.
   const lastLoadSuccessRef = useRef<boolean>(true);
+  // AbortController des aktuell laufenden Overview-Requests. Ein neuer
+  // loadWms-Aufruf bricht den vorherigen ab (Abort-and-Replace) — so ist
+  // immer nur EIN /api/wms/overview-Request gleichzeitig offen, auch wenn
+  // Polling-Tick und ein aktionsausgelöster Reload zusammentreffen.
+  const overviewAbortRef = useRef<AbortController | null>(null);
   const currentOperatorName = getCurrentUser()?.name?.trim() || 'Unbekannt';
 
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
@@ -214,6 +228,14 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // (z. B. PlanningPage) nicht bei jedem Render eine neue Funktionsreferenz
   // erhalten und damit unnötig erneut Effekte feuern.
   const loadWms = useCallback(async (options?: { initial?: boolean }) => {
+    // Laufenden Overview-Request abbrechen — der neue ersetzt ihn. Verhindert
+    // doppelte parallele /api/wms/overview-Requests (Polling-Tick und z. B.
+    // ein aktionsausgelöster Reload), die den Single-Worker sonst gleichzeitig
+    // belasten würden.
+    overviewAbortRef.current?.abort();
+    const controller = new AbortController();
+    overviewAbortRef.current = controller;
+
     if (options?.initial) {
       setIsLoading(true);
     } else {
@@ -225,7 +247,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     // false gesetzt → kein Code-Path in der Production-Bundle.
     const startedAt = typeof performance !== 'undefined' ? performance.now() : 0;
     try {
-      const payload = await fetchWmsOverview();
+      const payload = await fetchWmsOverview(controller.signal);
       lastLoadSuccessRef.current = true;
       const normalizedUsers = payload.users.map((user) => ({
         ...user,
@@ -271,6 +293,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
         }
       }
     } catch (error) {
+      // Abgebrochener Vorgänger-Request (durch einen neueren ersetzt): kein
+      // echter Fehler — Status/Flags unverändert lassen, der ersetzende
+      // Aufruf pflegt sie.
+      if (isAbortError(error)) {
+        return;
+      }
       // Konkrete Meldung statt generischer "Backend nicht erreichbar"-Text.
       // Bereits geladene Daten (assets, planningSummary etc.) bleiben in
       // ihrem letzten erfolgreichen Zustand, weil wir KEIN reset auf [] /
@@ -296,8 +324,13 @@ export function useWmsController(options: UseWmsControllerOptions) {
       // dem Polling-Scheduler über das Ref (success-Flag).
       lastLoadSuccessRef.current = false;
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      // Nur der zuletzt gestartete Aufruf darf die Lade-Flags zurücksetzen —
+      // ein zwischenzeitlich abgebrochener Vorgänger nicht.
+      if (overviewAbortRef.current === controller) {
+        overviewAbortRef.current = null;
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   }, []);
 
@@ -333,12 +366,15 @@ export function useWmsController(options: UseWmsControllerOptions) {
     let inflight = false;
     let consecutiveFailures = 0;
 
-    const BASE_INTERVAL_MS = 15_000;
-    // Bei wiederholten Fehlschlägen (z. B. 502 von Cloudflare während eines
-    // Backend-Neustarts) wird das Intervall exponentiell gedehnt, damit das
-    // Frontend den Origin nicht weiter mit Requests bombardiert. Obergrenze
-    // = 2 Minuten — danach reicht ein langsamer Heartbeat aus, sobald der
-    // Server wieder antwortet, springt der Backoff sofort auf BASE zurück.
+    // Polling-Intervall bewusst von 15 s auf 45 s angehoben: bei ~20
+    // gleichzeitigen Nutzern senkt das die /api/wms/overview-Grundlast um
+    // rund zwei Drittel. Verbleibende Spitzen fängt der serverseitige
+    // Kurz-Cache ab; das Dashboard veraltet dadurch nicht spürbar.
+    const BASE_INTERVAL_MS = 45_000;
+    // Bei wiederholten Fehlschlägen (z. B. 502 während eines Backend-
+    // Neustarts) wird das Intervall exponentiell gedehnt, damit das Frontend
+    // den Origin nicht weiter mit Requests bombardiert. Obergrenze = 2 Minuten;
+    // sobald der Server wieder antwortet, springt der Backoff auf BASE zurück.
     const MAX_INTERVAL_MS = 120_000;
 
     const nextDelay = (): number => {
@@ -347,8 +383,15 @@ export function useWmsController(options: UseWmsControllerOptions) {
       return Math.min(BASE_INTERVAL_MS * factor, MAX_INTERVAL_MS);
     };
 
+    // Polling ruht, solange der Tab im Hintergrund ist — Hintergrund-Tabs
+    // sollen den Overview-Endpoint nicht weiter belasten. Der
+    // visibilitychange-Handler nimmt es beim Sichtbarwerden sofort wieder auf.
+    const isHidden = (): boolean =>
+      typeof document !== 'undefined' && document.visibilityState !== 'visible';
+
     const schedule = (delay: number) => {
       if (cancelled) return;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(() => {
         void tick();
       }, delay);
@@ -356,6 +399,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
 
     const tick = async (initial = false) => {
       if (cancelled) return;
+      // Hintergrund-Tab: Polling aussetzen. Der initiale Load läuft trotzdem,
+      // damit ein im Hintergrund geöffneter Tab nicht im Skeleton hängen
+      // bleibt; danach übernimmt der visibilitychange-Handler.
+      if (!initial && isHidden()) {
+        return;
+      }
       if (inflight) {
         // Vorheriger Poll läuft noch — Überlappung vermeiden. Wir reschedulen
         // direkt, damit ein hängender Request das Polling nicht stoppt.
@@ -373,18 +422,32 @@ export function useWmsController(options: UseWmsControllerOptions) {
         }
       } finally {
         inflight = false;
-        if (!cancelled) {
+        // Nicht nachschedulen, wenn der Tab in den Hintergrund gewechselt ist
+        // — der visibilitychange-Handler nimmt das Polling dann wieder auf.
+        if (!cancelled && !isHidden()) {
           schedule(nextDelay());
         }
       }
     };
 
+    const handleVisibility = () => {
+      if (cancelled || isHidden()) return;
+      // Tab wieder sichtbar → sofort frische Daten holen und regulär weiter.
+      void tick();
+    };
+
     void tick(true);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibility);
+    }
 
     return () => {
       cancelled = true;
       if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibility);
       }
     };
   }, [isAuthenticated, loadWms]);

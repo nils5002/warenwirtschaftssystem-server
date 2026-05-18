@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import os
+
 import pytest
+
+# Overview-Cache in Tests deaktivieren (TTL=0): Tests pruefen Datenstaende
+# unmittelbar nach Mutationen — ein aktives Cache-Fenster wuerde dort zu
+# scheinbar veralteten Antworten fuehren. Muss VOR dem ersten App-Import
+# gesetzt werden, weil get_settings() das Ergebnis cached.
+os.environ.setdefault("OVERVIEW_CACHE_TTL_SECONDS", "0")
 
 from app.database.session import SessionLocal, init_db
 from app.repositories import category_repository

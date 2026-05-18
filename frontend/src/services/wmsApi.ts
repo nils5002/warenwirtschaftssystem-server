@@ -668,8 +668,10 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
   return parseResponse<T>(response);
 }
 
-export async function fetchWmsOverview(): Promise<WmsOverview> {
-  const response = await apiFetch('/api/wms/overview');
+export async function fetchWmsOverview(signal?: AbortSignal): Promise<WmsOverview> {
+  // Optionales AbortSignal: der Aufrufer kann einen noch laufenden
+  // Overview-Request abbrechen, sobald ein neuer ihn ersetzt.
+  const response = await apiFetch('/api/wms/overview', signal ? { signal } : undefined);
   return parseResponse<WmsOverview>(response);
 }
 
