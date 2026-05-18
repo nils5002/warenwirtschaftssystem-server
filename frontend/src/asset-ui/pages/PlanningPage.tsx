@@ -442,6 +442,38 @@ function conflictShortageText(qty: number): string {
   return qty === 1 ? '1 fehlt' : `${qty} fehlen`;
 }
 
+// Deutsche Plural-Formen der bekannten Hardware-Kategorien. Für unbekannte
+// (z. B. selbst angelegte) Kategorien greift ein Fallback (siehe categoryCountLabel).
+const CATEGORY_PLURALS: Record<string, string> = {
+  Laptop: 'Laptops',
+  iPad: 'iPads',
+  Handheld: 'Handhelds',
+  Smartphone: 'Smartphones',
+  'QR-Code-Scanner': 'QR-Code-Scanner',
+  Drucker: 'Drucker',
+  Kartendrucker: 'Kartendrucker',
+  Switch: 'Switches',
+  Router: 'Router',
+  'LTE-Router': 'LTE-Router',
+  Zubehör: 'Zubehör',
+  Zubehoer: 'Zubehoer',
+  Sonstiges: 'Sonstiges',
+};
+
+// "1 Laptop", "8 Laptops", "7 QR-Code-Scanner". Für unbekannte Kategorien im
+// Plural der gut lesbare "8× Kategorie"-Fallback.
+function categoryCountLabel(category: string, count: number): string {
+  if (count === 1) return `1 ${category}`;
+  const plural = CATEGORY_PLURALS[category];
+  if (plural) return `${count} ${plural}`;
+  return `${count}× ${category}`;
+}
+
+// Verb-Form passend zur Menge: "1 ... fehlt", "8 ... fehlen".
+function shortageVerb(count: number): string {
+  return count === 1 ? 'fehlt' : 'fehlen';
+}
+
 // Kompaktes farbiges Schweregrad-Badge. `label` überschreibt das Fallback-Label
 // (das Backend liefert conflictLabel mit).
 function ConflictSeverityChip({
@@ -1701,12 +1733,9 @@ export function PlanningPage({
             <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-100">
               <AlertTriangle className="h-4 w-4" aria-hidden="true" />
               Konfliktursachen: {conflictCauseCount}
-              <span className="font-normal text-amber-700 dark:text-amber-300">
-                ({planningStats.redCount} technische Konflikte)
-              </span>
             </summary>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
-              Mehrere offene Konflikte können dieselbe Ursache haben.
+              {planningStats.redCount} technische Konflikte hängen mit diesen Engpässen zusammen.
             </p>
             <div className="mt-3 grid gap-2">
               {conflictGroups.map((group) => {
@@ -1728,10 +1757,11 @@ export function PlanningPage({
                         Gemeinsamer Pool-Engpass
                       </span>
                     </div>
-                    <p className="mt-1 text-slate-700 dark:text-slate-200">
-                      Maximale Fehlmenge:{' '}
-                      <span className="font-semibold">{group.maxMissingQty}</span>
-                      {' · '}
+                    <p className="mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Es {shortageVerb(group.maxMissingQty)} maximal{' '}
+                      {categoryCountLabel(group.categoryKey, group.maxMissingQty)}
+                    </p>
+                    <p className="mt-0.5 text-slate-600 dark:text-slate-300">
                       {group.affectedPlanningCount}{' '}
                       {group.affectedPlanningCount === 1 ? 'Planung' : 'Planungen'} betroffen
                     </p>
@@ -1757,8 +1787,11 @@ export function PlanningPage({
                             key={`${group.id}-${day.date}`}
                             className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                           >
-                            {formatGermanDate(day.date)}: {day.requiredQty} benötigt ·{' '}
-                            {day.usableStock} nutzbar · {conflictShortageText(day.missingQty)}
+                            {formatGermanDate(day.date)}:{' '}
+                            {categoryCountLabel(group.categoryKey, day.requiredQty)} benötigt ·{' '}
+                            {day.usableStock} nutzbar ·{' '}
+                            {categoryCountLabel(group.categoryKey, day.missingQty)}{' '}
+                            {shortageVerb(day.missingQty)}
                           </li>
                         ))}
                       </ul>
