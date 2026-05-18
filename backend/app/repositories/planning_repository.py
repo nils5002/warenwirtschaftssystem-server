@@ -18,6 +18,7 @@ from ..schemas.planning import (
     ConflictBadge,
     ConflictGroup,
     ConflictGroupDay,
+    Recommendation,
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
     PlanningAvailabilityResponse,
@@ -549,22 +550,168 @@ def get_open_conflict_summaries_for_plannings(
 # Ursachen. Bewusst klein gehalten; bei Bedarf eine fachliche Justierung.
 _CONFLICT_GROUP_MAX_GAP_DAYS = 1
 
+# Deutsche Plural-Formen der bekannten Hardware-Kategorien — nur für die
+# Formulierung der Lösungs-Hinweise. Unbekannte Kategorien: unverändert.
+_CATEGORY_PLURALS: dict[str, str] = {
+    "Laptop": "Laptops",
+    "iPad": "iPads",
+    "Handheld": "Handhelds",
+    "Smartphone": "Smartphones",
+    "QR-Code-Scanner": "QR-Code-Scanner",
+    "Drucker": "Drucker",
+    "Kartendrucker": "Kartendrucker",
+    "Switch": "Switches",
+    "Router": "Router",
+    "LTE-Router": "LTE-Router",
+    "Zubehör": "Zubehör",
+    "Zubehoer": "Zubehoer",
+    "Sonstiges": "Sonstiges",
+}
+
+# Übergabe-Status, die als "Übergabe ist im Spiel" gelten.
+_HANDOVER_STATUSES = {"planned", "organizational", "missing_link"}
+
+
+def _category_count_label(category: str, qty: int) -> str:
+    """'1 Laptop' / '8 Laptops' / '7 QR-Code-Scanner'."""
+    if qty == 1:
+        return f"1 {category}"
+    return f"{qty} {_CATEGORY_PLURALS.get(category, category)}"
+
+
+def build_conflict_recommendations(
+    *,
+    category_key: str,
+    date_from: date,
+    date_to: date,
+    max_missing_qty: int,
+    affected_planning_ids: list[str],
+    draft_planning_ids: list[str],
+    handover_planning_ids: list[str],
+) -> list[Recommendation]:
+    """Erzeugt regelbasierte Lösungs-Hinweise zu einer Konfliktursache.
+
+    Reine Funktion — kein DB-/IO-/Netz-/AI-Zugriff. Alle Vorschläge sind
+    bewusst als Hinweis formuliert ("prüfen", "beschaffen oder mieten"), nie
+    als feste Entscheidung. Erzeugt aus den bereits berechneten ConflictGroup-
+    Daten plus Planungsstatus; verändert keine Konfliktberechnung.
+    """
+    recommendations: list[Recommendation] = []
+    is_multi_day = date_to > date_from
+    count_label = _category_count_label(category_key, max_missing_qty)
+    period_from = date_from.strftime("%d.%m.%Y")
+    period_to = date_to.strftime("%d.%m.%Y")
+
+    # R1 — Beschaffung/Miete. Eine Konfliktursache hat immer max_missing_qty > 0.
+    if max_missing_qty > 0:
+        if is_multi_day:
+            title = f"Bis zu {count_label} zusätzlich beschaffen oder mieten"
+            description = (
+                f"Im Zeitraum {period_from}–{period_to} fehlen bis zu {count_label}. "
+                "Temporäre Miete für den Engpasszeitraum oder eine Bestandserhöhung prüfen."
+            )
+        else:
+            title = "Kurzfristige Miete für den Engpasstag prüfen"
+            description = (
+                f"Am {period_from} fehlen bis zu {count_label}. "
+                "Eine Kurzmiete für diesen Tag oder zusätzliche Geräte prüfen."
+            )
+        recommendations.append(
+            Recommendation(
+                type="procurement",
+                priority="high" if max_missing_qty >= 5 else "medium",
+                title=title,
+                description=description,
+                suggestedQty=max_missing_qty,
+                affectedPlanningIds=list(affected_planning_ids),
+            )
+        )
+
+    # R5 — Übergabe prüfen (nur, wenn Übergabe-Daten vorhanden sind).
+    if handover_planning_ids:
+        recommendations.append(
+            Recommendation(
+                type="handover",
+                priority="medium",
+                title="Dokumentierte Übergabe prüfen",
+                description=(
+                    "Für diesen Engpass ist eine Geräte-Übergabe dokumentiert, die "
+                    "rechnerisch noch nicht greift. Übergabe-Verknüpfung und Termine prüfen."
+                ),
+                affectedPlanningIds=list(handover_planning_ids),
+            )
+        )
+
+    # R2 — Planungen zeitlich abstimmen.
+    if len(affected_planning_ids) > 1:
+        recommendations.append(
+            Recommendation(
+                type="planning_adjustment",
+                priority="medium",
+                title=f"{len(affected_planning_ids)} Planungen zeitlich abstimmen",
+                description=(
+                    "Mehrere Planungen konkurrieren im selben Zeitraum um dieselbe "
+                    "Kategorie. Termine oder Bedarf gemeinsam abstimmen."
+                ),
+                affectedPlanningIds=list(affected_planning_ids),
+            )
+        )
+
+    # R4 — Laptop-/Kartendrucker-Kompatibilität (nur Kategorie Laptop).
+    if category_key == "Laptop":
+        recommendations.append(
+            Recommendation(
+                type="planning_adjustment",
+                priority="low",
+                title="Laptop-/Kartendrucker-Kompatibilität prüfen",
+                description=(
+                    "Prüfen, ob für die betroffenen Projekte kartendrucker-kompatible "
+                    "Laptops nötig sind oder ob weitere Geräte eingeplant werden können."
+                ),
+            )
+        )
+
+    # R3 — Bedarf der Entwurf-Planungen prüfen.
+    if draft_planning_ids:
+        recommendations.append(
+            Recommendation(
+                type="planning_adjustment",
+                priority="low",
+                title="Bedarf der Entwurf-Planungen prüfen",
+                description=(
+                    f"{len(draft_planning_ids)} beteiligte Planung(en) im Status Entwurf. "
+                    "Bedarf prüfen, bevor zusätzlich beschafft wird."
+                ),
+                affectedPlanningIds=list(draft_planning_ids),
+            )
+        )
+
+    # Stabile Reihenfolge: high -> medium -> low.
+    priority_rank = {"high": 0, "medium": 1, "low": 2}
+    recommendations.sort(key=lambda rec: priority_rank[rec.priority])
+    return recommendations
+
 
 def group_conflict_causes(
     summaries: dict[str, dict[str, object]],
     planning_labels: dict[str, str],
+    planning_status_map: dict[str, str] | None = None,
 ) -> list[ConflictGroup]:
     """Bündelt technische Konfliktzellen zu fachlichen Konfliktursachen.
 
-    Reine Funktion (kein DB-/IO-Zugriff). Eingabe ist die Rückgabe von
-    ``get_open_conflict_summaries_for_plannings`` plus eine Label-Map
-    ``{ext_id: "Kunde / Projekt"}``.
+    Reine Funktion (kein DB-/IO-/AI-Zugriff). Eingabe ist die Rückgabe von
+    ``get_open_conflict_summaries_for_plannings``, eine Label-Map
+    ``{ext_id: "Kunde / Projekt"}`` sowie optional eine Status-Map
+    ``{ext_id: Planungsstatus}`` für die Entwurf-Empfehlungsregel.
 
     Gruppierung: nach Kategorie, dann in zusammenhängende Datums-Läufe
     (Lücke <= ``_CONFLICT_GROUP_MAX_GAP_DAYS`` Tage = dieselbe Ursache; größere
     Lücke startet eine neue Ursache). Ändert nichts an der Konfliktzählung —
     jede Konfliktzelle landet in genau einer Gruppe, daher entspricht die Summe
     aller ``totalConflictEvents`` exakt ``openConflictCount``.
+
+    Je Gruppe werden zusätzlich regelbasierte Lösungs-Hinweise
+    (``recommendations``) über ``build_conflict_recommendations`` erzeugt.
     """
     # Pro (Kategorie, Tag) die Konfliktzellen aggregieren.
     by_category_day: dict[tuple[str, date], dict[str, object]] = {}
@@ -578,6 +725,7 @@ def group_conflict_causes(
                     "usable": None,
                     "missing": 0,
                     "plannings": set(),
+                    "handover_plannings": set(),
                     "events": 0,
                 }
                 by_category_day[key] = info
@@ -592,6 +740,10 @@ def group_conflict_causes(
             plannings: set[str] = info["plannings"]  # type: ignore[assignment]
             plannings.add(ext_id)
             info["events"] = int(info["events"]) + 1
+            # Übergabe-Beteiligung je Zelle erfassen (für die Übergabe-Empfehlung).
+            if bool(detail.handoverEnabled) or detail.handoverStatus in _HANDOVER_STATUSES:
+                handover_plannings: set[str] = info["handover_plannings"]  # type: ignore[assignment]
+                handover_plannings.add(ext_id)
 
     groups: list[ConflictGroup] = []
     categories = sorted({category for (category, _day) in by_category_day})
@@ -608,9 +760,11 @@ def group_conflict_causes(
         if current_run:
             runs.append(current_run)
 
+        status_map = planning_status_map or {}
         for run in runs:
             day_objs: list[ConflictGroupDay] = []
             affected: set[str] = set()
+            handover_affected: set[str] = set()
             total_events = 0
             max_missing = 0
             for day in run:
@@ -626,11 +780,26 @@ def group_conflict_causes(
                     )
                 )
                 affected |= day_plannings
+                handover_affected |= info["handover_plannings"]  # type: ignore[arg-type]
                 total_events += int(info["events"])
                 max_missing = max(max_missing, int(info["missing"]))
             affected_sorted = sorted(
                 affected,
                 key=lambda pid: (planning_labels.get(pid, pid).lower(), pid),
+            )
+            draft_ids = [pid for pid in affected_sorted if status_map.get(pid) == "Entwurf"]
+            handover_ids = sorted(
+                handover_affected,
+                key=lambda pid: (planning_labels.get(pid, pid).lower(), pid),
+            )
+            recommendations = build_conflict_recommendations(
+                category_key=category,
+                date_from=run[0],
+                date_to=run[-1],
+                max_missing_qty=max_missing,
+                affected_planning_ids=affected_sorted,
+                draft_planning_ids=draft_ids,
+                handover_planning_ids=handover_ids,
             )
             groups.append(
                 ConflictGroup(
@@ -646,6 +815,7 @@ def group_conflict_causes(
                         planning_labels.get(pid, pid) for pid in affected_sorted
                     ],
                     days=day_objs,
+                    recommendations=recommendations,
                 )
             )
 

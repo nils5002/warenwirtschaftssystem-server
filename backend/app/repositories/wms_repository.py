@@ -949,8 +949,14 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
         for row in planning_rows
         if row.external_id
     }
+    # Planungsstatus je Planung — Eingabe für die Entwurf-Empfehlungsregel.
+    planning_status_map = {
+        row.external_id: row.status
+        for row in planning_rows
+        if row.external_id
+    }
     conflict_groups = planning_repository.group_conflict_causes(
-        conflict_summaries, planning_labels
+        conflict_summaries, planning_labels, planning_status_map
     )
 
     planning_ids = [row.id for row in planning_rows]

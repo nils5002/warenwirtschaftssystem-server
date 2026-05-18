@@ -26,6 +26,7 @@ import {
   type PlanningAvailabilityResponse,
   type PlanningConflictSeverity,
   type PlanningListItem,
+  type RecommendationPriority,
   type PlanningStatus,
   type PlanningResponse,
   type PlanningUpsertPayload,
@@ -472,6 +473,13 @@ function categoryCountLabel(category: string, count: number): string {
 // Verb-Form passend zur Menge: "1 ... fehlt", "8 ... fehlen".
 function shortageVerb(count: number): string {
   return count === 1 ? 'fehlt' : 'fehlen';
+}
+
+// Farbpunkt je Empfehlungs-Priorität.
+function recoPriorityDot(priority: RecommendationPriority): string {
+  if (priority === 'high') return 'bg-rose-500';
+  if (priority === 'medium') return 'bg-amber-500';
+  return 'bg-slate-400';
 }
 
 // Kompaktes farbiges Schweregrad-Badge. `label` überschreibt das Fallback-Label
@@ -1796,6 +1804,39 @@ export function PlanningPage({
                         ))}
                       </ul>
                     </details>
+                    {(group.recommendations ?? []).length > 0 ? (
+                      <details
+                        className="mt-2"
+                        data-testid={`conflict-cause-recommendations-${group.id}`}
+                      >
+                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          Lösungsvorschläge ({(group.recommendations ?? []).length})
+                        </summary>
+                        <ul className="mt-1.5 space-y-1.5">
+                          {(group.recommendations ?? []).map((reco, index) => (
+                            <li
+                              key={`${group.id}-reco-${index}`}
+                              className="rounded border border-slate-200 bg-slate-50 px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+                            >
+                              <div className="flex items-start gap-1.5">
+                                <span
+                                  className={`mt-1 h-2 w-2 shrink-0 rounded-full ${recoPriorityDot(reco.priority)}`}
+                                  aria-hidden="true"
+                                />
+                                <div>
+                                  <p className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+                                    {reco.title}
+                                  </p>
+                                  <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                                    {reco.description}
+                                  </p>
+                                </div>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                   </div>
                 );
               })}
