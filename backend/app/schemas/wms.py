@@ -5,6 +5,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from .planning import ConflictGroup
+
 
 AssetStatus = Literal[
     "Verfuegbar",
@@ -208,6 +210,11 @@ class PlanningSummaryItem(BaseModel):
     upcomingShortageCount: int
     openConflictCount: int = 0
     categorySummaries: list[PlanningSummaryCategoryItem] = Field(default_factory=list)
+    # Additiv: fachliche Konfliktursachen-Gruppierung. openConflictCount bleibt
+    # die technische Konfliktzahl; conflictGroups bündelt zusammenhängende
+    # Konflikte zu Ursachen. conflictCauseCount == len(conflictGroups).
+    conflictGroups: list[ConflictGroup] = Field(default_factory=list)
+    conflictCauseCount: int = 0
 
 
 class WmsOverviewResponse(BaseModel):

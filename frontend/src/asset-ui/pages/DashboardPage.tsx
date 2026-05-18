@@ -159,6 +159,9 @@ export function DashboardPage({
   const todayShortageCount = planningSummary?.todayShortageCount ?? 0;
   const upcomingPlannedQty = planningSummary?.upcomingPlannedQty ?? 0;
   const upcomingShortageCount = planningSummary?.upcomingShortageCount ?? 0;
+  const openConflictCount = planningSummary?.openConflictCount ?? 0;
+  const conflictCauseCount =
+    planningSummary?.conflictCauseCount ?? planningSummary?.conflictGroups?.length ?? 0;
   const hasPlanningCategorySummary = Boolean(planningSummary?.categorySummaries?.length);
   const hasActivities = activities.length > 0;
 
@@ -272,6 +275,19 @@ export function DashboardPage({
             <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{upcomingShortageCount}</p>
           </div>
         </div>
+        {openConflictCount > 0 ? (
+          <p
+            className="mt-3 text-xs font-medium text-rose-700 dark:text-rose-300"
+            data-testid="dashboard-conflict-causes"
+          >
+            Offene Konflikte: {openConflictCount}
+            {conflictCauseCount > 0 ? (
+              <span className="text-amber-700 dark:text-amber-300">
+                {' · '}Konfliktursachen: {conflictCauseCount}
+              </span>
+            ) : null}
+          </p>
+        ) : null}
         <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
           Physisch verfügbar basiert auf Inventarstatus. Nach Planung frei ist eine rechnerische Vorschau und ändert keinen echten Asset-Status.
         </p>

@@ -925,19 +925,33 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             upcomingShortageCount=0,
             openConflictCount=0,
             categorySummaries=[],
+            conflictGroups=[],
+            conflictCauseCount=0,
         )
 
     planning_external_ids = [row.external_id for row in planning_rows if row.external_id]
     # Globale offene Konflikte über die Batch-Funktion berechnen. So teilen sich
     # Overview (planningSummary.openConflictCount) und PlanungsListe
     # (PlanningListItem.openConflictCount) eine einzige, performante Berechnung
-    # ohne wiederholte Verfügbarkeits-Joins pro Planung.
-    open_conflict_map = (
-        planning_repository.get_open_conflict_counts_for_plannings(db, planning_external_ids)
+    # ohne wiederholte Verfügbarkeits-Joins pro Planung. Aus derselben
+    # Berechnung wird zusätzlich die Konfliktursachen-Gruppierung abgeleitet —
+    # ohne zweiten Durchlauf, additiv, ohne Einfluss auf openConflictCount.
+    conflict_summaries = (
+        planning_repository.get_open_conflict_summaries_for_plannings(db, planning_external_ids)
         if planning_external_ids
         else {}
     )
-    open_conflict_count = sum(open_conflict_map.values())
+    open_conflict_count = sum(
+        int(summary.get("count", 0) or 0) for summary in conflict_summaries.values()
+    )
+    planning_labels = {
+        row.external_id: f"{row.customer_name} / {row.project_name}"
+        for row in planning_rows
+        if row.external_id
+    }
+    conflict_groups = planning_repository.group_conflict_causes(
+        conflict_summaries, planning_labels
+    )
 
     planning_ids = [row.id for row in planning_rows]
     day_rows = db.scalars(
@@ -952,6 +966,8 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             upcomingShortageCount=0,
             openConflictCount=open_conflict_count,
             categorySummaries=[],
+            conflictGroups=conflict_groups,
+            conflictCauseCount=len(conflict_groups),
         )
     day_by_id = {row.id: row for row in day_rows}
     item_rows = db.scalars(
@@ -966,6 +982,8 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
             upcomingShortageCount=0,
             openConflictCount=open_conflict_count,
             categorySummaries=[],
+            conflictGroups=conflict_groups,
+            conflictCauseCount=len(conflict_groups),
         )
 
     # Bestand für die "heute"-Ansicht: nur Geräte mitzählen, die HEUTE
@@ -1059,6 +1077,8 @@ def _build_planning_summary(db: Session) -> PlanningSummaryItem:
         upcomingShortageCount=upcoming_shortage_count,
         openConflictCount=open_conflict_count,
         categorySummaries=category_summaries,
+        conflictGroups=conflict_groups,
+        conflictCauseCount=len(conflict_groups),
     )
 
 
