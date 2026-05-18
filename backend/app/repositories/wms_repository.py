@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import secrets
+import time
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -41,6 +43,13 @@ from ..services.auth_service import (
     normalize_role_for_db,
     role_to_app_role,
 )
+
+logger = logging.getLogger("cloud_web.wms")
+
+# Overview-Aufbau, der laenger als dieser Schwellwert dauert, wird als WARNING
+# samt Abschnitts-Breakdown geloggt — darunter nur DEBUG, damit der
+# Normalbetrieb die Logs nicht flutet. Macht Performance-Regressionen sichtbar.
+_OVERVIEW_SLOW_THRESHOLD_MS = 800.0
 
 
 def _build_qr_code(asset_id: str, tag_number: str) -> str:
@@ -895,16 +904,36 @@ def reset_user_password(
 
 
 def get_overview(db: Session) -> WmsOverviewResponse:
-    return WmsOverviewResponse(
-        assets=list_assets(db),
-        activities=list_activities(db),
-        reservations=list_reservations(db),
-        maintenanceItems=list_maintenance(db),
-        locations=list_locations(db),
-        categories=category_repository.list_categories(db),
-        users=list_users(db),
-        planningSummary=_build_planning_summary(db),
+    # Abschnitts-Timing: macht im Log sichtbar, welcher Teil des Overview-
+    # Aufbaus teuer ist. Im Normalfall nur DEBUG; wird der Gesamtaufbau
+    # spuerbar langsam, als WARNING inkl. Breakdown — so fallen Performance-
+    # Regressionen auf, ohne die Logs im Normalbetrieb zu fluten.
+    timings: dict[str, float] = {}
+
+    def _timed(label, fn):
+        start = time.perf_counter()
+        try:
+            return fn()
+        finally:
+            timings[label] = (time.perf_counter() - start) * 1000.0
+
+    response = WmsOverviewResponse(
+        assets=_timed("assets", lambda: list_assets(db)),
+        activities=_timed("activities", lambda: list_activities(db)),
+        reservations=_timed("reservations", lambda: list_reservations(db)),
+        maintenanceItems=_timed("maintenance", lambda: list_maintenance(db)),
+        locations=_timed("locations", lambda: list_locations(db)),
+        categories=_timed("categories", lambda: category_repository.list_categories(db)),
+        users=_timed("users", lambda: list_users(db)),
+        planningSummary=_timed("planningSummary", lambda: _build_planning_summary(db)),
     )
+    total_ms = sum(timings.values())
+    breakdown = " ".join(f"{label}={ms:.0f}ms" for label, ms in timings.items())
+    if total_ms >= _OVERVIEW_SLOW_THRESHOLD_MS:
+        logger.warning("Overview-Aufbau langsam: gesamt=%.0fms | %s", total_ms, breakdown)
+    else:
+        logger.debug("Overview-Aufbau: gesamt=%.0fms | %s", total_ms, breakdown)
+    return response
 
 
 def _build_planning_summary(db: Session) -> PlanningSummaryItem:

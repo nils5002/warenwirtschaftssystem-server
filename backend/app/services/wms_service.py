@@ -9,6 +9,7 @@ from fastapi import HTTPException
 
 from datetime import date
 
+from ..config.settings import get_settings
 from ..repositories import category_repository, wms_repository
 from ..schemas.wms import (
     ActivityItem,
@@ -25,6 +26,7 @@ from ..schemas.wms import (
     UserItem,
     WmsOverviewResponse,
 )
+from . import overview_cache
 
 logger = logging.getLogger("cloud_web.wms")
 
@@ -34,7 +36,14 @@ class WmsService:
 
     @staticmethod
     def overview(db: Session) -> WmsOverviewResponse:
-        return wms_repository.get_overview(db)
+        # Kurzlebiger Prozess-Cache (services/overview_cache.py): mehrere
+        # gleichzeitig pollende Clients teilen sich EINE Berechnung pro
+        # TTL-Fenster, statt den Single-Worker-Endpoint zu serialisieren.
+        # Invalidierung erfolgt automatisch nach jeder Schreibtransaktion.
+        return overview_cache.get_or_build(
+            lambda: wms_repository.get_overview(db),
+            get_settings().overview_cache_ttl_seconds,
+        )
 
     @staticmethod
     def list_assets(db: Session) -> list[AssetItem]:

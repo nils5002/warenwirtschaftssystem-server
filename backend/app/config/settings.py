@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     db_auto_create_schema: bool = True
     cors_origins: str = "*"
 
+    # Kurzlebiger Prozess-Cache fuer /api/wms/overview (in Sekunden). Mehrere
+    # gleichzeitig pollende Clients teilen sich damit EINE Berechnung pro
+    # Zeitfenster. 0 oder negativ deaktiviert den Cache vollstaendig.
+    overview_cache_ttl_seconds: float = 10.0
+
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     auth_token_secret: str = "change-me-in-production"
