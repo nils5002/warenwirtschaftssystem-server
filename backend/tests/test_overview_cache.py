@@ -100,6 +100,23 @@ def test_single_flight_builds_once_under_concurrency() -> None:
     assert results == [1] * 8  # alle Threads erhielten dasselbe Ergebnis
 
 
+def test_stats_tracks_hits_and_misses() -> None:
+    """stats() reflektiert Cache-Treffer und -Fehlschlaege.
+
+    Delta-Pruefung, weil die Zaehler prozessweit kumulieren — der
+    Absolutwert haengt von zuvor gelaufenen Tests ab.
+    """
+    calls, builder = _counting_builder()
+    before = overview_cache.stats()
+
+    overview_cache.get_or_build(builder, ttl_seconds=60)  # Miss: baut neu
+    overview_cache.get_or_build(builder, ttl_seconds=60)  # Hit: aus dem Cache
+
+    after = overview_cache.stats()
+    assert after["misses"] - before["misses"] == 1
+    assert after["hits"] - before["hits"] == 1
+
+
 def test_after_commit_event_invalidates_cache() -> None:
     """Ein DB-Commit feuert das after_commit-Event und verwirft den Cache.
 

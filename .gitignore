@@ -8,6 +8,12 @@ build/
 __pycache__/
 *.pyc
 *.db
+# SQLite-Laufzeitdateien (WAL/Shared-Memory/Rollback-Journal). Reine
+# Runtime-Artefakte — duerfen nie eingecheckt werden, sonst landet
+# (Teil-)Datenbankzustand im Repo.
+*.db-wal
+*.db-shm
+*.db-journal
 .env
 .env.*
 !.env.example
