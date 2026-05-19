@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -29,6 +30,12 @@ from .services.wms_service import WmsService
 
 setup_logging()
 logger = logging.getLogger("cloud_web.main")
+
+# Requests, die laenger als dieser Schwellwert dauern, werden als WARNING
+# markiert. So fallen Performance-Ausreisser (z. B. eine Overview-Regression
+# oder ein DB-Lock-Stau) im Log auf, ohne dass der schnelle Normalbetrieb
+# (Lasttest p95 ~0,7 s) die Logs flutet.
+_SLOW_REQUEST_THRESHOLD_MS = 1000.0
 
 
 # Content-Security-Policy (Security-Audit Paket B3 — gehaertet).
@@ -131,6 +138,7 @@ def create_app() -> FastAPI:
             method=request.method,
             path=request.url.path,
         )
+        started_at = time.perf_counter()
         try:
             response: Response = await call_next(request)
         except Exception:
@@ -138,9 +146,15 @@ def create_app() -> FastAPI:
             # nur Kontext freigeben.
             clear_request_context()
             raise
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
         set_response_status(response.status_code)
         try:
             response.headers.setdefault("X-Request-ID", request_id)
+            # Slow-Request-Marker: nur Requests oberhalb der Schwelle, damit
+            # der Normalbetrieb die Logs nicht flutet. Request-ID/Pfad/Status
+            # liefert der Logging-Filter bereits mit.
+            if elapsed_ms >= _SLOW_REQUEST_THRESHOLD_MS:
+                logger.warning("Langsamer Request: %.0f ms", elapsed_ms)
             if 500 <= response.status_code < 600:
                 logger.error("Request fehlgeschlagen (server)")
             elif response.status_code in (401, 403):

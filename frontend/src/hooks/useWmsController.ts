@@ -165,6 +165,18 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+/**
+ * Watchdog-Limit für einen einzelnen /api/wms/overview-Request. Schlägt ein
+ * Request nicht innerhalb dieser Zeit an, wird er abgebrochen und als
+ * Fehlschlag gewertet (Backoff). Ohne dieses Limit kann ein auf einer
+ * schwachen Mobilfunkverbindung „halb offen" hängender Request das Polling
+ * dauerhaft blockieren (der inflight-Guard im Scheduler löst nie auf) und die
+ * UI im Lade-/Refresh-Zustand einfrieren. 15 s liegen weit über jeder
+ * realistischen Antwortzeit (Lasttest p95 ~0,7 s) und klar unter dem
+ * Poll-Basisintervall von 45 s.
+ */
+const OVERVIEW_TIMEOUT_MS = 15_000;
+
 export function useWmsController(options: UseWmsControllerOptions) {
   const accessContext = getApiAccessContext();
   const { activeRole, isAuthenticated } = options;
@@ -236,6 +248,16 @@ export function useWmsController(options: UseWmsControllerOptions) {
     const controller = new AbortController();
     overviewAbortRef.current = controller;
 
+    // Watchdog: bricht einen hängenden Overview-Request nach
+    // OVERVIEW_TIMEOUT_MS ab. ``timedOut`` trennt diesen Abbruch vom
+    // Abort-and-Replace — Ersterer ist ein echter Fehlschlag (Backoff),
+    // Letzterer nicht.
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, OVERVIEW_TIMEOUT_MS);
+
     if (options?.initial) {
       setIsLoading(true);
     } else {
@@ -293,10 +315,17 @@ export function useWmsController(options: UseWmsControllerOptions) {
         }
       }
     } catch (error) {
-      // Abgebrochener Vorgänger-Request (durch einen neueren ersetzt): kein
-      // echter Fehler — Status/Flags unverändert lassen, der ersetzende
-      // Aufruf pflegt sie.
       if (isAbortError(error)) {
+        // Watchdog-Abbruch ist ein echter Fehlschlag: Fehlermeldung zeigen und
+        // den Backoff über das success-Ref auslösen. Ein Abort-and-Replace
+        // (durch einen neueren Request ersetzt) ist dagegen KEIN Fehler —
+        // Status/Flags pflegt dort der ersetzende Aufruf.
+        if (timedOut) {
+          setWmsError(
+            'Backend antwortet nicht (Zeitüberschreitung). Daten werden automatisch neu geladen.',
+          );
+          lastLoadSuccessRef.current = false;
+        }
         return;
       }
       // Konkrete Meldung statt generischer "Backend nicht erreichbar"-Text.
@@ -324,6 +353,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       // dem Polling-Scheduler über das Ref (success-Flag).
       lastLoadSuccessRef.current = false;
     } finally {
+      window.clearTimeout(timeoutId);
       // Nur der zuletzt gestartete Aufruf darf die Lade-Flags zurücksetzen —
       // ein zwischenzeitlich abgebrochener Vorgänger nicht.
       if (overviewAbortRef.current === controller) {

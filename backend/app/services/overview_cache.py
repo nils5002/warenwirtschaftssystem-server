@@ -40,6 +40,7 @@ SELECTs), invalidiert sich also nicht selbst.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from typing import Any, Callable, TypeVar
@@ -48,11 +49,59 @@ from sqlalchemy import event
 
 from ..database.session import SessionLocal
 
+logger = logging.getLogger("cloud_web.overview_cache")
+
 T = TypeVar("T")
 
 _lock = threading.Lock()
 # (Wert, Ablaufzeitpunkt als time.monotonic()). None = kein gueltiger Eintrag.
 _state: tuple[Any, float] | None = None
+
+# Lebenslange Debug-Zaehler fuer die Cache-Wirksamkeit. Bewusst ohne Lock:
+# eine seltene Off-by-one-Ungenauigkeit unter starker Nebenlaeufigkeit ist
+# fuer reine Debug-Zaehler unkritisch, ein zweites Lock waere unnoetiger
+# Overhead auf dem Hot Path.
+_hits = 0
+_misses = 0
+
+
+def stats() -> dict[str, float]:
+    """Momentaufnahme der Cache-Wirksamkeit (hits, misses, hit_rate in %).
+
+    Bewusst NICHT an einen HTTP-Endpoint gehaengt — nur eine Debug-Hilfe
+    (z. B. aus einer Python-Shell oder einem Test), damit dieses
+    Stabilitaets-Paket keine neue oeffentliche API-Flaeche schafft.
+    """
+    total = _hits + _misses
+    return {
+        "hits": float(_hits),
+        "misses": float(_misses),
+        "hit_rate": (_hits / total * 100.0) if total else 0.0,
+    }
+
+
+def _record_access(hit: bool) -> None:
+    """Zaehlt einen Cache-Zugriff und loggt ihn auf DEBUG-Level.
+
+    DEBUG ist im Normalbetrieb (Root-Logger INFO) unsichtbar — kein
+    Log-Fluten. Zum Debuggen gezielt den Logger ``cloud_web.overview_cache``
+    auf DEBUG heben; die laufende Hit-Rate steht dann in jeder Zeile.
+    """
+    global _hits, _misses
+    if hit:
+        _hits += 1
+    else:
+        _misses += 1
+    if logger.isEnabledFor(logging.DEBUG):
+        total = _hits + _misses
+        hit_rate = (_hits / total * 100.0) if total else 0.0
+        logger.debug(
+            "overview cache %s (hits=%d misses=%d hit_rate=%.0f%%)",
+            "HIT" if hit else "MISS",
+            _hits,
+            _misses,
+            hit_rate,
+        )
 
 
 def get_or_build(builder: Callable[[], T], ttl_seconds: float) -> T:
@@ -70,6 +119,7 @@ def get_or_build(builder: Callable[[], T], ttl_seconds: float) -> T:
     # direkt. Das Lesen einer Modulreferenz ist unter dem GIL atomar.
     state = _state
     if state is not None and time.monotonic() < state[1]:
+        _record_access(hit=True)
         return state[0]
 
     with _lock:
@@ -77,7 +127,9 @@ def get_or_build(builder: Callable[[], T], ttl_seconds: float) -> T:
         # kann ein paralleler Request den Cache bereits gefuellt haben.
         state = _state
         if state is not None and time.monotonic() < state[1]:
+            _record_access(hit=True)
             return state[0]
+        _record_access(hit=False)
         value = builder()
         _state = (value, time.monotonic() + ttl_seconds)
         return value
