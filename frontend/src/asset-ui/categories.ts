@@ -92,6 +92,30 @@ export function normalizeCategory(value: string | null | undefined): CanonicalCa
   return CATEGORY_ALIASES.get(categoryKey(value)) ?? DEFAULT_CATEGORY;
 }
 
+export const UNASSIGNED_CATEGORY = 'Zuordnung erforderlich';
+
+/**
+ * Spiegelt das Backend (`domain/categories.normalize_known_category`):
+ * Eine bereits bekannte (aktive) Kategorie bleibt unveraendert erhalten — auch
+ * selbst angelegte wie "Eigener Laptop" oder "DYMO". Nur echte Synonyme werden
+ * auf eine bekannte Kategorie gemappt; alles Unbekannte faellt auf
+ * "Zuordnung erforderlich".
+ *
+ * Wichtig fuer die Einsatzplanung: `normalizeCategory` zwingt JEDEN Wert auf
+ * eine der 12 kanonischen Kategorien (Unbekanntes -> "Sonstiges") und ist
+ * daher fuer dynamisch angelegte Kategorien NICHT geeignet.
+ */
+export function normalizeKnownCategory(
+  value: string | null | undefined,
+  knownCategories: ReadonlySet<string>,
+): string {
+  const raw = (value ?? '').trim();
+  if (knownCategories.has(raw)) return raw;
+  const alias = CATEGORY_ALIASES.get(categoryKey(raw));
+  if (alias && knownCategories.has(alias)) return alias;
+  return UNASSIGNED_CATEGORY;
+}
+
 export function isCanonicalCategory(value: string | null | undefined): value is CanonicalCategory {
   return CANONICAL_CATEGORIES.includes((value ?? '').trim() as CanonicalCategory);
 }

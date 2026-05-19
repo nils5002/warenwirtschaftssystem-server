@@ -7,7 +7,6 @@ import type {
   PlanningResponse,
   PlanningStatus,
 } from '../../services/wmsApi';
-import { normalizeCategory } from '../categories';
 
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
 
@@ -82,7 +81,11 @@ function projectOverlapsWeek(project: Pick<PlanningListItem, 'startDate' | 'endD
 function buildDemandSummary(items: PlanningResponse['days'][number]['items']): string {
   const qtyByCategory = new Map<string, number>();
   for (const item of items) {
-    const key = normalizeCategory(item.categoryKey);
+    // Echten Kategorienamen als Label nutzen — dynamische Kategorien (z. B.
+    // "Eigener Laptop", "DYMO") duerfen in der Bedarfs-Zusammenfassung nicht
+    // auf eine kanonische Kategorie kollabiert werden.
+    const key = (item.categoryKey ?? '').trim();
+    if (!key) continue;
     qtyByCategory.set(key, (qtyByCategory.get(key) ?? 0) + Math.max(0, Number(item.qty || 0)));
   }
   const top = Array.from(qtyByCategory.entries())

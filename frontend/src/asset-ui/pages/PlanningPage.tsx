@@ -32,7 +32,7 @@ import {
   type PlanningUpsertPayload,
   type WmsOverview,
 } from '../../services/wmsApi';
-import { categoryOptionsFromRecords, normalizeCategory } from '../categories';
+import { categoryOptionsFromRecords, normalizeKnownCategory } from '../categories';
 import { conflictSeverityRank, conflictSeverityVisual } from './conflictSeverityVisuals';
 import type { Asset, CategoryItem, UserItem } from '../types';
 
@@ -272,7 +272,9 @@ function mergeRangeItemsFromDays(
   const grouped = new Map<string, EditablePlanning['days'][number]['items'][number]>();
   for (const day of sourceDays) {
     for (const item of day.items) {
-      const categoryKey = normalizeCategory(item.categoryKey);
+      // Kategorie unveraendert als Gruppierungsschluessel nutzen — Werte
+      // stammen ausschliesslich aus dem Kategorie-Dropdown (aktive Kategorien).
+      const categoryKey = (item.categoryKey ?? '').trim();
       if (!categoryKey) continue;
       const current = grouped.get(categoryKey);
       if (!current) {
@@ -313,7 +315,10 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
       planningDate: day.planningDate,
       weekday: day.weekday || getGermanWeekday(day.planningDate),
       items: day.items.map((entry) => ({
-        categoryKey: normalizeCategory(entry.categoryKey),
+        // Kategorie unveraendert aus dem Backend uebernehmen — dynamisch
+        // angelegte Kategorien duerfen NICHT auf eine kanonische gezwungen
+        // werden (sonst verschwindet z. B. "Eigener Laptop" aus dem Editor).
+        categoryKey: entry.categoryKey,
         qty: entry.qty,
         notes: entry.notes ?? '',
         handoverEnabled: Boolean(entry.handoverEnabled),
@@ -365,7 +370,9 @@ function toUpsertPayload(item: EditablePlanning): PlanningUpsertPayload {
       items: day.items
         .filter((entry) => entry.categoryKey.trim().length > 0)
         .map((entry) => ({
-          categoryKey: normalizeCategory(entry.categoryKey),
+          // Ausgewaehlte Kategorie unveraendert senden; die autoritative
+          // Normalisierung uebernimmt das Backend (normalize_category_for_db).
+          categoryKey: entry.categoryKey.trim(),
           qty: Number.isFinite(entry.qty) ? Math.max(0, entry.qty) : 0,
           notes: entry.notes.trim() || null,
           handoverEnabled: Boolean(entry.handoverEnabled),
@@ -565,6 +572,24 @@ export function PlanningPage({
 
   const categoryOptions = useMemo(() => categoryOptionsFromRecords(categories), [categories]);
 
+  // Menge der aktuell aktiven Kategorienamen — Basis fuer eine Normalisierung,
+  // die selbst angelegte Kategorien (z. B. "Eigener Laptop", "DYMO") erhaelt,
+  // statt sie auf eine kanonische Kategorie zu kollabieren.
+  const knownCategorySet = useMemo(
+    () =>
+      new Set(
+        categories
+          .filter((category) => category.isActive !== false)
+          .map((category) => category.name.trim())
+          .filter(Boolean),
+      ),
+    [categories],
+  );
+  const normalizeItemCategory = useCallback(
+    (value: string | null | undefined): string => normalizeKnownCategory(value, knownCategorySet),
+    [knownCategorySet],
+  );
+
   const selectableProjectManagers = useMemo(
     () =>
       users.filter(
@@ -591,7 +616,7 @@ export function PlanningPage({
       return 0;
     };
     for (const item of availability?.items ?? []) {
-      const key = normalizeCategory(item.categoryKey);
+      const key = normalizeItemCategory(item.categoryKey);
       const current = map.get(key);
       if (!current) {
         map.set(key, item);
@@ -604,7 +629,7 @@ export function PlanningPage({
       }
     }
     return map;
-  }, [availability]);
+  }, [availability, normalizeItemCategory]);
 
   const localHandoverByDayCategory = useMemo(() => {
     const map = new Map<
@@ -619,7 +644,7 @@ export function PlanningPage({
     if (!editor) return map;
     for (const day of editor.days) {
       for (const item of day.items) {
-        const category = normalizeCategory(item.categoryKey);
+        const category = normalizeItemCategory(item.categoryKey);
         const key = `${day.planningDate}|${category}`;
         map.set(key, {
           handoverEnabled: item.handoverEnabled,
@@ -640,7 +665,7 @@ export function PlanningPage({
       }
     }
     return map;
-  }, [editor, plannings]);
+  }, [editor, plannings, normalizeItemCategory]);
 
   useEffect(() => {
     if (!editor || !availability) {
@@ -699,7 +724,7 @@ export function PlanningPage({
       for (const day of planning.days) {
         for (const item of day.items) {
           if (!item.handoverEnabled || item.linkedPlanningId !== editor.id) continue;
-          const key = `${day.planningDate}|${normalizeCategory(item.categoryKey)}`;
+          const key = `${day.planningDate}|${normalizeItemCategory(item.categoryKey)}`;
           if (!map.has(key)) {
             map.set(key, {
               partnerPlanningId: planning.id,
@@ -707,7 +732,7 @@ export function PlanningPage({
               note: item.handoverNote ?? '',
             });
           }
-          const anyDayKey = `*|${normalizeCategory(item.categoryKey)}`;
+          const anyDayKey = `*|${normalizeItemCategory(item.categoryKey)}`;
           if (!map.has(anyDayKey)) {
             map.set(anyDayKey, {
               partnerPlanningId: planning.id,
@@ -720,13 +745,13 @@ export function PlanningPage({
     }
 
     return map;
-  }, [editor, relatedPlannings]);
+  }, [editor, relatedPlannings, normalizeItemCategory]);
 
   const availabilityVisualMap = useMemo(() => {
     const map = new Map<string, AvailabilityVisual>();
 
     for (const item of availability?.items ?? []) {
-      const normalizedCategory = normalizeCategory(item.categoryKey);
+      const normalizedCategory = normalizeItemCategory(item.categoryKey);
       const key = `${item.planningDate}|${normalizedCategory}`;
       const localHandover = localHandoverByDayCategory.get(key) ?? localHandoverByDayCategory.get(`*|${normalizedCategory}`);
       const incomingHandover = incomingHandoverByDayCategory.get(key) ?? incomingHandoverByDayCategory.get(`*|${normalizedCategory}`);
@@ -840,6 +865,7 @@ export function PlanningPage({
     planningListItemById,
     plannings,
     relatedPlannings,
+    normalizeItemCategory,
   ]);
 
   const availabilityVisuals = useMemo(
@@ -860,7 +886,7 @@ export function PlanningPage({
       return 0;
     };
     for (const item of availabilityVisuals) {
-      const key = normalizeCategory(item.categoryKey);
+      const key = normalizeItemCategory(item.categoryKey);
       const current = map.get(key);
       if (!current) {
         map.set(key, item);
@@ -873,7 +899,7 @@ export function PlanningPage({
       }
     }
     return map;
-  }, [availabilityVisuals]);
+  }, [availabilityVisuals, normalizeItemCategory]);
 
   const planningStats = useMemo(() => {
     const openStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt'];
@@ -934,12 +960,12 @@ export function PlanningPage({
     const blockedCategories = new Set(
       availabilityVisuals
         .filter((item) => item.status !== 'ok')
-        .map((item) => normalizeCategory(item.categoryKey)),
+        .map((item) => normalizeItemCategory(item.categoryKey)),
     );
     return (availability?.categorySummary ?? []).filter(
-      (item) => !blockedCategories.has(normalizeCategory(item.categoryKey)),
+      (item) => !blockedCategories.has(normalizeItemCategory(item.categoryKey)),
     ).length;
-  }, [availability, availabilityVisuals]);
+  }, [availability, availabilityVisuals, normalizeItemCategory]);
 
   const currentPlanningLabel = useMemo(() => {
     if (!editor) return '';
@@ -1158,13 +1184,13 @@ export function PlanningPage({
     }
     const allItems = editor.days.flatMap((day) => day.items);
     const requestedQty = allItems.reduce((total, item) => total + Math.max(0, Number(item.qty || 0)), 0);
-    const categoryCount = new Set(allItems.map((item) => normalizeCategory(item.categoryKey)).filter(Boolean)).size;
+    const categoryCount = new Set(allItems.map((item) => normalizeItemCategory(item.categoryKey)).filter(Boolean)).size;
     return {
       requestedQty,
       dayCount: editor.days.length,
       categoryCount,
     };
-  }, [editor]);
+  }, [editor, normalizeItemCategory]);
 
   const loadPlannings = async (selectId?: string, options?: { silentBusy?: boolean }) => {
     setListLoading(true);
@@ -1547,16 +1573,16 @@ export function PlanningPage({
 
   const findPlanningItemPosition = (planningDate: string, categoryKey: string) => {
     if (!editor) return null;
-    const normalizedTarget = normalizeCategory(categoryKey);
+    const normalizedTarget = normalizeItemCategory(categoryKey);
     for (let dayIndex = 0; dayIndex < editor.days.length; dayIndex += 1) {
       if (editor.days[dayIndex].planningDate !== planningDate && editor.days[dayIndex].planningDate !== editor.startDate) continue;
       const itemIndex = editor.days[dayIndex].items.findIndex(
-        (item) => normalizeCategory(item.categoryKey) === normalizedTarget,
+        (item) => normalizeItemCategory(item.categoryKey) === normalizedTarget,
       );
       if (itemIndex >= 0) return { dayIndex, itemIndex };
     }
     const fallbackIndex = editor.days[0]?.items.findIndex(
-      (item) => normalizeCategory(item.categoryKey) === normalizedTarget,
+      (item) => normalizeItemCategory(item.categoryKey) === normalizedTarget,
     );
     if (typeof fallbackIndex === 'number' && fallbackIndex >= 0) return { dayIndex: 0, itemIndex: fallbackIndex };
     return null;
@@ -2381,7 +2407,7 @@ export function PlanningPage({
 
                         <div className="space-y-2">
                           {day.items.map((item, itemIndex) => {
-                            const normalizedCategory = normalizeCategory(item.categoryKey);
+                            const normalizedCategory = normalizeItemCategory(item.categoryKey);
                             const availabilityItem = availabilityByCategoryForRange.get(normalizedCategory);
                             const visual = availabilityVisualByCategoryForRange.get(normalizedCategory);
                             const editorKey = handoverKey(dayIndex, itemIndex);
