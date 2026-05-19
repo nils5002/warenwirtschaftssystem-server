@@ -20,29 +20,47 @@ def _to_schema(record: CategoryRecord) -> CategoryItem:
 
 
 def seed_standard_categories(db: Session) -> None:
-    changed = False
+    """Legt die kanonischen Standardkategorien an — aber NUR auf einer
+    frischen (leeren) Kategorientabelle.
+
+    Sobald Kategorien existieren, gilt die Tabelle als vom Anwender kuratiert.
+    Standardkategorien werden dann bewusst WEDER neu angelegt NOCH reaktiviert:
+    sonst taucht eine im Kategorien-Modul geloeschte (deaktivierte) Kategorie
+    nach jedem Server-Start/Reload wieder auf. Bei bestehenden Standard-
+    Datensaetzen werden lediglich die Integritaetsfelder ``normalized_name``
+    und ``is_standard`` repariert; ``is_active`` bleibt unangetastet.
+    """
     existing = {
         record.name: record
         for record in db.scalars(select(CategoryRecord)).all()
     }
-    for name in CANONICAL_CATEGORIES:
-        normalized_name = category_key(name)
-        record = existing.get(name)
-        if record is None:
+    if not existing:
+        # Frische DB (oder nach clear_data_for_import): vollstaendigen
+        # Standardsatz aktiv anlegen.
+        for name in CANONICAL_CATEGORIES:
             db.add(
                 CategoryRecord(
                     name=name,
-                    normalized_name=normalized_name,
+                    normalized_name=category_key(name),
                     is_standard=True,
                     is_active=True,
                 )
             )
-            changed = True
+        db.commit()
+        return
+
+    # Bestehende DB: nur Integritaet vorhandener Standard-Datensaetze pflegen.
+    # Fehlende Standardkategorien werden NICHT nachgelegt (koennten bewusst
+    # entfernt worden sein) und ``is_active`` wird NICHT angefasst.
+    changed = False
+    for name in CANONICAL_CATEGORIES:
+        record = existing.get(name)
+        if record is None:
             continue
-        if record.normalized_name != normalized_name or not record.is_standard or not record.is_active:
+        normalized_name = category_key(name)
+        if record.normalized_name != normalized_name or not record.is_standard:
             record.normalized_name = normalized_name
             record.is_standard = True
-            record.is_active = True
             changed = True
     if changed:
         db.commit()
@@ -135,7 +153,15 @@ def _count_assets_in_category(db: Session, *, category_name: str, normalized_nam
 
 
 def delete_category(db: Session, category_id: int) -> dict[str, object]:
-    """Löscht eine Kategorie hart, sofern sie aktuell von keinem Asset genutzt wird.
+    """Deaktiviert eine Kategorie (Soft-Delete), sofern sie aktuell von keinem
+    Asset genutzt wird.
+
+    Bewusst KEIN harter ``DELETE``: ein hart entfernter Datensatz wuerde von
+    ``seed_standard_categories`` bei jedem Server-Start als kanonische
+    Kategorie wieder angelegt ("geloeschte Kategorie taucht nach F5 wieder
+    auf"). Mit Soft-Delete bleibt der Datensatz als ``is_active=False``
+    erhalten — ``GET /api/wms/categories`` liefert ihn nicht mehr aus, und
+    bestehende Assets/Planungen behalten den Kategoriewert als Altbestand.
 
     Liefert HTTPException auf Konflikt:
       - 404 wenn die Kategorie nicht existiert
@@ -159,6 +185,7 @@ def delete_category(db: Session, category_id: int) -> dict[str, object]:
                 f"Gerät(e) damit verknüpft sind."
             ),
         )
-    db.delete(record)
-    db.commit()
+    if record.is_active:
+        record.is_active = False
+        db.commit()
     return {"deleted": True, "id": category_id}
