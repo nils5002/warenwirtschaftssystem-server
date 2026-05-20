@@ -101,6 +101,20 @@ type IncomingHandoverInfo = {
   note: string;
 };
 
+// Aggregierter Verbund-Eintrag fuer den additiven Detail-Block: eine Zeile
+// pro Partnerprojekt + Richtung. Datumsbereich und Kategorienliste werden
+// ueber alle Tage des Verbunds aufgesammelt.
+type VerbundEntry = {
+  partnerPlanningId: string;
+  partnerLabel: string;
+  direction: 'incoming' | 'outgoing';
+  categoryKeys: string[];
+  dateFrom: string;
+  dateTo: string;
+  totalQty: number;
+  notes: string[];
+};
+
 type AvailabilityVisual = {
   key: string;
   planningDate: string;
@@ -961,6 +975,79 @@ export function PlanningPage({
     () => availabilityVisuals.filter((item) => item.status === 'open'),
     [availabilityVisuals],
   );
+
+  // Aggregierte Verbund-/Übergabe-Einträge für den additiven Detail-Block.
+  // Zeigt jede dokumentierte Übergabe-Verknüpfung der geöffneten Planung —
+  // unabhängig davon, ob ein Engpass besteht. Eingehende Übergaben kommen
+  // direkt aus availability.incomingHandovers (Backend liefert sie pro
+  // Tag×Kategorie), ausgehende werden aus availabilityVisuals ergänzt, die
+  // der bestehende networkVisuals-Filter (status === 'handover') wegen
+  // fehlender Engpass-Coverage nicht erfasst.
+  const verbundEntries = useMemo<VerbundEntry[]>(() => {
+    const map = new Map<string, VerbundEntry>();
+
+    for (const entry of availability?.incomingHandovers ?? []) {
+      if (!entry.partnerPlanningId) continue;
+      const key = `incoming|${entry.partnerPlanningId}`;
+      const existing = map.get(key);
+      if (existing) {
+        if (!existing.categoryKeys.includes(entry.categoryKey)) {
+          existing.categoryKeys.push(entry.categoryKey);
+        }
+        if (entry.planningDate < existing.dateFrom) existing.dateFrom = entry.planningDate;
+        if (entry.planningDate > existing.dateTo) existing.dateTo = entry.planningDate;
+        existing.totalQty += entry.qty ?? 0;
+        if (entry.note && !existing.notes.includes(entry.note)) existing.notes.push(entry.note);
+      } else {
+        map.set(key, {
+          partnerPlanningId: entry.partnerPlanningId,
+          partnerLabel: entry.partnerPlanningLabel || entry.partnerPlanningId,
+          direction: 'incoming',
+          categoryKeys: [entry.categoryKey],
+          dateFrom: entry.planningDate,
+          dateTo: entry.planningDate,
+          totalQty: entry.qty ?? 0,
+          notes: entry.note ? [entry.note] : [],
+        });
+      }
+    }
+
+    for (const visual of availabilityVisuals) {
+      if (visual.source !== 'outgoing') continue;
+      if (!visual.partnerPlanningId) continue;
+      // Was bereits im bestehenden "Geplante Übergaben"-Block erscheint
+      // (handover / review / open), nicht doppeln. Nur die stillen
+      // 'ok'-Verknüpfungen einsammeln.
+      if (visual.status === 'handover' || visual.status === 'review' || visual.status === 'open') continue;
+      const key = `outgoing|${visual.partnerPlanningId}`;
+      const existing = map.get(key);
+      if (existing) {
+        if (!existing.categoryKeys.includes(visual.categoryKey)) {
+          existing.categoryKeys.push(visual.categoryKey);
+        }
+        if (visual.planningDate < existing.dateFrom) existing.dateFrom = visual.planningDate;
+        if (visual.planningDate > existing.dateTo) existing.dateTo = visual.planningDate;
+        existing.totalQty += visual.currentPlanningQty;
+        if (visual.note && !existing.notes.includes(visual.note)) existing.notes.push(visual.note);
+      } else {
+        map.set(key, {
+          partnerPlanningId: visual.partnerPlanningId,
+          partnerLabel: visual.partnerLabel || visual.linkedPlanningLabel || visual.partnerPlanningId,
+          direction: 'outgoing',
+          categoryKeys: [visual.categoryKey],
+          dateFrom: visual.planningDate,
+          dateTo: visual.planningDate,
+          totalQty: visual.currentPlanningQty,
+          notes: visual.note ? [visual.note] : [],
+        });
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.direction !== b.direction) return a.direction === 'incoming' ? -1 : 1;
+      return a.partnerLabel.localeCompare(b.partnerLabel);
+    });
+  }, [availability, availabilityVisuals]);
 
   // Schweregrad-Zusammenfassung über alle klassifizierten Zellen — treibt die
   // kompakte "3 Echte Engpässe · 2 Übergabe prüfen · …"-Kopfzeile.
@@ -3155,6 +3242,66 @@ export function PlanningPage({
                       ) : null}
                     </div>
                   </div>
+
+                  {verbundEntries.length > 0 ? (
+                    <div className="rounded-2xl border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-800 dark:bg-slate-950">
+                      <div className="flex items-start gap-3">
+                        <span className="rounded-2xl bg-sky-100 p-2 text-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
+                          <Link2 className="h-4 w-4" />
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Übergabe-Verbund aktiv</p>
+                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+                            Diese Planung ist Teil eines Verbunds mit anderen Projekten — auch wenn aktuell kein Engpass besteht.
+                          </p>
+                        </div>
+                      </div>
+                      <ul className="mt-3 space-y-2">
+                        {verbundEntries.map((entry) => (
+                          <li
+                            key={`verbund-${entry.direction}-${entry.partnerPlanningId}`}
+                            className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 via-white to-cyan-50 px-3 py-3 text-xs dark:border-sky-700 dark:from-sky-950/30 dark:via-slate-950 dark:to-cyan-950/20"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-sky-200 bg-sky-100/80 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:border-sky-700 dark:bg-sky-900/60 dark:text-sky-50">
+                                {entry.direction === 'incoming' ? 'Empfängt von' : 'Übergibt an'}
+                              </span>
+                              <span className="rounded-full border border-slate-200 bg-white/80 px-2.5 py-1 text-slate-700 dark:border-slate-700 dark:bg-slate-950/40 dark:text-slate-100">
+                                {currentPlanningLabel || 'Aktuelles Projekt'}
+                              </span>
+                              <span className="text-slate-400 dark:text-slate-500">↔</span>
+                              <span className="rounded-full border border-sky-200 bg-sky-100/70 px-2.5 py-1 text-sky-800 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100">
+                                {entry.partnerLabel}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-[13px] font-medium text-slate-800 dark:text-slate-100">
+                              {entry.categoryKeys.join(', ')}
+                              {entry.totalQty > 0 ? ` · ${entry.totalQty} Stück` : ''}
+                              {entry.dateFrom === entry.dateTo
+                                ? ` · ${formatGermanDate(entry.dateFrom)}`
+                                : ` · ${formatGermanDate(entry.dateFrom)} – ${formatGermanDate(entry.dateTo)}`}
+                            </p>
+                            {entry.notes.length > 0 ? (
+                              <p className="mt-2 rounded-xl border border-white/80 bg-white/70 px-2.5 py-2 text-[11px] text-slate-700 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200">
+                                Hinweis: {entry.notes.join(' · ')}
+                              </p>
+                            ) : null}
+                            <div className="mt-2">
+                              <button
+                                type="button"
+                                className="btn-secondary px-2.5 py-1.5 text-xs"
+                                onClick={() => {
+                                  void openPlanning(entry.partnerPlanningId);
+                                }}
+                              >
+                                Partner öffnen
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
 
                   {cardPrinterUpliftVisuals.length ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3 shadow-sm dark:border-amber-700/60 dark:bg-amber-950/20">
