@@ -318,6 +318,15 @@ export type PlanningDayResponse = {
   items: PlanningItemResponse[];
 };
 
+export type IncomingHandoverRef = {
+  planningDate: string;
+  categoryKey: string;
+  partnerPlanningId: string;
+  partnerPlanningLabel?: string | null;
+  qty?: number;
+  note?: string | null;
+};
+
 export type PlanningResponse = {
   id: string;
   customerName: string;
@@ -333,6 +342,7 @@ export type PlanningResponse = {
   createdAt: string;
   updatedAt: string;
   days: PlanningDayResponse[];
+  incomingHandovers?: IncomingHandoverRef[];
 };
 
 export type PlanningAvailabilityState = "green" | "yellow" | "red";
@@ -398,6 +408,7 @@ export type PlanningAvailabilityResponse = {
   periodEnd: string;
   items: PlanningAvailabilityItem[];
   categorySummary: PlanningAvailabilityCategorySummary[];
+  incomingHandovers?: IncomingHandoverRef[];
 };
 
 const defaultAccessContext: ApiAccessContext = {};

@@ -70,6 +70,23 @@ class PlanningDayResponse(BaseModel):
     items: list[PlanningItemResponse] = Field(default_factory=list)
 
 
+class IncomingHandoverRef(BaseModel):
+    """Eingehende Übergabe — eine andere Planung verlinkt auf diese als Empfänger.
+
+    Wird vom Backend explizit pro (Tag, Kategorie, Partner) ausgeliefert, damit
+    die Detail-/Availability-Ansicht den Übergabe-Block auch dann zeigt, wenn die
+    geöffnete Planung selbst keine outgoing-Items trägt. Outgoing-Seite bleibt
+    weiter über handoverEnabled/linkedPlanningId auf den Items modelliert.
+    """
+
+    planningDate: date
+    categoryKey: str
+    partnerPlanningId: str
+    partnerPlanningLabel: str | None = None
+    qty: int = 0
+    note: str | None = None
+
+
 class PlanningResponse(BaseModel):
     id: str
     customerName: str
@@ -85,6 +102,7 @@ class PlanningResponse(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     days: list[PlanningDayResponse] = Field(default_factory=list)
+    incomingHandovers: list[IncomingHandoverRef] = Field(default_factory=list)
 
 
 class PlanningListHandoverSummary(BaseModel):
@@ -299,3 +317,4 @@ class PlanningAvailabilityResponse(BaseModel):
     periodEnd: date
     items: list[PlanningAvailabilityItem] = Field(default_factory=list)
     categorySummary: list[PlanningAvailabilityCategorySummary] = Field(default_factory=list)
+    incomingHandovers: list[IncomingHandoverRef] = Field(default_factory=list)

@@ -719,6 +719,35 @@ export function PlanningPage({
     const map = new Map<string, IncomingHandoverInfo>();
     if (!editor) return map;
 
+    // Server-Quelle (additiv, ab Backend mit incomingHandovers): deckt die
+    // Empfänger-Seite einer Übergabe zuverlässig ab — auch wenn die geöffnete
+    // Planung selbst keine outgoing-Items trägt.
+    const serverIncoming =
+      availability?.incomingHandovers ?? [];
+    for (const entry of serverIncoming) {
+      const partnerLabel = entry.partnerPlanningLabel || entry.partnerPlanningId;
+      const note = entry.note ?? '';
+      const key = `${entry.planningDate}|${normalizeItemCategory(entry.categoryKey)}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          partnerPlanningId: entry.partnerPlanningId,
+          partnerLabel,
+          note,
+        });
+      }
+      const anyDayKey = `*|${normalizeItemCategory(entry.categoryKey)}`;
+      if (!map.has(anyDayKey)) {
+        map.set(anyDayKey, {
+          partnerPlanningId: entry.partnerPlanningId,
+          partnerLabel,
+          note,
+        });
+      }
+    }
+
+    // Fallback: bisheriger Pfad über bereits geladene relatedPlannings.
+    // Bleibt für ältere Server-Stände und für lokale, noch nicht gespeicherte
+    // Änderungen im Editor relevant.
     for (const planning of Object.values(relatedPlannings)) {
       const planningLabel = buildPlanningLabel(planning);
       for (const day of planning.days) {
@@ -745,7 +774,7 @@ export function PlanningPage({
     }
 
     return map;
-  }, [editor, relatedPlannings, normalizeItemCategory]);
+  }, [editor, availability, relatedPlannings, normalizeItemCategory]);
 
   const availabilityVisualMap = useMemo(() => {
     const map = new Map<string, AvailabilityVisual>();

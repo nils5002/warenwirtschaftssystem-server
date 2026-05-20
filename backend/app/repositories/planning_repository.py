@@ -18,6 +18,7 @@ from ..schemas.planning import (
     ConflictBadge,
     ConflictGroup,
     ConflictGroupDay,
+    IncomingHandoverRef,
     Recommendation,
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
@@ -923,6 +924,77 @@ def _build_handover_list_summary_map(
     return summary_map
 
 
+def _load_incoming_handovers(
+    db: Session,
+    planning_external_id: str,
+) -> list[IncomingHandoverRef]:
+    """Übergaben, die eine andere Planung in DIESE Planung verlinkt.
+
+    Pendant zum incoming-Zweig von [`_build_handover_list_summary_map`]; liefert
+    aber Details pro (Tag, Kategorie, Partner) statt einer Aggregation. Bewusst
+    OHNE Statusfilter — konsistent mit der Liste, damit Entwürfe nicht
+    heimlich Übergaben verstecken.
+    """
+    if not planning_external_id:
+        return []
+    rows = db.execute(
+        select(
+            PlanningRecord.external_id,
+            PlanningRecord.project_name,
+            PlanningDayRecord.planning_date,
+            PlanningItemRecord.category_key,
+            PlanningItemRecord.qty,
+            PlanningItemRecord.handover_note,
+        )
+        .join(PlanningDayRecord, PlanningDayRecord.id == PlanningItemRecord.planning_day_id)
+        .join(PlanningRecord, PlanningRecord.id == PlanningDayRecord.planning_id)
+        .where(PlanningItemRecord.handover_enabled.is_(True))
+        .where(PlanningItemRecord.linked_planning_external_id == planning_external_id)
+    ).all()
+
+    grouped: dict[tuple[date, str, str], dict[str, object]] = {}
+    for partner_id, partner_label, planning_date, category_key, qty, note in rows:
+        partner_id_norm = str(partner_id or "").strip()
+        if not partner_id_norm or partner_id_norm == planning_external_id:
+            continue
+        category = normalize_category_or_self(category_key)
+        key = (planning_date, category, partner_id_norm)
+        entry = grouped.setdefault(
+            key,
+            {
+                "partner_label": partner_label,
+                "qty": 0,
+                "notes": [],
+            },
+        )
+        entry["qty"] = int(entry["qty"]) + int(qty or 0)
+        note_clean = str(note or "").strip()
+        if note_clean and note_clean not in entry["notes"]:
+            entry["notes"].append(note_clean)
+
+    refs: list[IncomingHandoverRef] = []
+    for (planning_date, category, partner_id_norm), entry in grouped.items():
+        notes_joined = "; ".join(entry["notes"]) if entry["notes"] else None
+        refs.append(
+            IncomingHandoverRef(
+                planningDate=planning_date,
+                categoryKey=category,
+                partnerPlanningId=partner_id_norm,
+                partnerPlanningLabel=str(entry["partner_label"]) if entry["partner_label"] else None,
+                qty=int(entry["qty"]),
+                note=notes_joined,
+            )
+        )
+    refs.sort(
+        key=lambda ref: (
+            ref.planningDate,
+            ref.categoryKey.lower(),
+            (ref.partnerPlanningLabel or ref.partnerPlanningId).lower(),
+        )
+    )
+    return refs
+
+
 def _planning_to_response(
     db: Session,
     record: PlanningRecord,
@@ -1003,6 +1075,7 @@ def _planning_to_response(
         createdAt=record.created_at,
         updatedAt=record.updated_at,
         days=day_responses,
+        incomingHandovers=_load_incoming_handovers(db, record.external_id),
     )
 def list_plannings(
     db: Session,
@@ -1273,6 +1346,8 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
     if not planning:
         return None
 
+    incoming_handovers = _load_incoming_handovers(db, planning.external_id)
+
     day_rows = db.scalars(select(PlanningDayRecord).where(PlanningDayRecord.planning_id == planning.id)).all()
     if not day_rows:
         return PlanningAvailabilityResponse(
@@ -1281,6 +1356,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             periodEnd=planning.end_date,
             items=[],
             categorySummary=[],
+            incomingHandovers=incoming_handovers,
         )
 
     day_ids = [day.id for day in day_rows]
@@ -1292,6 +1368,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             periodEnd=planning.end_date,
             items=[],
             categorySummary=[],
+            incomingHandovers=incoming_handovers,
         )
 
     days_by_id = {day.id: day for day in day_rows}
@@ -1304,6 +1381,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             periodEnd=planning.end_date,
             items=[],
             categorySummary=[],
+            incomingHandovers=incoming_handovers,
         )
     relevant_item_rows = [item for item in item_rows if days_by_id[item.planning_day_id].planning_date in bound_dates_set]
     if not relevant_item_rows:
@@ -1313,6 +1391,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             periodEnd=planning.end_date,
             items=[],
             categorySummary=[],
+            incomingHandovers=incoming_handovers,
         )
     active_names = category_repository.active_category_names(db)
     categories = sorted({category_repository.normalize_category_value(item.category_key, active_names) for item in relevant_item_rows})
@@ -1719,4 +1798,5 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         periodEnd=planning.end_date,
         items=availability_items,
         categorySummary=category_summary,
+        incomingHandovers=incoming_handovers,
     )
