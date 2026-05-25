@@ -118,6 +118,8 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     # Restores die Availability-/Konfliktberechnung 1:1
                     # reproduzieren.
                     "expectedReturnDate": item.expected_return_date,
+                    # Schritt B: Planungs-Zuordnung mit ausgeben.
+                    "assignedPlanningId": item.assigned_planning_id,
                 }
                 for item in assets
             ],
@@ -293,6 +295,9 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     # weitergeben. Default None im BackupAsset-Schema hält ältere
                     # Backups OHNE dieses Feld importierbar (Fallback nextReturn).
                     expected_return_date=item.expectedReturnDate,
+                    # Schritt B: Planungs-Zuordnung beim Restore weitergeben.
+                    # Default None hält Altbackups OHNE dieses Feld importierbar.
+                    assigned_planning_id=item.assignedPlanningId,
                 )
             )
 

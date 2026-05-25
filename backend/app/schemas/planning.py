@@ -245,6 +245,10 @@ class PlanningAvailabilityItem(BaseModel):
     weekday: str
     categoryKey: str
     requestedQty: int
+    # Schritt B: Anzahl bereits FÜR diese Planung ausgegebener Geräte, die den
+    # geplanten Bedarf an diesem Tag/Kategorie erfüllen. currentPlanningQty
+    # (offener Bedarf) = requestedQty − issuedForPlanningQty.
+    issuedForPlanningQty: int = 0
     totalStock: int
     usableStock: int
     alreadyPlanned: int

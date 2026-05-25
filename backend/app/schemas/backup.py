@@ -65,6 +65,10 @@ class BackupAsset(BaseModel):
     # Default None, damit ältere Backups OHNE dieses Feld weiter importierbar
     # bleiben (Availability-Logik fällt dann auf nextReturn zurück).
     expectedReturnDate: date | None = None
+    # Schritt B: Planung, FÜR die das Gerät ausgegeben wurde. Optional mit Default
+    # None → ältere Backups OHNE dieses Feld bleiben importierbar (keine
+    # Verknüpfung, Verhalten wie Schritt A).
+    assignedPlanningId: str | None = None
 
 
 class BackupActivity(BaseModel):

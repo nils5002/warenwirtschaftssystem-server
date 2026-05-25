@@ -51,6 +51,9 @@ type CheckoutPayload = {
   assetId: string;
   assignee: string;
   projectName?: string;
+  // Schritt B: external_id der gewählten Planung (falls das Projekt einer
+  // aktiven Planung entspricht; bei frei getipptem Projekt null/undefined).
+  planningId?: string | null;
   dueDate: string;
   note: string;
 };
@@ -772,6 +775,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     dueHint?: string,
     noteHint?: string,
     projectHint?: string,
+    planningIdHint?: string | null,
   ) => {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
@@ -810,6 +814,9 @@ export function useWmsController(options: UseWmsControllerOptions) {
       nextReturn: due,
       lastCheckout: new Date().toLocaleDateString('de-DE'),
       notes: metadataLines.length ? `${asset.notes}\n${metadataLines.join('\n')}`.trim() : asset.notes,
+      // Schritt B: konkrete Planungs-Zuordnung mitgeben, falls ein echtes
+      // Planungsprojekt gewählt wurde (sonst null = keine Verknüpfung).
+      assignedPlanningId: planningIdHint ?? null,
     };
     await saveAsset(updated);
   };
@@ -1315,6 +1322,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       payload.dueDate,
       payload.note,
       payload.projectName,
+      payload.planningId ?? null,
     );
   };
 

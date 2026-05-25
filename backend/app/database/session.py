@@ -116,6 +116,9 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # damit bestehende Daten und Altbackups ohne Wert unverändert importierbar
     # bleiben (Fallback auf next_return in der Availability-Logik).
     ("assets", "expected_return_date", "DATE"),
+    # Schritt B: Planung, FÜR die ein Asset ausgegeben wurde. Nullable → Altdaten
+    # ohne Verknüpfung verhalten sich wie Schritt A.
+    ("assets", "assigned_planning_id", "VARCHAR(64)"),
     # Security-Audit Paket B2: serverseitige Token-Invalidierung pro Benutzer.
     ("users", "token_version", "INTEGER NOT NULL DEFAULT 0"),
 )
