@@ -17,6 +17,7 @@ from ..database.models import (
     PlanningItemRecord,
     PlanningRecord,
     ReservationRecord,
+    UpdateNoteRecord,
     UserRecord,
     HardwareImportRunRecord,
     HardwareImportRowErrorRecord,
@@ -40,6 +41,7 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
     maintenance_items = db.scalars(select(MaintenanceRecord).order_by(MaintenanceRecord.created_at.asc())).all()
     locations = db.scalars(select(LocationRecord).order_by(LocationRecord.name.asc())).all()
     plannings = db.scalars(select(PlanningRecord).order_by(PlanningRecord.created_at.asc())).all()
+    update_notes = db.scalars(select(UpdateNoteRecord).order_by(UpdateNoteRecord.created_at.asc())).all()
 
     planning_days = db.scalars(select(PlanningDayRecord).order_by(PlanningDayRecord.planning_date.asc())).all()
     day_map: dict[int, list[PlanningDayRecord]] = {}
@@ -203,6 +205,18 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                 }
                 for planning in plannings
             ],
+            "updateNotes": [
+                {
+                    "id": note.external_id,
+                    "version": note.version,
+                    "date": note.note_date,
+                    "title": note.title,
+                    "items": list(note.items_json or []),
+                    "isPublished": bool(note.is_published),
+                    "publishedAt": note.published_at,
+                }
+                for note in update_notes
+            ],
         }
     )
 
@@ -215,6 +229,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         db.execute(delete(PlanningItemRecord))
         db.execute(delete(PlanningDayRecord))
         db.execute(delete(PlanningRecord))
+        db.execute(delete(UpdateNoteRecord))
         db.execute(delete(MaintenanceRecord))
         db.execute(delete(ReservationRecord))
         db.execute(delete(ActivityRecord))
@@ -389,6 +404,19 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                         )
                     )
 
+        for note in payload.updateNotes:
+            db.add(
+                UpdateNoteRecord(
+                    external_id=note.id,
+                    version=note.version,
+                    note_date=note.date,
+                    title=note.title,
+                    items_json=list(note.items or []),
+                    is_published=bool(note.isPublished),
+                    published_at=note.publishedAt,
+                )
+            )
+
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -410,6 +438,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "maintenanceItems": len(payload.maintenanceItems),
             "locations": len(payload.locations),
             "plannings": len(payload.plannings),
+            "updateNotes": len(payload.updateNotes),
         }
     )
 
@@ -445,6 +474,7 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         db.execute(delete(PlanningItemRecord))
         db.execute(delete(PlanningDayRecord))
         db.execute(delete(PlanningRecord))
+        db.execute(delete(UpdateNoteRecord))
         db.execute(delete(MaintenanceRecord))
         db.execute(delete(ReservationRecord))
         db.execute(delete(ActivityRecord))

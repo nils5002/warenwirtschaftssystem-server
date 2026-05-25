@@ -30,7 +30,8 @@ export type AppPage =
   | 'tickets'
   | 'importExport'
   | 'backup'
-  | 'users';
+  | 'users'
+  | 'updateNotes';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 

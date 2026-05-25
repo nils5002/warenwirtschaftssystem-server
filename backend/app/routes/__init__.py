@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import admin_logs, auth, backup, defaults, health, planning, wms, wms_import
+from . import admin_logs, auth, backup, defaults, health, planning, update_notes, wms, wms_import
 
 # Sicherheits-Hinweis (Security-Audit Paket A):
 # Die Router `db_assets` (/api/db/assets), `jobs` (/api/jobs) und `llm`
@@ -21,3 +21,4 @@ api_router.include_router(wms_import.router)
 api_router.include_router(backup.router)
 api_router.include_router(planning.router)
 api_router.include_router(admin_logs.router)
+api_router.include_router(update_notes.router)

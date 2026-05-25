@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from datetime import date as DateType
 
 from pydantic import BaseModel, Field
 
@@ -139,6 +140,18 @@ class BackupPlanning(BaseModel):
     days: list[BackupPlanningDay] = Field(default_factory=list)
 
 
+class BackupUpdateNote(BaseModel):
+    # Schritt E: admin-pflegbare Versionshinweise. Optional mit Defaults, damit
+    # ältere Backups OHNE diese Collection weiterhin importierbar bleiben.
+    id: str
+    version: str
+    date: DateType | None = None
+    title: str | None = None
+    items: list[str] = Field(default_factory=list)
+    isPublished: bool = False
+    publishedAt: datetime | None = None
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -150,6 +163,8 @@ class WarehouseBackupPayload(BaseModel):
     maintenanceItems: list[BackupMaintenance] = Field(default_factory=list)
     locations: list[BackupLocation] = Field(default_factory=list)
     plannings: list[BackupPlanning] = Field(default_factory=list)
+    # Schritt E: Default-Liste → Altbackups ohne diese Collection bleiben gültig.
+    updateNotes: list[BackupUpdateNote] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):

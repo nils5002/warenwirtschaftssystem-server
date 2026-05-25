@@ -270,3 +270,25 @@ class HardwareImportRowErrorRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class UpdateNoteRecord(TimestampMixin, Base):
+    """Schritt E: admin-pflegbare Versionshinweise (Update-Notes).
+
+    Ersetzt die statische ``updateNotes.ts`` als Datenquelle. Mehrere Notes
+    dürfen existieren (Historie); ``latest`` ist die veröffentlichte Note mit
+    dem höchsten ``published_at``. Die statische Datei bleibt im Frontend als
+    Fallback erhalten.
+    """
+
+    __tablename__ = "update_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(32), nullable=False)
+    note_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Liste von Bulletpoints (Strings) — JSON wie ReservationRecord.assets.
+    items_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
