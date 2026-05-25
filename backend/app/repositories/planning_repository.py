@@ -193,6 +193,43 @@ def _is_asset_usable_on_date(asset: AssetRecord, on_date: date) -> bool:
     return True
 
 
+def _issued_assets_by_planning_day_category(
+    db: Session,
+    period_by_planning: dict[str, tuple[date, date]],
+    active_names: set[str],
+) -> dict[tuple[str, date, str], int]:
+    """Schritt B: zählt pro (Planung, Tag, Kategorie) die Geräte, die FÜR diese
+    Planung ausgegeben wurden und am jeweiligen Tag tatsächlich auf Ausleihe
+    sind (Status 'Verliehen' UND nicht nutzbar laut ``_is_asset_usable_on_date``).
+
+    Solche Geräte erfüllen den geplanten Bedarf der Planung und dürfen ihn nicht
+    zusätzlich als Engpass belasten (Behebung der Doppelzählung). Komplementär zu
+    Schritt A: ab dem erwarteten Rückgabetag ist das Gerät wieder ``usable`` und
+    wird hier NICHT mehr gezählt — dann zählt es regulär im freien Bestand
+    (kein Doppelnutzen). ``period_by_planning`` begrenzt die Auswertung auf die
+    relevanten Planungen und deren Zeitraum.
+    """
+    issued: dict[tuple[str, date, str], int] = defaultdict(int)
+    if not period_by_planning:
+        return issued
+    assets = db.scalars(
+        select(AssetRecord).where(AssetRecord.assigned_planning_id.is_not(None))
+    ).all()
+    for asset in assets:
+        ext_id = str(getattr(asset, "assigned_planning_id", None) or "").strip()
+        period = period_by_planning.get(ext_id)
+        if period is None:
+            continue
+        if str(asset.status).strip().lower() != "verliehen":
+            continue
+        category = category_repository.normalize_category_value(asset.category, active_names)
+        start_date, end_date = period
+        for bound_date in _iter_bound_dates(start_date, end_date):
+            if not _is_asset_usable_on_date(asset, bound_date):
+                issued[(ext_id, bound_date, category)] += 1
+    return issued
+
+
 def count_open_conflicts(availability: PlanningAvailabilityResponse | None) -> int:
     if availability is None:
         return 0
@@ -404,6 +441,17 @@ def get_open_conflict_summaries_for_plannings(
                 if is_incompatible_laptop:
                     incompat_laptops_by_day[bound_date] += 1
 
+    # Schritt B: bereits FÜR die jeweilige Planung ausgegebene Geräte ermitteln,
+    # um deren geplanten Bedarf entsprechend zu reduzieren (erfüllter Anteil).
+    issued_by_planning = _issued_assets_by_planning_day_category(
+        db,
+        {
+            ext_id: (record.start_date, record.end_date)
+            for ext_id, record in planning_records_by_external.items()
+        },
+        active_names,
+    )
+
     # Effektive Tagesmenge je (Planung, Datum, Kategorie). Spiegelt die
     # gleiche Logik wie ``get_planning_availability`` wider: explizite
     # Mengen haben Vorrang, ansonsten gilt das Maximum als Default.
@@ -418,6 +466,10 @@ def get_open_conflict_summaries_for_plannings(
             continue
         for bound_date in _iter_bound_dates(record.start_date, record.end_date):
             qty = int(explicit_qty.get((ext_id, bound_date, category), default_qty))
+            # Schritt B: erfüllten (ausgegebenen) Anteil abziehen. Ist der Bedarf
+            # vollständig durch ausgegebene Geräte gedeckt, entfällt die Zeile —
+            # kein künstlicher Konflikt für die eigene Planung.
+            qty = max(0, qty - issued_by_planning.get((ext_id, bound_date, category), 0))
             if qty <= 0:
                 continue
             effective_qty[(ext_id, bound_date, category)] = qty
@@ -1630,6 +1682,17 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         overlap_explicit_qty_map[qty_key] += int(row.qty or 0)
         overlap_default_qty_map[(other_id, category)] = max(overlap_default_qty_map[(other_id, category)], overlap_explicit_qty_map[qty_key])
 
+    # Schritt B: bereits FÜR eine Planung ausgegebene Geräte erfüllen deren
+    # Bedarf. Wir brauchen die Mengen sowohl für DIESE Planung (eigener Bedarf
+    # unten) als auch für die überschneidenden Planungen (damit deren Beitrag zu
+    # already_planned NICHT doppelt zählt — ihre ausgegebenen Geräte fallen ja
+    # bereits aus usable_stock heraus).
+    issued_by_planning = _issued_assets_by_planning_day_category(
+        db,
+        {planning_id: (planning.start_date, planning.end_date), **overlap_period_map},
+        active_names,
+    )
+
     for (other_id, category), default_qty in overlap_default_qty_map.items():
         if default_qty <= 0:
             continue
@@ -1641,6 +1704,10 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             if bound_date not in bound_dates_set:
                 continue
             effective_qty = int(overlap_explicit_qty_map.get((other_id, bound_date, category), default_qty))
+            # Schritt B: erfüllten Anteil der anderen Planung abziehen.
+            effective_qty = max(
+                0, effective_qty - issued_by_planning.get((other_id, bound_date, category), 0)
+            )
             if effective_qty <= 0:
                 continue
             overlap_map[(bound_date, category)] += effective_qty
@@ -1706,7 +1773,12 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         usable_stock = stock_usable_by_day.get((planning_date, category), 0)
         already_planned = overlap_map.get((planning_date, category), 0)
         remaining_qty = usable_stock - already_planned
-        current_planning_qty = requested_qty
+        # Schritt B: Geräte, die FÜR diese Planung bereits ausgegeben sind,
+        # erfüllen den geplanten Bedarf. requestedQty bleibt der geplante Wert
+        # (Anzeige "Geplant"); für die Engpassrechnung zählt nur der noch offene
+        # Anteil current_planning_qty = geplant − bereits ausgegeben.
+        issued_for_planning_qty = issued_by_planning.get((planning_id, planning_date, category), 0)
+        current_planning_qty = max(0, requested_qty - issued_for_planning_qty)
         other_planned_qty = already_planned
         total_planned_qty_for_date_category = current_planning_qty + other_planned_qty
         remaining_after_all_planning = usable_stock - total_planned_qty_for_date_category
@@ -1790,6 +1862,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
                 weekday=str(requested["weekday"]),
                 categoryKey=category,
                 requestedQty=requested_qty,
+                issuedForPlanningQty=issued_for_planning_qty,
                 totalStock=total_stock,
                 usableStock=usable_stock,
                 alreadyPlanned=already_planned,

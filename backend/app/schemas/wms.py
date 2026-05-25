@@ -78,6 +78,11 @@ class AssetItem(BaseModel):
     # serverseitig aus nextReturn abgeleitet. Steuert, bis wann ein verliehenes
     # Eigengerät die Einsatzplanung blockiert.
     expectedReturnDate: Optional[date] = None
+    # Schritt B: external_id der Planung, FÜR die das Gerät ausgegeben wurde.
+    # Optional (Default None) — frei getippte Projekte ohne Planungsbezug bleiben
+    # ohne Verknüpfung. Wird in der Availability-Berechnung als erfüllter Bedarf
+    # der zugeordneten Planung verrechnet.
+    assignedPlanningId: Optional[str] = None
 
 
 class ExternalPoolCreatePayload(BaseModel):

@@ -86,6 +86,10 @@ export type Asset = {
   // wird aber in der Einsatzplanung komplett ignoriert (z. B. interne
   // Server-Laptops). Greift global VOR der Kartendrucker-Logik.
   availableForPlanning?: boolean;
+  // Schritt B: external_id der Planung, FÜR die das Gerät ausgegeben wurde.
+  // Wird beim Checkout gesetzt (wenn ein Planungsprojekt gewählt wurde) und
+  // beim Checkin serverseitig wieder geleert.
+  assignedPlanningId?: string | null;
 };
 
 export type ActivityItem = {

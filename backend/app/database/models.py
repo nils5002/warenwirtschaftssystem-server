@@ -91,6 +91,15 @@ class AssetRecord(TimestampMixin, Base):
     # Fremdbestand und bei Status 'Verfuegbar' bleibt das Feld ohne Wirkung.
     expected_return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # Schritt B: konkrete Verknüpfung zur Einsatzplanung, FÜR die dieses Asset
+    # ausgegeben wurde (referenziert PlanningRecord.external_id, "pln-..."). Wird
+    # beim Checkout gesetzt (sofern die UI eine Planung mitliefert) und beim
+    # Checkin wieder geleert. Die Availability-Berechnung verrechnet ein so
+    # zugeordnetes, aktuell verliehenes Gerät als ERFÜLLTEN Bedarf seiner Planung
+    # (statt es zusätzlich als Engpass zu zählen). NULL = keine Zuordnung
+    # (Altbestand/Freitext-Projekt) → Verhalten wie Schritt A.
+    assigned_planning_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"

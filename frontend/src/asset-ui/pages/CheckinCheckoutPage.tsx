@@ -19,6 +19,7 @@ type CheckinCheckoutPageProps = {
     assetId: string;
     assignee: string;
     projectName?: string;
+    planningId?: string | null;
     dueDate: string;
     note: string;
   }) => Promise<void>;
@@ -208,6 +209,25 @@ export function CheckinCheckoutPage({
     if (projectContext.trim()) options.unshift(projectContext.trim());
     return [...new Set(options)];
   }, [planningProjects, projectContext]);
+
+  // Schritt B: Mapping vom Projekt-Anzeigetext auf die echte Planungs-ID, damit
+  // beim Checkout die Planung eindeutig zugeordnet werden kann. Frei getippte
+  // Projekte (kein Treffer) bleiben ohne Verknüpfung. Bei mehrdeutigem Text
+  // (gleicher Name in mehreren Planungen) wird bewusst NICHT zugeordnet.
+  const planningIdByOption = useMemo(() => {
+    const counts = new Map<string, number>();
+    const ids = new Map<string, string>();
+    for (const planning of planningProjects) {
+      const key = `${planning.customerName} · ${planning.projectName}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      ids.set(key, planning.id);
+    }
+    const map = new Map<string, string>();
+    for (const [key, id] of ids) {
+      if (counts.get(key) === 1) map.set(key, id);
+    }
+    return map;
+  }, [planningProjects]);
 
   const checkoutProjectOptions = useMemo(() => {
     const options = [...projectOptions];
@@ -462,6 +482,8 @@ export function CheckinCheckoutPage({
 
     const normalizedAssignee = checkoutAssignee.trim() || '-';
     const normalizedNote = checkoutNote.trim();
+    // Schritt B: eindeutige Planungs-ID zum gewählten Projekt (sonst null).
+    const normalizedPlanningId = planningIdByOption.get(normalizedProject) ?? null;
     const total = checkoutQueue.length;
 
     setBatchSubmitting('checkout');
@@ -477,6 +499,7 @@ export function CheckinCheckoutPage({
           assetId: entry.assetId,
           assignee: normalizedAssignee,
           projectName: normalizedProject,
+          planningId: normalizedPlanningId,
           dueDate: checkoutDueDate,
           note: normalizedNote,
         });

@@ -172,6 +172,7 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         cardPrinterCompatible=bool(getattr(record, "card_printer_compatible", True)),
         availableForPlanning=bool(getattr(record, "available_for_planning", True)),
         expectedReturnDate=getattr(record, "expected_return_date", None),
+        assignedPlanningId=getattr(record, "assigned_planning_id", None),
     )
 
 
@@ -383,6 +384,7 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         "card_printer_compatible": bool(item.cardPrinterCompatible),
         "available_for_planning": bool(item.availableForPlanning),
         "expected_return_date": item.expectedReturnDate,
+        "assigned_planning_id": item.assignedPlanningId,
     }
     # Schritt A: erwartetes Rückgabedatum eines Eigengeräts strukturiert pflegen.
     # Beim Checkout (-> Verliehen) wird, falls die UI noch kein strukturiertes
@@ -396,6 +398,9 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
             )
     elif payload["status"] == "Verfuegbar":
         payload["expected_return_date"] = None
+        # Schritt B: Rücknahme beendet die Planungs-Zuordnung (Fall 3). Damit
+        # zählt das Gerät wieder als freier Bestand, nicht als erfüllter Bedarf.
+        payload["assigned_planning_id"] = None
     if record:
         for key, value in payload.items():
             setattr(record, key, value)
