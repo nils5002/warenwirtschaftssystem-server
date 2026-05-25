@@ -82,6 +82,15 @@ class AssetRecord(TimestampMixin, Base):
         Boolean, nullable=False, default=True
     )
 
+    # Erwartetes Rückgabedatum eines verliehenen Eigengeräts (Schritt A). Wird
+    # beim Checkout gesetzt und beim Checkin wieder geleert. In der Planungs-
+    # Verfügbarkeit (planning_repository._is_asset_usable_on_date) blockiert ein
+    # verliehenes Eigengerät NUR bis einschließlich dieses Datums — ab dem Tag
+    # danach zählt es wieder als planbarer Bestand. Eine eintägige Ausgabe
+    # sperrt damit nicht mehr den gesamten künftigen Planungshorizont. Bei
+    # Fremdbestand und bei Status 'Verfuegbar' bleibt das Feld ohne Wirkung.
+    expected_return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"

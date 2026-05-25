@@ -100,7 +100,12 @@ def test_planning_availability_counts_only_available_assets_as_usable() -> None:
     loaned = _asset_payload(f"{suffix}-loaned", status="Verliehen")
     loaned["category"] = available["category"]
     loaned["assignedTo"] = "Max Mustermann · Testprojekt"
-    loaned["nextReturn"] = (date.today() + timedelta(days=2)).isoformat()
+    # Schritt A: ein verliehenes Eigengerät zählt nur INNERHALB seines
+    # Ausleihzeitraums nicht als nutzbar. Der Planungstag unten (2099-01-11) muss
+    # daher vor dem erwarteten Rückgabetag liegen, sonst gilt das Gerät korrekt
+    # wieder als verfügbar (separat abgedeckt in
+    # test_planning_verliehen_loan_window).
+    loaned["nextReturn"] = "2099-01-20"
 
     assert client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=available).status_code == 200
     assert client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=loaned).status_code == 200
