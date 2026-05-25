@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from ..database.session import get_db
 from ..routes.dependencies import AccessContext, get_access_context, require_roles
 from ..schemas.planning import (
+    PlanningAssignedAssetsResponse,
     PlanningAvailabilityResponse,
     PlanningListItem,
     PlanningResponse,
@@ -213,6 +214,21 @@ def get_planning_availability(
     if existing is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     response = PlanningService.get_availability(db, planning_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    return response
+
+
+@router.get("/{planning_id}/assigned-assets", response_model=PlanningAssignedAssetsResponse)
+def get_planning_assigned_assets(
+    planning_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> PlanningAssignedAssetsResponse:
+    # Schritt C: rein lesende Anzeige der einer Planung zugeordneten Geräte
+    # (geplant vs. ausgegeben). Verändert keine Availability-/Konfliktlogik.
+    _ensure_planning_read_access(context)
+    response = PlanningService.get_assigned_assets(db, planning_id)
     if response is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     return response

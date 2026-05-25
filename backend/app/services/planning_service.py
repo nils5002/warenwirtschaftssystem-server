@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from ..repositories import planning_repository
 from ..schemas.planning import (
+    PlanningAssignedAssetsResponse,
     PlanningAvailabilityResponse,
     PlanningListItem,
     PlanningResponse,
@@ -47,6 +48,10 @@ class PlanningService:
     @staticmethod
     def get_availability(db: Session, planning_id: str) -> PlanningAvailabilityResponse | None:
         return planning_repository.get_planning_availability(db, planning_id)
+
+    @staticmethod
+    def get_assigned_assets(db: Session, planning_id: str) -> PlanningAssignedAssetsResponse | None:
+        return planning_repository.get_planning_assigned_assets(db, planning_id)
 
     @staticmethod
     def delete_planning(db: Session, planning_id: str) -> bool:
