@@ -1,7 +1,8 @@
 import { Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { UPDATE_NOTES_STORAGE_KEY, updateNotes } from '../updateNotes';
+import { UPDATE_NOTES_STORAGE_KEY, updateNotes, type UpdateNotes } from '../updateNotes';
+import { getLatestUpdateNote } from '../../services/wmsApi';
 
 function readLastSeenVersion(): string | null {
   if (typeof window === 'undefined') return null;
@@ -23,7 +24,37 @@ function writeLastSeenVersion(version: string): void {
 }
 
 export function UpdateNotesModal() {
-  const [open, setOpen] = useState<boolean>(() => readLastSeenVersion() !== updateNotes.version);
+  // Datenquelle: bevorzugt veröffentlichte Backend-Note, sonst statische
+  // updateNotes.ts als Fallback. Modal bleibt geschlossen, bis die Quelle
+  // feststeht (kein Flackern; robust bei API-Ausfall).
+  const [notes, setNotes] = useState<UpdateNotes>(updateNotes);
+  const [open, setOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      let effective: UpdateNotes = updateNotes;
+      try {
+        const latest = await getLatestUpdateNote();
+        if (latest && latest.version) {
+          effective = {
+            version: latest.version,
+            date: latest.date ?? undefined,
+            title: latest.title ?? undefined,
+            items: latest.items ?? [],
+          };
+        }
+      } catch {
+        // API nicht verfügbar/kein Login → statischer Fallback bleibt.
+      }
+      if (cancelled) return;
+      setNotes(effective);
+      setOpen(readLastSeenVersion() !== effective.version);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -45,7 +76,7 @@ export function UpdateNotesModal() {
   }, [open]);
 
   function confirm() {
-    writeLastSeenVersion(updateNotes.version);
+    writeLastSeenVersion(notes.version);
     setOpen(false);
   }
 
@@ -73,13 +104,13 @@ export function UpdateNotesModal() {
             </span>
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700 dark:text-brand-300">
-                Version {updateNotes.version}
+                Version {notes.version}
               </p>
               <h2
                 id="update-notes-title"
                 className="mt-0.5 text-base font-semibold text-slate-900 dark:text-slate-50"
               >
-                {updateNotes.title}
+                {notes.title}
               </h2>
             </div>
           </div>
@@ -95,7 +126,7 @@ export function UpdateNotesModal() {
         </div>
 
         <ul className="space-y-2 px-5 py-4 text-sm text-slate-700 dark:text-slate-200">
-          {updateNotes.items.map((item, index) => (
+          {notes.items.map((item, index) => (
             <li key={index} className="flex gap-2">
               <span
                 className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500 dark:bg-brand-400"

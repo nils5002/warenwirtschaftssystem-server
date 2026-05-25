@@ -9,6 +9,7 @@ import {
   Printer,
   Shapes,
   ShieldCheck,
+  Sparkles,
   TriangleAlert,
   UserCircle2,
 } from 'lucide-react';
@@ -99,5 +100,12 @@ export const navigation: NavItem[] = [
     icon: Printer,
     group: 'administration',
     hint: 'QR-Labels drucken',
+  },
+  {
+    key: 'updateNotes',
+    label: 'Update-Notizen',
+    icon: Sparkles,
+    group: 'administration',
+    hint: 'Versionshinweise pflegen',
   },
 ];

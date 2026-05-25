@@ -1086,3 +1086,57 @@ export async function getPlanningAssignedAssets(planningId: string): Promise<Pla
   const response = await apiFetch(`/api/wms/planning/${planningId}/assigned-assets`);
   return parseResponse<PlanningAssignedAssetsResponse>(response);
 }
+
+// --- Schritt E: admin-pflegbare Update-Notes ---
+export type UpdateNote = {
+  id: string;
+  version: string;
+  date?: string | null;
+  title?: string | null;
+  items: string[];
+  isPublished: boolean;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type UpdateNoteCreatePayload = {
+  version: string;
+  date?: string | null;
+  title?: string | null;
+  items: string[];
+};
+
+export type UpdateNoteUpdatePayload = Partial<UpdateNoteCreatePayload>;
+
+export async function getLatestUpdateNote(): Promise<UpdateNote | null> {
+  const response = await apiFetch('/api/wms/update-notes/latest');
+  return parseResponse<UpdateNote | null>(response);
+}
+
+export async function listUpdateNotes(): Promise<UpdateNote[]> {
+  const response = await apiFetch('/api/wms/admin/update-notes');
+  return parseResponse<UpdateNote[]>(response);
+}
+
+export function createUpdateNote(payload: UpdateNoteCreatePayload): Promise<UpdateNote> {
+  return postJson<UpdateNote>('/api/wms/admin/update-notes', payload);
+}
+
+export async function updateUpdateNote(id: string, payload: UpdateNoteUpdatePayload): Promise<UpdateNote> {
+  const response = await apiFetch(`/api/wms/admin/update-notes/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalizeOutbound(payload)),
+  });
+  return parseResponse<UpdateNote>(response);
+}
+
+export function publishUpdateNote(id: string): Promise<UpdateNote> {
+  return postJson<UpdateNote>(`/api/wms/admin/update-notes/${id}/publish`, {});
+}
+
+export async function deleteUpdateNote(id: string): Promise<{ deleted: boolean }> {
+  const response = await apiFetch(`/api/wms/admin/update-notes/${id}`, { method: 'DELETE' });
+  return parseResponse<{ deleted: boolean }>(response);
+}

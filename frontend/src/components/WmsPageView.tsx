@@ -1,6 +1,7 @@
 import { AssetDetailPage } from '../asset-ui/pages/AssetDetailPage';
 import { AssetsPage } from '../asset-ui/pages/AssetsPage';
 import { BackupPage } from '../asset-ui/pages/BackupPage';
+import { UpdateNotesAdminPage } from '../asset-ui/pages/UpdateNotesAdminPage';
 import { CategoriesPage } from '../asset-ui/pages/CategoriesPage';
 import { CheckinCheckoutPage } from '../asset-ui/pages/CheckinCheckoutPage';
 import { DashboardPage } from '../asset-ui/pages/DashboardPage';
@@ -402,6 +403,11 @@ export function WmsPageView({
         return <div className="surface-card p-6 text-sm text-slate-600">Backup nur für Admin / Techniker.</div>;
       }
       return <BackupPage onRestored={onReloadData} />;
+    case 'updateNotes':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Update-Notizen nur für Admin / Techniker.</div>;
+      }
+      return <UpdateNotesAdminPage />;
     case 'users':
       if (!isAdmin) {
         return <div className="surface-card p-6 text-sm text-slate-600">Benutzerverwaltung nur für Admin / Techniker.</div>;
