@@ -61,6 +61,10 @@ class BackupAsset(BaseModel):
     # Geraete bzw. inkompatible Laptops nach einem Restore faelschlich auf True.
     availableForPlanning: bool = True
     cardPrinterCompatible: bool = True
+    # Schritt A: erwartetes Rückgabedatum verliehener Eigengeräte. Optional mit
+    # Default None, damit ältere Backups OHNE dieses Feld weiter importierbar
+    # bleiben (Availability-Logik fällt dann auf nextReturn zurück).
+    expectedReturnDate: date | None = None
 
 
 class BackupActivity(BaseModel):

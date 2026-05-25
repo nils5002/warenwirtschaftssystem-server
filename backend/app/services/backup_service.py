@@ -114,6 +114,10 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     # nicht auf DB-Default True zurückfallen.
                     "availableForPlanning": bool(item.available_for_planning),
                     "cardPrinterCompatible": bool(item.card_printer_compatible),
+                    # Schritt A: erwartetes Rückgabedatum mit ausgeben, damit
+                    # Restores die Availability-/Konfliktberechnung 1:1
+                    # reproduzieren.
+                    "expectedReturnDate": item.expected_return_date,
                 }
                 for item in assets
             ],
@@ -285,6 +289,10 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     # diese Felder — sie bleiben damit importierbar.
                     available_for_planning=bool(item.availableForPlanning),
                     card_printer_compatible=bool(item.cardPrinterCompatible),
+                    # Schritt A: erwartetes Rückgabedatum beim Restore
+                    # weitergeben. Default None im BackupAsset-Schema hält ältere
+                    # Backups OHNE dieses Feld importierbar (Fallback nextReturn).
+                    expected_return_date=item.expectedReturnDate,
                 )
             )
 

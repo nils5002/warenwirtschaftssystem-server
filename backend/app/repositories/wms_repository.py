@@ -171,6 +171,7 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         externalNote=record.external_note,
         cardPrinterCompatible=bool(getattr(record, "card_printer_compatible", True)),
         availableForPlanning=bool(getattr(record, "available_for_planning", True)),
+        expectedReturnDate=getattr(record, "expected_return_date", None),
     )
 
 
@@ -381,7 +382,20 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         "external_note": item.externalNote,
         "card_printer_compatible": bool(item.cardPrinterCompatible),
         "available_for_planning": bool(item.availableForPlanning),
+        "expected_return_date": item.expectedReturnDate,
     }
+    # Schritt A: erwartetes Rückgabedatum eines Eigengeräts strukturiert pflegen.
+    # Beim Checkout (-> Verliehen) wird, falls die UI noch kein strukturiertes
+    # Datum liefert, defensiv das eingegebene next_return interpretiert. Beim
+    # Checkin (-> Verfuegbar) wird die Sperre wieder aufgehoben. So bleibt die
+    # Planungs-Verfügbarkeit konsistent, ohne dass die UI angepasst werden muss.
+    if payload["status"] == "Verliehen" and payload["ownership_type"] == "owned":
+        if payload["expected_return_date"] is None:
+            payload["expected_return_date"] = planning_repository._parse_loose_date(
+                item.nextReturn
+            )
+    elif payload["status"] == "Verfuegbar":
+        payload["expected_return_date"] = None
     if record:
         for key, value in payload.items():
             setattr(record, key, value)
