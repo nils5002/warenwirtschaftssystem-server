@@ -107,12 +107,64 @@ def _planning_to_list_item(
     )
 
 
+def _parse_loose_date(value: object) -> date | None:
+    """Parst ein Datum aus strukturierten ODER frei eingegebenen Werten.
+
+    Akzeptiert ``date``-Objekte, ISO-Strings (``YYYY-MM-DD``) sowie das im UI
+    übliche deutsche Format ``T.M.JJJJ`` / ``TT.MM.JJJJ``. Alles andere (leer,
+    ``"-"`` oder unparsebar) ergibt ``None`` — bewusst defensiv, damit beliebiger
+    Freitext NICHT als Datum fehlinterpretiert wird.
+    """
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text or text == "-":
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    parts = text.split(".")
+    if len(parts) == 3 and all(part.strip().isdigit() for part in parts):
+        day_str, month_str, year_str = (part.strip() for part in parts)
+        try:
+            return date(int(year_str), int(month_str), int(day_str))
+        except ValueError:
+            return None
+    return None
+
+
+def _owned_loan_return_date(asset: AssetRecord) -> date | None:
+    """Erwartetes Rückgabedatum eines verliehenen Eigengeräts.
+
+    Bevorzugt das strukturierte Feld ``expected_return_date``. Für Altbestände
+    und Backups, die dieses Feld noch nicht kennen, wird defensiv das bestehende
+    ``next_return`` interpretiert (siehe ``_parse_loose_date``). Liefert ``None``,
+    wenn kein zuverlässiges Datum vorhanden ist — dann bleibt das Gerät
+    konservativ blockiert (bisheriges Verhalten).
+    """
+    structured = _parse_loose_date(getattr(asset, "expected_return_date", None))
+    if structured is not None:
+        return structured
+    return _parse_loose_date(getattr(asset, "next_return", None))
+
+
 def _is_asset_usable_on_date(asset: AssetRecord, on_date: date) -> bool:
     """Prüft, ob ein Asset an einem konkreten Datum als verfügbarer Bestand zählt.
 
-    Eigenbestand (ownership_type == 'owned' oder leer) ist datums-unabhängig
-    verfügbar, sofern der Status 'Verfuegbar/Verfügbar' ist. Damit verhalten
-    sich alle vor diesem Feature bestehenden Assets unverändert.
+    Eigenbestand (ownership_type == 'owned' oder leer) mit Status
+    'Verfuegbar/Verfügbar' ist datums-unabhängig verfügbar. Damit verhalten sich
+    alle vor diesem Feature bestehenden Assets unverändert.
+
+    Schritt A — verliehener Eigenbestand: Ein 'Verliehen'-Eigengerät blockiert
+    NUR innerhalb seines Ausleihzeitraums, d. h. bis einschließlich des
+    erwarteten Rückgabetags (``_owned_loan_return_date``). Ab dem Tag DANACH
+    zählt es wieder als planbarer Bestand. So sperrt eine eintägige Ausgabe nicht
+    mehr den gesamten künftigen Planungshorizont. Ist kein zuverlässiges
+    Rückgabedatum vorhanden, bleibt das Gerät konservativ blockiert. Defekt/
+    Wartung blockieren unverändert datums-unabhängig.
 
     Fremdbestand (rented / borrowed / external) zählt zusätzlich nur, wenn:
     - returned_at NICHT gesetzt ist (oder das Datum vor returned_at liegt)
@@ -120,9 +172,13 @@ def _is_asset_usable_on_date(asset: AssetRecord, on_date: date) -> bool:
     - on_date <= available_until (falls gesetzt)
     """
     status = str(asset.status).strip().lower()
-    if status not in {"verfuegbar", "verfügbar"}:
-        return False
     ownership = str(getattr(asset, "ownership_type", "owned") or "owned").strip().lower()
+    if status not in {"verfuegbar", "verfügbar"}:
+        if status == "verliehen" and ownership == "owned":
+            return_date = _owned_loan_return_date(asset)
+            if return_date is not None and on_date > return_date:
+                return True
+        return False
     if ownership == "owned":
         return True
     returned_at = getattr(asset, "returned_at", None)

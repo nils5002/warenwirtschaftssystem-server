@@ -73,6 +73,11 @@ class AssetItem(BaseModel):
     # Asset bleibt im Inventar voll nutzbar, wird aber in der Planungs-
     # Verfügbarkeit komplett ignoriert (z. B. interne Server-Laptops).
     availableForPlanning: bool = True
+    # Schritt A: erwartetes Rückgabedatum eines verliehenen Eigengeräts. Optional
+    # (Default None) — die UI sendet es noch nicht; beim Checkout wird es dann
+    # serverseitig aus nextReturn abgeleitet. Steuert, bis wann ein verliehenes
+    # Eigengerät die Einsatzplanung blockiert.
+    expectedReturnDate: Optional[date] = None
 
 
 class ExternalPoolCreatePayload(BaseModel):
