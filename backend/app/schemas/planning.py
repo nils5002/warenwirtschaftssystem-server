@@ -322,3 +322,42 @@ class PlanningAvailabilityResponse(BaseModel):
     items: list[PlanningAvailabilityItem] = Field(default_factory=list)
     categorySummary: list[PlanningAvailabilityCategorySummary] = Field(default_factory=list)
     incomingHandovers: list[IncomingHandoverRef] = Field(default_factory=list)
+
+
+# --- Schritt C: zugeordnete Assets je Planung (reine Anzeige) ---
+class PlanningAssignedCategory(BaseModel):
+    categoryKey: str
+    # Geplant = MAX Tagesbedarf der Kategorie (Geräte werden tagesübergreifend
+    # wiederverwendet → Vergleich gegen physische Stückzahl).
+    plannedQty: int
+    # Anzahl Assets mit assigned_planning_id == planning.external_id (rein
+    # strukturell, UNABHÄNGIG vom Ausleihfenster/expected_return_date).
+    assignedQty: int
+    # assignedQty - plannedQty: 0 = passt, >0 = mehr ausgegeben, <0 = noch offen.
+    differenceQty: int
+
+
+class PlanningAssignedAsset(BaseModel):
+    """Schlanke Asset-Sicht für die Planungs-Detailanzeige (kein Import von
+    schemas.wms.AssetItem, um den Importzyklus wms <-> planning zu vermeiden)."""
+
+    id: str
+    name: str
+    category: str
+    status: str
+    model: str | None = None
+    serialNumber: str
+    tagNumber: str
+    qrCode: str = ""
+    assignedTo: str
+    expectedReturnDate: date | None = None
+    assignedPlanningId: str | None = None
+
+
+class PlanningAssignedAssetsResponse(BaseModel):
+    planningId: str
+    plannedTotal: int
+    assignedTotal: int
+    differenceTotal: int
+    categories: list[PlanningAssignedCategory] = Field(default_factory=list)
+    assets: list[PlanningAssignedAsset] = Field(default_factory=list)

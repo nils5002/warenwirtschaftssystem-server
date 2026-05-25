@@ -20,6 +20,9 @@ from ..schemas.planning import (
     ConflictGroupDay,
     IncomingHandoverRef,
     Recommendation,
+    PlanningAssignedAsset,
+    PlanningAssignedAssetsResponse,
+    PlanningAssignedCategory,
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
     PlanningAvailabilityResponse,
@@ -1447,6 +1450,87 @@ def _availability_state_with_handover(remaining_after_all: int, handover_covered
     if remaining_after_all <= 2:
         return "yellow"
     return "green"
+
+
+def get_planning_assigned_assets(db: Session, planning_id: str) -> PlanningAssignedAssetsResponse | None:
+    """Schritt C (rein lesend/anzeigend): vergleicht den geplanten Tagesbedarf je
+    Kategorie mit den Geräten, die dieser Planung strukturell zugeordnet sind
+    (``assigned_planning_id == external_id``) — UNABHÄNGIG vom Ausleihfenster /
+    ``expected_return_date``. Beantwortet „Welche Geräte sind dieser Planung
+    zugeordnet?", NICHT „Welche blockieren heute den Bestand?" (das ist
+    ``issuedForPlanningQty`` in der Availability). Verändert keine Konfliktlogik.
+    """
+    planning = db.scalar(select(PlanningRecord).where(PlanningRecord.external_id == planning_id))
+    if not planning:
+        return None
+    active_names = category_repository.active_category_names(db)
+
+    # Geplant = MAX Tagesbedarf je Kategorie (Geräte werden tagesübergreifend
+    # wiederverwendet → Vergleich gegen physische Stückzahl, konsistent zu
+    # maxRequestedPerDay in der Availability).
+    days = db.scalars(select(PlanningDayRecord).where(PlanningDayRecord.planning_id == planning.id)).all()
+    day_date_by_id = {d.id: d.planning_date for d in days}
+    day_ids = list(day_date_by_id.keys())
+    items = (
+        db.scalars(select(PlanningItemRecord).where(PlanningItemRecord.planning_day_id.in_(tuple(day_ids)))).all()
+        if day_ids else []
+    )
+    qty_by_day_cat: dict[tuple[date, str], int] = defaultdict(int)
+    for it in items:
+        day_date = day_date_by_id.get(it.planning_day_id)
+        if day_date is None:
+            continue
+        cat = category_repository.normalize_category_value(it.category_key, active_names)
+        qty_by_day_cat[(day_date, cat)] += int(it.qty or 0)
+    planned_by_cat: dict[str, int] = defaultdict(int)
+    for (day_date, cat), qty in qty_by_day_cat.items():
+        planned_by_cat[cat] = max(planned_by_cat[cat], qty)
+
+    # Strukturell zugeordnete Geräte (unabhängig vom Datum / Verfügbarkeit).
+    assigned_records = db.scalars(
+        select(AssetRecord).where(AssetRecord.assigned_planning_id == planning_id)
+    ).all()
+    assigned_by_cat: dict[str, int] = defaultdict(int)
+    assets: list[PlanningAssignedAsset] = []
+    for asset in assigned_records:
+        cat = category_repository.normalize_category_value(asset.category, active_names)
+        assigned_by_cat[cat] += 1
+        assets.append(
+            PlanningAssignedAsset(
+                id=asset.external_id,
+                name=asset.name,
+                category=cat,
+                status=asset.status,
+                model=asset.device_model,
+                serialNumber=asset.serial_number,
+                tagNumber=asset.tag_number,
+                qrCode=asset.qr_code or "",
+                assignedTo=asset.assigned_to,
+                expectedReturnDate=getattr(asset, "expected_return_date", None),
+                assignedPlanningId=getattr(asset, "assigned_planning_id", None),
+            )
+        )
+    assets.sort(key=lambda a: (a.category, a.name))
+
+    categories = [
+        PlanningAssignedCategory(
+            categoryKey=cat,
+            plannedQty=int(planned_by_cat.get(cat, 0)),
+            assignedQty=int(assigned_by_cat.get(cat, 0)),
+            differenceQty=int(assigned_by_cat.get(cat, 0)) - int(planned_by_cat.get(cat, 0)),
+        )
+        for cat in sorted(set(planned_by_cat) | set(assigned_by_cat))
+    ]
+    planned_total = sum(c.plannedQty for c in categories)
+    assigned_total = sum(c.assignedQty for c in categories)
+    return PlanningAssignedAssetsResponse(
+        planningId=planning.external_id,
+        plannedTotal=planned_total,
+        assignedTotal=assigned_total,
+        differenceTotal=assigned_total - planned_total,
+        categories=categories,
+        assets=assets,
+    )
 
 
 def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabilityResponse | None:

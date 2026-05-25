@@ -19,10 +19,12 @@ import {
   duplicatePlanning,
   getPlanning,
   getPlanningAvailability,
+  getPlanningAssignedAssets,
   listPlannings,
   updatePlanning,
   updatePlanningStatus,
   type ConflictBadge,
+  type PlanningAssignedAssetsResponse,
   type PlanningAvailabilityResponse,
   type PlanningConflictSeverity,
   type PlanningListItem,
@@ -553,6 +555,8 @@ export function PlanningPage({
   const [selectedId, setSelectedId] = useState<string>('');
   const [editor, setEditor] = useState<EditablePlanning | null>(null);
   const [availability, setAvailability] = useState<PlanningAvailabilityResponse | null>(null);
+  // Schritt C: geplant vs. ausgegeben + zugeordnete Geräte (reine Anzeige).
+  const [assignedAssets, setAssignedAssets] = useState<PlanningAssignedAssetsResponse | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1356,15 +1360,18 @@ export function PlanningPage({
     if (!options?.silentBusy) setBusyState('open');
     setError(null);
     try {
-      const [planning, planningAvailability] = await Promise.all([
+      const [planning, planningAvailability, planningAssigned] = await Promise.all([
         getPlanning(planningId),
         getPlanningAvailability(planningId),
+        // Schritt C: darf den Detail-Load nicht blockieren → Fehler tolerieren.
+        getPlanningAssignedAssets(planningId).catch(() => null),
       ]);
       const editable = toEditablePlanning(planning);
       if (openPlanningRequestSeq.current !== requestSeq) return;
       setEditor(editable);
       setEditorInitial(cloneEditablePlanning(editable));
       setAvailability(planningAvailability);
+      setAssignedAssets(planningAssigned);
       setPlanningListDetails((current) => ({ ...current, [planning.id]: planning }));
       setCalendarAvailabilitiesByPlanningId((current) => ({
         ...current,
@@ -1479,9 +1486,10 @@ export function PlanningPage({
     setError(null);
     try {
       const saved = await updatePlanning(planning.id, toUpsertPayload(planning));
-      const [freshPlanning, planningAvailability] = await Promise.all([
+      const [freshPlanning, planningAvailability, planningAssigned] = await Promise.all([
         getPlanning(saved.id),
         getPlanningAvailability(saved.id),
+        getPlanningAssignedAssets(saved.id).catch(() => null),
         loadPlannings(saved.id, { silentBusy: true }),
       ]);
       await refreshOverview();
@@ -1489,6 +1497,7 @@ export function PlanningPage({
       setEditor(savedEditor);
       setEditorInitial(cloneEditablePlanning(savedEditor));
       setAvailability(planningAvailability);
+      setAssignedAssets(planningAssigned);
       setPlanningListDetails((current) => ({ ...current, [freshPlanning.id]: freshPlanning }));
       setCalendarAvailabilitiesByPlanningId((current) => ({
         ...current,
@@ -1532,6 +1541,7 @@ export function PlanningPage({
     setEditor(null);
     setEditorInitial(null);
     setAvailability(null);
+    setAssignedAssets(null);
     setSelectedId('');
   };
 
@@ -1629,6 +1639,7 @@ export function PlanningPage({
       if (selectedId === planningId) {
         setEditor(null);
         setAvailability(null);
+        setAssignedAssets(null);
       }
       setPlanningListDetails((current) => {
         if (!current[planningId]) return current;
@@ -3042,6 +3053,91 @@ export function PlanningPage({
                   })}
                 </div>
               </div>
+
+              {assignedAssets ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">Geplant vs. Ausgegeben</h4>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+                        Welche Geräte wurden dieser Planung zugeordnet — und passt das zur geplanten Menge?
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200">
+                      Ausgegeben {assignedAssets.assignedTotal} / Geplant {assignedAssets.plannedTotal}
+                    </span>
+                  </div>
+
+                  {assignedAssets.categories.length > 0 ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {assignedAssets.categories.map((cat) => {
+                        const diff = cat.differenceQty;
+                        const badge =
+                          diff === 0
+                            ? { label: 'Passt', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+                            : diff > 0
+                              ? { label: 'Mehr ausgegeben', cls: 'border-amber-200 bg-amber-50 text-amber-800' }
+                              : { label: 'Noch offen', cls: 'border-sky-200 bg-sky-50 text-sky-800' };
+                        return (
+                          <div
+                            key={cat.categoryKey}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm dark:border-slate-700 dark:bg-slate-950"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{cat.categoryKey}</p>
+                              <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badge.cls}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                              Geplant {cat.plannedQty} · Ausgegeben {cat.assignedQty}
+                              {diff !== 0 ? ` · ${diff > 0 ? '+' : ''}${diff}` : ''}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Keine geplanten Kategorien.</p>
+                  )}
+
+                  {assignedAssets.assets.length > 0 ? (
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        Ausgegebene Hardware ({assignedAssets.assets.length})
+                      </summary>
+                      <div className="mt-2 space-y-2">
+                        {assignedAssets.assets.map((asset) => (
+                          <div
+                            key={asset.id}
+                            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm dark:border-slate-700 dark:bg-slate-950"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                {asset.status}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-slate-600 dark:text-slate-300">
+                              {asset.category}
+                              {asset.qrCode ? ` · ${asset.qrCode}` : asset.tagNumber ? ` · ${asset.tagNumber}` : ''}
+                            </p>
+                            {asset.expectedReturnDate ? (
+                              <p className="mt-0.5 text-slate-500 dark:text-slate-400">
+                                Rückgabe erwartet: {formatGermanDate(asset.expectedReturnDate)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  ) : (
+                    <p className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+                      Noch keine Geräte dieser Planung zugeordnet.
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">

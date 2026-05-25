@@ -411,6 +411,37 @@ export type PlanningAvailabilityResponse = {
   incomingHandovers?: IncomingHandoverRef[];
 };
 
+// Schritt C: geplant vs. ausgegeben + zugeordnete Geräte (reine Anzeige).
+export type PlanningAssignedCategory = {
+  categoryKey: string;
+  plannedQty: number;
+  assignedQty: number;
+  differenceQty: number;
+};
+
+export type PlanningAssignedAsset = {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+  model?: string | null;
+  serialNumber: string;
+  tagNumber: string;
+  qrCode?: string;
+  assignedTo: string;
+  expectedReturnDate?: string | null;
+  assignedPlanningId?: string | null;
+};
+
+export type PlanningAssignedAssetsResponse = {
+  planningId: string;
+  plannedTotal: number;
+  assignedTotal: number;
+  differenceTotal: number;
+  categories: PlanningAssignedCategory[];
+  assets: PlanningAssignedAsset[];
+};
+
 const defaultAccessContext: ApiAccessContext = {};
 
 let currentAccessContext: ApiAccessContext = (() => {
@@ -1049,4 +1080,9 @@ export async function deletePlanning(planningId: string): Promise<{ deleted: boo
 export async function getPlanningAvailability(planningId: string): Promise<PlanningAvailabilityResponse> {
   const response = await apiFetch(`/api/wms/planning/${planningId}/availability`);
   return parseResponse<PlanningAvailabilityResponse>(response);
+}
+
+export async function getPlanningAssignedAssets(planningId: string): Promise<PlanningAssignedAssetsResponse> {
+  const response = await apiFetch(`/api/wms/planning/${planningId}/assigned-assets`);
+  return parseResponse<PlanningAssignedAssetsResponse>(response);
 }
