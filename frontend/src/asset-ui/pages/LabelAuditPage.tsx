@@ -271,7 +271,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
   const lastResultAsset = lastResult?.assetId ? assetById.get(lastResult.assetId) ?? null : null;
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4 sm:space-y-5">
       <div>
         <p className="page-kicker">Admin</p>
         <h2 className="page-title">Label-Prüfung</h2>
@@ -282,7 +282,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
       </div>
 
       {/* Zusammenfassung */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
         <SummaryCard label="Assets gesamt" value={summary.total} icon={<ListChecks className="h-4 w-4" />} />
         <SummaryCard
           label="Geprüft"
@@ -344,14 +344,18 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         {/* Letztes Ergebnis als großes farbiges Banner */}
         {lastResult ? <ScanResultBanner result={lastResult} asset={lastResultAsset} /> : null}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="btn-secondary text-xs" onClick={() => void resetSession()}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <button
+            type="button"
+            className="btn-secondary min-h-11 justify-center text-xs"
+            onClick={() => void resetSession()}
+          >
             <RotateCcw className="h-3.5 w-3.5" />
             Prüfrunde zurücksetzen
           </button>
           <button
             type="button"
-            className="btn-secondary text-xs"
+            className="btn-secondary min-h-11 justify-center text-xs"
             onClick={exportCsv}
             disabled={!assets.length}
           >
@@ -361,12 +365,12 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         </div>
       </article>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
         {/* Zuletzt gescannt */}
         <article className="surface-card animate-fade-up">
           <h3 className="text-base font-semibold text-slate-900">Zuletzt gescannt</h3>
           <p className="mt-1 text-xs text-slate-500">Neueste Scans dieser Prüfrunde (max. {RECENT_LIMIT}).</p>
-          <div className="soft-scrollbar mt-3 max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+          <div className="soft-scrollbar mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1 sm:max-h-[50vh]">
             {session.recent.length ? (
               session.recent.map((entry) => (
                 <RecentRow key={entry.id} entry={entry} asset={entry.assetId ? assetById.get(entry.assetId) ?? null : null} />
@@ -383,7 +387,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         <article className="surface-card animate-fade-up">
           <h3 className="text-base font-semibold text-slate-900">Noch nicht geprüft ({openAssets.length})</h3>
           <p className="mt-1 text-xs text-slate-500">Assets, deren Label in dieser Runde noch nicht gescannt wurde.</p>
-          <div className="soft-scrollbar mt-3 max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+          <div className="soft-scrollbar mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1 sm:max-h-[50vh]">
             {openAssets.length ? (
               openAssets.map((asset) => (
                 <div key={asset.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5">
@@ -441,12 +445,12 @@ function SummaryCard({
   tone?: SummaryTone;
 }) {
   return (
-    <div className={`rounded-xl border px-3 py-3 ${SUMMARY_TONES[tone]}`}>
-      <div className="flex items-center gap-1.5 text-xs font-medium opacity-80">
-        {icon}
+    <div className={`rounded-xl border px-2.5 py-2 sm:px-3 sm:py-3 ${SUMMARY_TONES[tone]}`}>
+      <div className="flex items-center gap-1.5 text-[11px] font-medium opacity-80 sm:text-xs">
+        <span className="shrink-0">{icon}</span>
         <span className="truncate">{label}</span>
       </div>
-      <p className="mt-1 text-2xl font-bold tabular-nums">{value}</p>
+      <p className="mt-0.5 text-xl font-bold tabular-nums sm:mt-1 sm:text-2xl">{value}</p>
     </div>
   );
 }
