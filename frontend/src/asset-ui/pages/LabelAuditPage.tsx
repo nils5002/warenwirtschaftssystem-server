@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  Archive,
   Camera,
   CheckCircle2,
   CircleAlert,
@@ -7,117 +8,54 @@ import {
   Copy,
   Download,
   ListChecks,
-  RotateCcw,
+  Plus,
+  RefreshCw,
   ScanLine,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QrScannerDialog } from '../components/QrScannerDialog';
-import { resolveAssetByScan } from '../qr';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
-import type { Asset } from '../types';
+import {
+  archiveLabelAuditSession,
+  createLabelAuditSession,
+  getActiveLabelAuditSession,
+  getLabelAuditSession,
+  listLabelAuditSessions,
+  scanLabelAuditSession,
+} from '../../services/wmsApi';
+import type {
+  Asset,
+  LabelAuditScan,
+  LabelAuditScanKind,
+  LabelAuditSession,
+  LabelAuditSessionListItem,
+} from '../types';
 
 type LabelAuditPageProps = {
   assets: Asset[];
 };
 
-// Reines Lese-/Prüftool: keine API-Mutationen, keine Statusänderungen.
-// Die komplette Prüfrunde lebt ausschließlich im localStorage des Browsers.
-//
-// v2: Die Prüfrunde wird über eine STABILE Asset-Identität (Seriennummer/
-// Inventarnummer, s. assetStableKey) gespeichert — NICHT über die interne
-// asset.id (external_id). Letztere wird bei Re-Import/Reseed des Bestands neu
-// vergeben; eine id-basierte Runde wäre nach einem Redeploy verwaist und
-// erschiene "nicht gespeichert". Stabile Keys hängen am Gerät bzw. am
-// gedruckten Label und überstehen einen Reseed.
-const LABEL_AUDIT_STORAGE_KEY = 'wms.labelAudit.session.v2';
+// Die Prüfrunde lebt jetzt serverseitig in den Tabellen label_audit_sessions /
+// label_audit_scans. localStorage hält NUR noch die zuletzt gewählte Session-ID
+// als Komfort-Fallback — die Wahrheit ist die Datenbank.
+const LAST_SESSION_STORAGE_KEY = 'wms.labelAudit.lastSessionId';
 
-// Stabile, physische Identität eines Assets für die Prüfrunde. Bewusst nicht
-// die interne asset.id: Seriennummer und Inventarnummer sind eindeutig und
-// werden beim Import deterministisch abgeleitet, bleiben also auch nach einem
-// Reseed/Re-Import für dasselbe Gerät gleich.
-function assetStableKey(asset: Asset): string {
-  const serial = (asset.serialNumber ?? '').trim();
-  const tag = (asset.tagNumber ?? '').trim();
-  return (serial || tag || asset.id).toLowerCase();
-}
-
-// Obergrenze für das "Zuletzt gescannt"-Protokoll. Counts werden separat
-// gehalten, damit Summen auch nach dem Abschneiden des Feeds stimmen.
-const RECENT_LIMIT = 60;
-
-type ScanKind = 'match' | 'duplicate' | 'unknown';
-
-type ScanEvent = {
-  id: string;
-  raw: string;
-  at: string;
-  kind: ScanKind;
-  // Anzeige-Hilfe: aktuelle asset.id zum Zeitpunkt des Scans (volatil).
-  assetId?: string;
-  // Stabiler Key (s. assetStableKey) — übersteht Reseed und trägt die
-  // robuste Auflösung für Anzeige/CSV nach einem Redeploy.
-  assetKey?: string;
-};
-
-type AuditSession = {
-  // Stabile Keys (s. assetStableKey) der bei dieser Prüfrunde erfassten
-  // Assets, in Reihenfolge der ERSTEN Erfassung (unique).
-  checkedKeys: string[];
-  // Wie oft wurde ein bereits geprüftes Asset erneut gescannt.
-  duplicateScanCount: number;
-  // Wie oft wurde ein QR-Code gescannt, der zu keinem Asset passt.
-  unknownScanCount: number;
-  // Neueste-zuerst-Protokoll der letzten Scans (gekappt auf RECENT_LIMIT).
-  recent: ScanEvent[];
-};
-
-const EMPTY_SESSION: AuditSession = {
-  checkedKeys: [],
-  duplicateScanCount: 0,
-  unknownScanCount: 0,
-  recent: [],
-};
-
-function toScanKind(value: unknown): ScanKind {
-  return value === 'match' || value === 'duplicate' ? value : 'unknown';
-}
-
-function sanitizeSession(value: unknown): AuditSession {
-  const raw = typeof value === 'object' && value ? (value as Record<string, unknown>) : {};
-  const checkedKeys = Array.isArray(raw.checkedKeys)
-    ? Array.from(new Set(raw.checkedKeys.filter((entry): entry is string => typeof entry === 'string')))
-    : [];
-  const recent = Array.isArray(raw.recent)
-    ? raw.recent
-        .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
-        .map((entry) => ({
-          id: typeof entry.id === 'string' ? entry.id : `${Date.now()}-${Math.random()}`,
-          raw: typeof entry.raw === 'string' ? entry.raw : '',
-          at: typeof entry.at === 'string' ? entry.at : new Date().toISOString(),
-          kind: toScanKind(entry.kind),
-          assetId: typeof entry.assetId === 'string' ? entry.assetId : undefined,
-          assetKey: typeof entry.assetKey === 'string' ? entry.assetKey : undefined,
-        }))
-        .slice(0, RECENT_LIMIT)
-    : [];
-  const toCount = (input: unknown): number =>
-    typeof input === 'number' && Number.isFinite(input) && input >= 0 ? Math.floor(input) : 0;
-  return {
-    checkedKeys,
-    duplicateScanCount: toCount(raw.duplicateScanCount),
-    unknownScanCount: toCount(raw.unknownScanCount),
-    recent,
-  };
-}
-
-function loadStoredSession(): AuditSession {
-  if (typeof window === 'undefined') return EMPTY_SESSION;
+function readLastSessionId(): string | null {
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = window.localStorage.getItem(LABEL_AUDIT_STORAGE_KEY);
-    if (!raw) return EMPTY_SESSION;
-    return sanitizeSession(JSON.parse(raw));
+    return window.localStorage.getItem(LAST_SESSION_STORAGE_KEY);
   } catch {
-    return EMPTY_SESSION;
+    return null;
+  }
+}
+
+function writeLastSessionId(sessionId: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (sessionId) window.localStorage.setItem(LAST_SESSION_STORAGE_KEY, sessionId);
+    else window.localStorage.removeItem(LAST_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignorieren: ohne localStorage funktioniert die Prüfung trotzdem.
   }
 }
 
@@ -133,6 +71,17 @@ function formatTime(iso: string): string {
   }
 }
 
+function defaultSessionName(): string {
+  const now = new Date();
+  const month = now.toLocaleString('de-DE', { month: 'long' });
+  return `Label-Prüfung ${month} ${now.getFullYear()}`;
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return 'Unbekannter Fehler.';
+}
+
 // CSV-sicher quoten (Excel/DE): doppelte Anführungszeichen escapen, Wert umschließen.
 function csvCell(value: string | number | null | undefined): string {
   const text = value == null ? '' : String(value);
@@ -140,148 +89,203 @@ function csvCell(value: string | number | null | undefined): string {
 }
 
 export function LabelAuditPage({ assets }: LabelAuditPageProps) {
-  const { confirm } = useAppDialog();
-  const [session, setSession] = useState<AuditSession>(() => loadStoredSession());
+  const { confirm, prompt, alert } = useAppDialog();
+  const [session, setSession] = useState<LabelAuditSession | null>(null);
+  const [sessions, setSessions] = useState<LabelAuditSessionListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [scanInput, setScanInput] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
   // Ergebnis des letzten Scans für das große farbige Banner.
-  const [lastResult, setLastResult] = useState<ScanEvent | null>(null);
+  const [lastResult, setLastResult] = useState<LabelAuditScan | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Persistenz: jede Änderung der Prüfrunde lokal speichern.
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(LABEL_AUDIT_STORAGE_KEY, JSON.stringify(session));
-    } catch {
-      // Ignorieren: Prüfung bleibt funktionsfähig, auch wenn localStorage blockiert ist.
-    }
-  }, [session]);
-
-  // Auto-Fokus auf das Scanfeld beim Laden (Hardware-Scanner tippen direkt hinein).
-  useEffect(() => {
-    inputRef.current?.focus();
+  const refocus = useCallback(() => {
+    window.requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
 
-  const assetById = useMemo(() => {
-    const map = new Map<string, Asset>();
-    for (const asset of assets) map.set(asset.id, asset);
-    return map;
-  }, [assets]);
-
-  // Stabiler-Key → Asset, damit gespeicherte Prüfrunden und das Scan-Protokoll
-  // auch nach einem Reseed (neue asset.id) wieder auf das aktuelle Asset zeigen.
-  const assetByKey = useMemo(() => {
-    const map = new Map<string, Asset>();
-    for (const asset of assets) map.set(assetStableKey(asset), asset);
-    return map;
-  }, [assets]);
-
-  const checkedKeySet = useMemo(() => new Set(session.checkedKeys), [session.checkedKeys]);
-
-  // Aktuelle Assets, deren stabiler Key in der Prüfrunde erfasst ist. Über den
-  // stabilen Key statt der id robust gegen Reseed/Re-Import.
-  const checkedSet = useMemo(() => {
-    const ids = new Set<string>();
-    for (const asset of assets) {
-      if (checkedKeySet.has(assetStableKey(asset))) ids.add(asset.id);
+  const refreshSessions = useCallback(async () => {
+    try {
+      setSessions(await listLabelAuditSessions());
+    } catch {
+      // Liste ist nur Komfort (Runden-Auswahl) — Fehler hier nicht eskalieren.
     }
-    return ids;
-  }, [assets, checkedKeySet]);
+  }, []);
+
+  // Initial laden: zuletzt gewählte Runde (falls vorhanden), sonst die aktive
+  // Runde (legt serverseitig bei Bedarf eine Standardrunde an).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const lastId = readLastSessionId();
+        let loaded: LabelAuditSession | null = null;
+        if (lastId) {
+          try {
+            loaded = await getLabelAuditSession(lastId);
+          } catch {
+            loaded = null; // z. B. gelöschte/unbekannte ID → auf aktive zurückfallen
+          }
+        }
+        if (!loaded) loaded = await getActiveLabelAuditSession();
+        if (cancelled) return;
+        setSession(loaded);
+        writeLastSessionId(loaded.id);
+      } catch (error) {
+        if (!cancelled) setLoadError(errorMessage(error));
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+          refocus();
+        }
+      }
+    })();
+    void refreshSessions();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSessions, refocus]);
+
+  const checkedSet = useMemo(
+    () => new Set(session?.checkedAssetIds ?? []),
+    [session?.checkedAssetIds],
+  );
 
   const openAssets = useMemo(
     () => assets.filter((asset) => !checkedSet.has(asset.id)),
     [assets, checkedSet],
   );
 
-  const summary = useMemo(
-    () => ({
-      total: assets.length,
-      checked: checkedSet.size,
-      open: Math.max(0, assets.length - checkedSet.size),
-      duplicates: session.duplicateScanCount,
-      unknown: session.unknownScanCount,
-    }),
-    [assets.length, checkedSet.size, session.duplicateScanCount, session.unknownScanCount],
-  );
+  const isActive = session?.status === 'active';
 
-  const refocus = () => {
-    window.requestAnimationFrame(() => inputRef.current?.focus());
-  };
-
-  const registerScan = (rawValue: string) => {
-    const raw = rawValue.trim();
-    if (!raw) return;
-
-    const match = resolveAssetByScan(raw, assets);
-    const event: ScanEvent = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      raw,
-      at: new Date().toISOString(),
-      kind: 'unknown',
-    };
-
-    setSession((current) => {
-      const next: AuditSession = {
-        checkedKeys: [...current.checkedKeys],
-        duplicateScanCount: current.duplicateScanCount,
-        unknownScanCount: current.unknownScanCount,
-        recent: current.recent,
-      };
-
-      if (match) {
-        const key = assetStableKey(match);
-        event.assetId = match.id;
-        event.assetKey = key;
-        if (next.checkedKeys.includes(key)) {
-          event.kind = 'duplicate';
-          next.duplicateScanCount += 1;
-        } else {
-          event.kind = 'match';
-          next.checkedKeys = [...next.checkedKeys, key];
-        }
-      } else {
-        event.kind = 'unknown';
-        next.unknownScanCount += 1;
+  const registerScan = useCallback(
+    async (rawValue: string) => {
+      const value = rawValue.trim();
+      if (!value || !session) return;
+      if (!isActive) {
+        void alert({
+          title: 'Prüfrunde archiviert',
+          message: 'Diese Prüfrunde ist abgeschlossen. Bitte eine neue Prüfrunde starten.',
+        });
+        return;
       }
-
-      next.recent = [event, ...current.recent].slice(0, RECENT_LIMIT);
-      return next;
-    });
-
-    setLastResult(event);
-    setScanInput('');
-    refocus();
-  };
+      setBusy(true);
+      try {
+        const result = await scanLabelAuditSession(session.id, value);
+        setSession(result.session);
+        setLastResult(result.scan);
+        setScanInput('');
+      } catch (error) {
+        void alert({ title: 'Scan fehlgeschlagen', message: errorMessage(error) });
+      } finally {
+        setBusy(false);
+        refocus();
+      }
+    },
+    [session, isActive, alert, refocus],
+  );
 
   const handleSubmit = (eventArg: FormEvent) => {
     eventArg.preventDefault();
-    registerScan(scanInput);
+    void registerScan(scanInput);
   };
 
-  const resetSession = async () => {
+  const reloadCurrent = useCallback(async () => {
+    if (!session) return;
+    setBusy(true);
+    try {
+      const fresh = await getLabelAuditSession(session.id);
+      setSession(fresh);
+    } catch (error) {
+      void alert({ title: 'Aktualisieren fehlgeschlagen', message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+      refocus();
+    }
+  }, [session, alert, refocus]);
+
+  const selectSession = useCallback(
+    async (sessionId: string) => {
+      if (!sessionId || sessionId === session?.id) return;
+      setBusy(true);
+      try {
+        const loaded = await getLabelAuditSession(sessionId);
+        setSession(loaded);
+        setLastResult(null);
+        writeLastSessionId(loaded.id);
+      } catch (error) {
+        void alert({ title: 'Prüfrunde laden fehlgeschlagen', message: errorMessage(error) });
+      } finally {
+        setBusy(false);
+        refocus();
+      }
+    },
+    [session?.id, alert, refocus],
+  );
+
+  const startNewSession = useCallback(async () => {
+    const name = await prompt({
+      title: 'Neue Prüfrunde starten',
+      message: 'Eine laufende Prüfrunde wird dabei archiviert.',
+      defaultValue: defaultSessionName(),
+      placeholder: 'z. B. Label-Prüfung Mai 2026',
+      submitLabel: 'Starten',
+      required: true,
+    });
+    if (!name) return;
+    setBusy(true);
+    try {
+      const created = await createLabelAuditSession({ name: name.trim() });
+      setSession(created);
+      setLastResult(null);
+      writeLastSessionId(created.id);
+      await refreshSessions();
+    } catch (error) {
+      void alert({ title: 'Anlegen fehlgeschlagen', message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+      refocus();
+    }
+  }, [prompt, refreshSessions, alert, refocus]);
+
+  const archiveCurrent = useCallback(async () => {
+    if (!session) return;
     const confirmed = await confirm({
-      title: 'Prüfrunde zurücksetzen?',
+      title: 'Prüfrunde abschließen?',
       message:
-        'Alle erfassten Scans dieser Prüfrunde werden gelöscht. Hardwaredaten bleiben unverändert. Fortfahren?',
-      confirmLabel: 'Zurücksetzen',
+        'Die Prüfrunde wird archiviert. Alle erfassten Scans bleiben erhalten und einsehbar; es können danach keine weiteren Scans hinzugefügt werden. Hardwaredaten bleiben unverändert.',
+      confirmLabel: 'Abschließen',
       cancelLabel: 'Abbrechen',
-      tone: 'danger',
     });
     if (!confirmed) return;
-    setSession(EMPTY_SESSION);
-    setLastResult(null);
-    refocus();
-  };
+    setBusy(true);
+    try {
+      const archived = await archiveLabelAuditSession(session.id);
+      setSession(archived);
+      await refreshSessions();
+    } catch (error) {
+      void alert({ title: 'Archivieren fehlgeschlagen', message: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  }, [session, confirm, refreshSessions, alert]);
 
-  const exportCsv = () => {
-    // Zeitstempel der ersten Erfassung je stabilem Key — damit "Geprüft am"
-    // auch dann passt, wenn sich die asset.id zwischenzeitlich geändert hat.
+  const exportCsv = useCallback(() => {
+    if (!session) return;
+    // Zeitstempel der ersten Erfassung je stabilem Key aus dem (gekappten)
+    // Protokoll — best effort. Quelle der Wahrheit für "geprüft" ist der
+    // serverseitige checkedAssetIds-Satz.
     const checkedAtByKey = new Map<string, string>();
-    for (const entry of session.recent) {
-      if (entry.kind === 'match' && entry.assetKey && !checkedAtByKey.has(entry.assetKey)) {
-        checkedAtByKey.set(entry.assetKey, entry.at);
+    for (const scan of session.recentScans) {
+      if (scan.scanKind === 'matched' && scan.assetStableKey && !checkedAtByKey.has(scan.assetStableKey)) {
+        checkedAtByKey.set(scan.assetStableKey, scan.scannedAt);
       }
     }
+    const stableKey = (asset: Asset): string =>
+      (asset.serialNumber?.trim() || asset.tagNumber?.trim() || asset.id).toLowerCase();
 
     const header = ['Asset-ID', 'Name', 'Kategorie', 'Seriennummer', 'Inventarnummer', 'Geprüft', 'Geprüft am'];
     const rows = assets.map((asset) => [
@@ -291,7 +295,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
       asset.serialNumber,
       asset.tagNumber,
       checkedSet.has(asset.id) ? 'ja' : 'nein',
-      checkedAtByKey.get(assetStableKey(asset)) ?? '',
+      checkedAtByKey.get(stableKey(asset)) ?? '',
     ]);
 
     const csv = [header, ...rows].map((line) => line.map(csvCell).join(';')).join('\r\n');
@@ -300,22 +304,15 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `label-pruefung-${new Date().toISOString().slice(0, 10)}.csv`;
+    const safeName = session.name.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    link.download = `${safeName || 'label-pruefung'}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
+  }, [session, assets, checkedSet]);
 
-  // Auflösung bevorzugt über den stabilen Key (reseed-fest), Fallback id.
-  const resolveEventAsset = (event: ScanEvent | null): Asset | null => {
-    if (!event) return null;
-    if (event.assetKey && assetByKey.has(event.assetKey)) return assetByKey.get(event.assetKey) ?? null;
-    if (event.assetId && assetById.has(event.assetId)) return assetById.get(event.assetId) ?? null;
-    return null;
-  };
-
-  const lastResultAsset = resolveEventAsset(lastResult);
+  const summary = session?.summary ?? { total: assets.length, checked: 0, open: assets.length, duplicates: 0, unknown: 0 };
 
   return (
     <section className="space-y-4 sm:space-y-5">
@@ -324,9 +321,71 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         <h2 className="page-title">Label-Prüfung</h2>
         <p className="page-subtitle">
           QR-Labels nach dem Bekleben einscannen und prüfen — reines Lesetool, ändert keine Hardwaredaten. Die
-          Prüfrunde wird nur lokal in diesem Browser gespeichert.
+          Prüfrunde wird serverseitig gespeichert und bleibt nach Reload, Gerätewechsel und Redeploy erhalten.
         </p>
       </div>
+
+      {loadError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+          Prüfrunde konnte nicht geladen werden: {loadError}
+        </div>
+      ) : null}
+
+      {/* Prüfrunden-Leiste: aktuelle Runde, Auswahl, neue Runde, abschließen */}
+      <article className="surface-card animate-fade-up space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <label className="field min-w-0 flex-1">
+            Aktuelle Prüfrunde
+            <select
+              className="field-input h-11"
+              value={session?.id ?? ''}
+              disabled={busy || loading || !sessions.length}
+              onChange={(event) => void selectSession(event.target.value)}
+            >
+              {session && !sessions.some((item) => item.id === session.id) ? (
+                <option value={session.id}>{session.name}</option>
+              ) : null}
+              {sessions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.summary.checked}/{item.summary.total}
+                  {item.status === 'archived' ? ' (archiviert)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-none">
+            <button
+              type="button"
+              className="btn-secondary min-h-11 justify-center text-xs"
+              onClick={() => void startNewSession()}
+              disabled={busy}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Neue Prüfrunde
+            </button>
+            <button
+              type="button"
+              className="btn-secondary min-h-11 justify-center text-xs"
+              onClick={() => void archiveCurrent()}
+              disabled={busy || !session || !isActive}
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Abschließen
+            </button>
+          </div>
+        </div>
+        {session ? (
+          <p className="text-xs text-slate-500">
+            <span className="font-semibold text-slate-700">{session.name}</span>
+            {' · '}
+            {session.status === 'active' ? (
+              <span className="text-emerald-600">aktiv</span>
+            ) : (
+              <span className="text-slate-500">archiviert (nur Ansicht)</span>
+            )}
+          </p>
+        ) : null}
+      </article>
 
       {/* Zusammenfassung */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
@@ -369,9 +428,14 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
                 autoCorrect="off"
                 spellCheck={false}
                 enterKeyHint="done"
+                disabled={busy || !session || !isActive}
               />
               <div className="flex gap-2">
-                <button type="submit" className="btn-primary h-12 flex-1 sm:flex-none">
+                <button
+                  type="submit"
+                  className="btn-primary h-12 flex-1 sm:flex-none"
+                  disabled={busy || !session || !isActive}
+                >
                   <ScanLine className="h-4 w-4" />
                   Prüfen
                 </button>
@@ -379,6 +443,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
                   type="button"
                   className="btn-secondary h-12 flex-1 sm:flex-none"
                   onClick={() => setScannerOpen(true)}
+                  disabled={busy || !session || !isActive}
                 >
                   <Camera className="h-4 w-4" />
                   Kamera
@@ -388,23 +453,30 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
           </label>
         </form>
 
+        {!isActive && session ? (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            Diese Prüfrunde ist archiviert. Zum Weiterprüfen bitte „Neue Prüfrunde" starten.
+          </p>
+        ) : null}
+
         {/* Letztes Ergebnis als großes farbiges Banner */}
-        {lastResult ? <ScanResultBanner result={lastResult} asset={lastResultAsset} /> : null}
+        {lastResult ? <ScanResultBanner scan={lastResult} /> : null}
 
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
           <button
             type="button"
             className="btn-secondary min-h-11 justify-center text-xs"
-            onClick={() => void resetSession()}
+            onClick={() => void reloadCurrent()}
+            disabled={busy || !session}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Prüfrunde zurücksetzen
+            <RefreshCw className="h-3.5 w-3.5" />
+            Aktualisieren
           </button>
           <button
             type="button"
             className="btn-secondary min-h-11 justify-center text-xs"
             onClick={exportCsv}
-            disabled={!assets.length}
+            disabled={!session || !assets.length}
           >
             <Download className="h-3.5 w-3.5" />
             Als CSV exportieren
@@ -416,15 +488,13 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         {/* Zuletzt gescannt */}
         <article className="surface-card animate-fade-up min-w-0">
           <h3 className="text-base font-semibold text-slate-900">Zuletzt gescannt</h3>
-          <p className="mt-1 text-xs text-slate-500">Neueste Scans dieser Prüfrunde (max. {RECENT_LIMIT}).</p>
+          <p className="mt-1 text-xs text-slate-500">Neueste Scans dieser Prüfrunde.</p>
           <div className="soft-scrollbar mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1 sm:max-h-[50vh]">
-            {session.recent.length ? (
-              session.recent.map((entry) => (
-                <RecentRow key={entry.id} entry={entry} asset={resolveEventAsset(entry)} />
-              ))
+            {session && session.recentScans.length ? (
+              session.recentScans.map((scan) => <RecentRow key={scan.id} scan={scan} />)
             ) : (
               <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
-                Noch keine Scans erfasst.
+                {loading ? 'Wird geladen …' : 'Noch keine Scans erfasst.'}
               </div>
             )}
           </div>
@@ -458,7 +528,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
           title="QR-Label scannen"
           onDetected={(value) => {
             setScannerOpen(false);
-            registerScan(value);
+            void registerScan(value);
           }}
           onClose={() => {
             setScannerOpen(false);
@@ -502,22 +572,22 @@ function SummaryCard({
   );
 }
 
-function ScanResultBanner({ result, asset }: { result: ScanEvent; asset: Asset | null }) {
-  if (result.kind === 'unknown') {
+function ScanResultBanner({ scan }: { scan: LabelAuditScan }) {
+  if (scan.scanKind === 'unknown') {
     return (
       <div className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
         <div className="min-w-0">
           <p className="font-semibold">Unbekannter QR-Code</p>
           <p className="mt-0.5 break-all text-sm text-rose-700">
-            Kein Asset gefunden für: <span className="font-mono">{result.raw}</span>
+            Kein Asset gefunden für: <span className="font-mono">{scan.scanValue}</span>
           </p>
         </div>
       </div>
     );
   }
 
-  const isDuplicate = result.kind === 'duplicate';
+  const isDuplicate = scan.scanKind === 'duplicate';
   const tone = isDuplicate
     ? 'border-amber-200 bg-amber-50 text-amber-800'
     : 'border-emerald-200 bg-emerald-50 text-emerald-800';
@@ -531,24 +601,18 @@ function ScanResultBanner({ result, asset }: { result: ScanEvent; asset: Asset |
       )}
       <div className="min-w-0">
         <p className="font-semibold">{isDuplicate ? 'Bereits geprüft (doppelter Scan)' : 'Geprüft ✓'}</p>
-        {asset ? (
-          <>
-            <p className="mt-0.5 truncate text-base font-semibold">{asset.name}</p>
-            <p className="mt-0.5 text-sm opacity-90">
-              {asset.category} · SN: {asset.serialNumber || '—'} · Inv: {asset.tagNumber || '—'} · ID: {asset.id}
-            </p>
-          </>
-        ) : (
-          <p className="mt-0.5 text-sm opacity-90">Asset nicht mehr im aktuellen Bestand vorhanden.</p>
-        )}
+        <p className="mt-0.5 truncate text-base font-semibold">{scan.assetLabel || scan.assetId}</p>
+        <p className="mt-0.5 text-sm opacity-90">
+          {scan.category || '—'} · SN: {scan.serialNumber || '—'} · Inv: {scan.tagNumber || '—'}
+        </p>
       </div>
     </div>
   );
 }
 
-function RecentRow({ entry, asset }: { entry: ScanEvent; asset: Asset | null }) {
-  const config: Record<ScanKind, { wrap: string; icon: ReactNode; label: string }> = {
-    match: {
+function RecentRow({ scan }: { scan: LabelAuditScan }) {
+  const config: Record<LabelAuditScanKind, { wrap: string; icon: ReactNode; label: string }> = {
+    matched: {
       wrap: 'border-emerald-200 bg-emerald-50',
       icon: <CheckCircle2 className="h-4 w-4 text-emerald-600" />,
       label: 'Geprüft',
@@ -564,24 +628,27 @@ function RecentRow({ entry, asset }: { entry: ScanEvent; asset: Asset | null }) 
       label: 'Unbekannt',
     },
   };
-  const item = config[entry.kind];
+  const item = config[scan.scanKind];
+  const hasAsset = scan.scanKind !== 'unknown';
 
   return (
     <div className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 ${item.wrap}`}>
       <span className="mt-0.5 shrink-0">{item.icon}</span>
       <div className="min-w-0 flex-1">
-        {asset ? (
-          <p className="truncate text-sm font-semibold text-slate-900">{asset.name}</p>
+        {hasAsset ? (
+          <p className="truncate text-sm font-semibold text-slate-900">{scan.assetLabel || scan.assetId}</p>
         ) : (
-          <p className="truncate break-all font-mono text-sm text-slate-700">{entry.raw}</p>
+          <p className="truncate break-all font-mono text-sm text-slate-700">{scan.scanValue}</p>
         )}
         <p className="mt-0.5 truncate text-xs text-slate-500">
-          {asset ? `${asset.category} · SN: ${asset.serialNumber || '—'} · Inv: ${asset.tagNumber || '—'}` : 'Kein passendes Asset'}
+          {hasAsset
+            ? `${scan.category || '—'} · SN: ${scan.serialNumber || '—'} · Inv: ${scan.tagNumber || '—'}`
+            : 'Kein passendes Asset'}
         </p>
       </div>
       <div className="shrink-0 text-right">
         <span className="block text-xs font-semibold text-slate-600">{item.label}</span>
-        <span className="block text-[11px] text-slate-400">{formatTime(entry.at)}</span>
+        <span className="block text-[11px] text-slate-400">{formatTime(scan.scannedAt)}</span>
       </div>
     </div>
   );

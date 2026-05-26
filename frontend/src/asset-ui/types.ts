@@ -94,6 +94,62 @@ export type Asset = {
   assignedPlanningId?: string | null;
 };
 
+// --- Label-Prüfung (serverseitige Audit-Prüfrunden) ---
+export type LabelAuditScanKind = 'matched' | 'duplicate' | 'unknown';
+export type LabelAuditSessionStatus = 'active' | 'archived';
+
+export type LabelAuditScan = {
+  id: string;
+  scanValue: string;
+  scanKind: LabelAuditScanKind;
+  assetId?: string | null;
+  assetStableKey?: string | null;
+  assetLabel?: string | null;
+  category?: string | null;
+  serialNumber?: string | null;
+  tagNumber?: string | null;
+  scannedAt: string;
+  scannedByUserId?: string | null;
+};
+
+export type LabelAuditSummary = {
+  total: number;
+  checked: number;
+  open: number;
+  duplicates: number;
+  unknown: number;
+};
+
+export type LabelAuditSession = {
+  id: string;
+  name: string;
+  status: LabelAuditSessionStatus;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  createdByUserId?: string | null;
+  summary: LabelAuditSummary;
+  recentScans: LabelAuditScan[];
+  // Aktuelle Asset-IDs, die in dieser Runde als geprüft gelten (server-seitig
+  // über den stabilen Key gegen den aktuellen Bestand aufgelöst).
+  checkedAssetIds: string[];
+};
+
+export type LabelAuditSessionListItem = {
+  id: string;
+  name: string;
+  status: LabelAuditSessionStatus;
+  note?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary: LabelAuditSummary;
+};
+
+export type LabelAuditScanResult = {
+  scan: LabelAuditScan;
+  session: LabelAuditSession;
+};
+
 export type ActivityItem = {
   id: string;
   title: string;
