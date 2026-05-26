@@ -1,5 +1,5 @@
 import { CheckSquare, Printer, Search, Square, XSquare } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import QRCode from 'qrcode';
 import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
@@ -68,6 +68,16 @@ function loadStoredSettings(): MassLabelSettings {
   }
 }
 
+type LabelDrafts = Record<keyof MassLabelSettings, string>;
+
+// Roh-Strings fuer die Inputs: erlaubt freies Tippen (leeres Feld, "-", Zwischenwerte),
+// ohne dass jeder Tastendruck sofort auf min/max geklemmt wird.
+function toDrafts(settings: MassLabelSettings): LabelDrafts {
+  return Object.fromEntries(
+    Object.entries(settings).map(([key, value]) => [key, String(value)]),
+  ) as LabelDrafts;
+}
+
 export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('Alle Kategorien');
@@ -76,6 +86,7 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
   const [labelSettings, setLabelSettings] = useState<MassLabelSettings>(() => loadStoredSettings());
+  const [labelDrafts, setLabelDrafts] = useState<LabelDrafts>(() => toDrafts(labelSettings));
   const [previewQrDataUrl, setPreviewQrDataUrl] = useState<string>('');
   const [previewQrLoading, setPreviewQrLoading] = useState(false);
 
@@ -154,11 +165,32 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
     };
   }, [previewAsset]);
 
+  // Beim Tippen: Roh-Eingabe behalten und nur bei vollstaendigem, gueltigem Wert
+  // den (gesicherten) Settings-State aktualisieren. Leere/Zwischen-Eingaben aendern
+  // den gespeicherten Wert nicht, damit nichts auf Standard/min zurueckspringt.
   const updateLabelSetting = (key: keyof MassLabelSettings, value: string) => {
+    setLabelDrafts((current) => ({ ...current, [key]: value }));
+    if (value.trim() === '') return;
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return;
     setLabelSettings((current) => sanitizeSettings({ ...current, [key]: parsed }));
   };
+
+  // Beim Verlassen des Feldes: Anzeige auf den tatsaechlich gespeicherten (geklemmten) Wert bringen.
+  const normalizeLabelSetting = (key: keyof MassLabelSettings) => {
+    setLabelDrafts((current) => ({ ...current, [key]: String(labelSettings[key]) }));
+  };
+
+  const resetLabelSettings = () => {
+    setLabelSettings(DEFAULT_LABEL_SETTINGS);
+    setLabelDrafts(toDrafts(DEFAULT_LABEL_SETTINGS));
+  };
+
+  const labelFieldProps = (key: keyof MassLabelSettings) => ({
+    value: labelDrafts[key],
+    onChange: (event: ChangeEvent<HTMLInputElement>) => updateLabelSetting(key, event.target.value),
+    onBlur: () => normalizeLabelSetting(key),
+  });
 
   const toggleAsset = (assetId: string) => {
     setSelectedIds((current) =>
@@ -248,59 +280,59 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <label className="field text-xs">
               Labelbreite (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.labelWidthMm} onChange={(event) => updateLabelSetting('labelWidthMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('labelWidthMm')} />
             </label>
             <label className="field text-xs">
               Labelhöhe (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.labelHeightMm} onChange={(event) => updateLabelSetting('labelHeightMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('labelHeightMm')} />
             </label>
             <label className="field text-xs">
               QR-Größe (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.qrSizeMm} onChange={(event) => updateLabelSetting('qrSizeMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('qrSizeMm')} />
             </label>
             <label className="field text-xs">
               Schriftgröße (pt)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.fontSizePt} onChange={(event) => updateLabelSetting('fontSizePt', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('fontSizePt')} />
             </label>
             <label className="field text-xs">
               Abstand QR/Text (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.gapMm} onChange={(event) => updateLabelSetting('gapMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('gapMm')} />
             </label>
             <label className="field text-xs">
               Padding oben (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingTopMm} onChange={(event) => updateLabelSetting('paddingTopMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('paddingTopMm')} />
             </label>
             <label className="field text-xs">
               Padding rechts (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingRightMm} onChange={(event) => updateLabelSetting('paddingRightMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('paddingRightMm')} />
             </label>
             <label className="field text-xs">
               Padding unten (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingBottomMm} onChange={(event) => updateLabelSetting('paddingBottomMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('paddingBottomMm')} />
             </label>
             <label className="field text-xs">
               Padding links (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.paddingLeftMm} onChange={(event) => updateLabelSetting('paddingLeftMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('paddingLeftMm')} />
             </label>
             <label className="field text-xs">
               X-Offset (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.offsetXMm} onChange={(event) => updateLabelSetting('offsetXMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('offsetXMm')} />
             </label>
             <label className="field text-xs">
               Y-Offset (mm)
-              <input className="field-input h-9" type="number" step="0.5" value={labelSettings.offsetYMm} onChange={(event) => updateLabelSetting('offsetYMm', event.target.value)} />
+              <input className="field-input h-9" type="number" step="0.5" {...labelFieldProps('offsetYMm')} />
             </label>
             <label className="field text-xs">
               Schriftstärke
-              <input className="field-input h-9" type="number" step="100" value={labelSettings.fontWeight} onChange={(event) => updateLabelSetting('fontWeight', event.target.value)} />
+              <input className="field-input h-9" type="number" step="100" {...labelFieldProps('fontWeight')} />
             </label>
             <label className="field text-xs sm:col-span-2 lg:col-span-1">
               Max. Textzeilen
-              <input className="field-input h-9" type="number" step="1" value={labelSettings.textMaxLines} onChange={(event) => updateLabelSetting('textMaxLines', event.target.value)} />
+              <input className="field-input h-9" type="number" step="1" {...labelFieldProps('textMaxLines')} />
             </label>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <button type="button" className="btn-secondary text-xs" onClick={() => setLabelSettings(DEFAULT_LABEL_SETTINGS)}>
+            <button type="button" className="btn-secondary text-xs" onClick={resetLabelSettings}>
               Standardwerte zurücksetzen
             </button>
             <span className="text-xs text-slate-500">
