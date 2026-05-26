@@ -8,6 +8,7 @@ import { DashboardPage } from '../asset-ui/pages/DashboardPage';
 import { ExternalPoolPage } from '../asset-ui/pages/ExternalPoolPage';
 import { ImportExportPage } from '../asset-ui/pages/ImportExportPage';
 import { MaintenancePage } from '../asset-ui/pages/MaintenancePage';
+import { LabelAuditPage } from '../asset-ui/pages/LabelAuditPage';
 import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
 import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
@@ -370,6 +371,11 @@ export function WmsPageView({
         return <div className="surface-card p-6 text-sm text-slate-600">Massendruck nur für Admin / Techniker.</div>;
       }
       return <MassPrintPage assets={assets} />;
+    case 'labelAudit':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Label-Prüfung nur für Admin / Techniker.</div>;
+      }
+      return <LabelAuditPage assets={assets} />;
     case 'tickets':
       return (
         <MaintenancePage

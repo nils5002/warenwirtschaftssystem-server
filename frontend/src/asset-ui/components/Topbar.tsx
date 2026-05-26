@@ -35,6 +35,8 @@ const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
   backup: ['System', 'Backup'],
   qrFunctions: ['System', 'QR-Code'],
   massPrint: ['System', 'Massendruck'],
+  labelAudit: ['System', 'Label-Prüfung'],
+  updateNotes: ['System', 'Update-Notizen'],
 };
 
 // Tailwind-Klassen für Icon-Buttons innerhalb der gruppierten Capsule rechts.

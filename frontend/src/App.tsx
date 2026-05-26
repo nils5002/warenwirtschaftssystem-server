@@ -81,13 +81,13 @@ function App() {
       // Fremdbestand IST Teil der Projektplanung und ebenfalls sichtbar.
       return navigation.filter(
         (item) =>
-          !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'updateNotes'].includes(item.key),
+          !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes'].includes(item.key),
       );
     }
     // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
     return navigation.filter(
       (item) =>
-        !['users', 'categories', 'importExport', 'backup', 'massPrint', 'externalPool', 'updateNotes'].includes(item.key),
+        !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes'].includes(item.key),
     );
   }, [activeRole]);
 

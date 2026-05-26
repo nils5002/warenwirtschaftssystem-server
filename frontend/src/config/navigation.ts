@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   PackagePlus,
   QrCode,
+  ScanLine,
   Printer,
   Shapes,
   ShieldCheck,
@@ -100,6 +101,13 @@ export const navigation: NavItem[] = [
     icon: Printer,
     group: 'administration',
     hint: 'QR-Labels drucken',
+  },
+  {
+    key: 'labelAudit',
+    label: 'Label-Prüfung',
+    icon: ScanLine,
+    group: 'administration',
+    hint: 'QR-Labels nach Druck prüfen',
   },
   {
     key: 'updateNotes',
