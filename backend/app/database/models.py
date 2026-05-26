@@ -292,3 +292,62 @@ class UpdateNoteRecord(TimestampMixin, Base):
     items_json: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     is_published: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class LabelAuditSessionRecord(TimestampMixin, Base):
+    """Serverseitige Prüfrunde der Admin-Seite "Label-Prüfung".
+
+    Reines Audit-/Lese-Werkzeug: Eine Prüfrunde bündelt das physische
+    Abscannen frisch beklebter QR-Labels. Es werden AUSSCHLIESSLICH eigene
+    Audit-Tabellen geschrieben — niemals echte Hardwaredaten (Asset-Status,
+    Planung, Defekte, Reservierungen) verändert.
+
+    status: ``active`` (laufende Runde) oder ``archived`` (abgeschlossen). Es
+    gibt konzeptionell höchstens eine aktive Runde; beim Start einer neuen
+    Runde werden bestehende aktive Runden archiviert.
+    """
+
+    __tablename__ = "label_audit_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # external_id des anlegenden Benutzers (nur Audit-Spur, kein FK-Enforcement).
+    created_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class LabelAuditScanRecord(Base):
+    """Einzelner Scan innerhalb einer Prüfrunde.
+
+    ``scan_kind``: ``matched`` (Asset erkannt, erstmals geprüft), ``duplicate``
+    (Asset in dieser Runde erneut gescannt) oder ``unknown`` (QR-Code/Wert
+    keinem Asset zuzuordnen — nur der Rohwert wird gespeichert).
+
+    Stabilität über Reimport hinweg: Neben der volatilen ``asset_id``
+    (Asset-external_id zum Scan-Zeitpunkt) wird ``asset_stable_key`` gespeichert
+    (Seriennummer → Inventarnummer → Fallback asset.id, normalisiert). Ändert
+    sich die asset.id durch einen Reimport, bleibt die Prüfung über den stabilen
+    Key wieder zuordenbar.
+    """
+
+    __tablename__ = "label_audit_scans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("label_audit_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scan_value: Mapped[str] = mapped_column(String(512), nullable=False)
+    scan_kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    asset_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    asset_stable_key: Mapped[str | None] = mapped_column(String(256), nullable=True, index=True)
+    asset_label: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    serial_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    tag_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    scanned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    scanned_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

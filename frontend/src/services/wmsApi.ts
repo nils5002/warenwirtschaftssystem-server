@@ -3,6 +3,9 @@ import type {
   Asset,
   AppRole,
   CategoryItem,
+  LabelAuditScanResult,
+  LabelAuditSession,
+  LabelAuditSessionListItem,
   LocationItem,
   MaintenanceItem,
   ReservationItem,
@@ -1139,4 +1142,38 @@ export function publishUpdateNote(id: string): Promise<UpdateNote> {
 export async function deleteUpdateNote(id: string): Promise<{ deleted: boolean }> {
   const response = await apiFetch(`/api/wms/admin/update-notes/${id}`, { method: 'DELETE' });
   return parseResponse<{ deleted: boolean }>(response);
+}
+
+// --- Label-Prüfung (serverseitige Audit-Prüfrunden, alle Endpunkte Admin-only) ---
+export async function listLabelAuditSessions(): Promise<LabelAuditSessionListItem[]> {
+  const response = await apiFetch('/api/wms/label-audit/sessions');
+  return parseResponse<LabelAuditSessionListItem[]>(response);
+}
+
+export async function getActiveLabelAuditSession(): Promise<LabelAuditSession> {
+  const response = await apiFetch('/api/wms/label-audit/sessions/active');
+  return parseResponse<LabelAuditSession>(response);
+}
+
+export async function getLabelAuditSession(sessionId: string): Promise<LabelAuditSession> {
+  const response = await apiFetch(`/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}`);
+  return parseResponse<LabelAuditSession>(response);
+}
+
+export function createLabelAuditSession(payload: { name: string; note?: string | null }): Promise<LabelAuditSession> {
+  return postJson<LabelAuditSession>('/api/wms/label-audit/sessions', payload);
+}
+
+export function scanLabelAuditSession(sessionId: string, scanValue: string): Promise<LabelAuditScanResult> {
+  return postJson<LabelAuditScanResult>(
+    `/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}/scan`,
+    { scanValue },
+  );
+}
+
+export function archiveLabelAuditSession(sessionId: string): Promise<LabelAuditSession> {
+  return postJson<LabelAuditSession>(
+    `/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}/archive`,
+    {},
+  );
 }
