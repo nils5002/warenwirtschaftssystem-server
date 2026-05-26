@@ -22,7 +22,24 @@ type LabelAuditPageProps = {
 
 // Reines Lese-/Prüftool: keine API-Mutationen, keine Statusänderungen.
 // Die komplette Prüfrunde lebt ausschließlich im localStorage des Browsers.
-const LABEL_AUDIT_STORAGE_KEY = 'wms.labelAudit.session.v1';
+//
+// v2: Die Prüfrunde wird über eine STABILE Asset-Identität (Seriennummer/
+// Inventarnummer, s. assetStableKey) gespeichert — NICHT über die interne
+// asset.id (external_id). Letztere wird bei Re-Import/Reseed des Bestands neu
+// vergeben; eine id-basierte Runde wäre nach einem Redeploy verwaist und
+// erschiene "nicht gespeichert". Stabile Keys hängen am Gerät bzw. am
+// gedruckten Label und überstehen einen Reseed.
+const LABEL_AUDIT_STORAGE_KEY = 'wms.labelAudit.session.v2';
+
+// Stabile, physische Identität eines Assets für die Prüfrunde. Bewusst nicht
+// die interne asset.id: Seriennummer und Inventarnummer sind eindeutig und
+// werden beim Import deterministisch abgeleitet, bleiben also auch nach einem
+// Reseed/Re-Import für dasselbe Gerät gleich.
+function assetStableKey(asset: Asset): string {
+  const serial = (asset.serialNumber ?? '').trim();
+  const tag = (asset.tagNumber ?? '').trim();
+  return (serial || tag || asset.id).toLowerCase();
+}
 
 // Obergrenze für das "Zuletzt gescannt"-Protokoll. Counts werden separat
 // gehalten, damit Summen auch nach dem Abschneiden des Feeds stimmen.
@@ -35,12 +52,17 @@ type ScanEvent = {
   raw: string;
   at: string;
   kind: ScanKind;
+  // Anzeige-Hilfe: aktuelle asset.id zum Zeitpunkt des Scans (volatil).
   assetId?: string;
+  // Stabiler Key (s. assetStableKey) — übersteht Reseed und trägt die
+  // robuste Auflösung für Anzeige/CSV nach einem Redeploy.
+  assetKey?: string;
 };
 
 type AuditSession = {
-  // Asset-IDs in Reihenfolge der ERSTEN Erfassung (unique).
-  checkedAssetIds: string[];
+  // Stabile Keys (s. assetStableKey) der bei dieser Prüfrunde erfassten
+  // Assets, in Reihenfolge der ERSTEN Erfassung (unique).
+  checkedKeys: string[];
   // Wie oft wurde ein bereits geprüftes Asset erneut gescannt.
   duplicateScanCount: number;
   // Wie oft wurde ein QR-Code gescannt, der zu keinem Asset passt.
@@ -50,7 +72,7 @@ type AuditSession = {
 };
 
 const EMPTY_SESSION: AuditSession = {
-  checkedAssetIds: [],
+  checkedKeys: [],
   duplicateScanCount: 0,
   unknownScanCount: 0,
   recent: [],
@@ -62,8 +84,8 @@ function toScanKind(value: unknown): ScanKind {
 
 function sanitizeSession(value: unknown): AuditSession {
   const raw = typeof value === 'object' && value ? (value as Record<string, unknown>) : {};
-  const checkedAssetIds = Array.isArray(raw.checkedAssetIds)
-    ? Array.from(new Set(raw.checkedAssetIds.filter((entry): entry is string => typeof entry === 'string')))
+  const checkedKeys = Array.isArray(raw.checkedKeys)
+    ? Array.from(new Set(raw.checkedKeys.filter((entry): entry is string => typeof entry === 'string')))
     : [];
   const recent = Array.isArray(raw.recent)
     ? raw.recent
@@ -74,13 +96,14 @@ function sanitizeSession(value: unknown): AuditSession {
           at: typeof entry.at === 'string' ? entry.at : new Date().toISOString(),
           kind: toScanKind(entry.kind),
           assetId: typeof entry.assetId === 'string' ? entry.assetId : undefined,
+          assetKey: typeof entry.assetKey === 'string' ? entry.assetKey : undefined,
         }))
         .slice(0, RECENT_LIMIT)
     : [];
   const toCount = (input: unknown): number =>
     typeof input === 'number' && Number.isFinite(input) && input >= 0 ? Math.floor(input) : 0;
   return {
-    checkedAssetIds,
+    checkedKeys,
     duplicateScanCount: toCount(raw.duplicateScanCount),
     unknownScanCount: toCount(raw.unknownScanCount),
     recent,
@@ -145,13 +168,25 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
     return map;
   }, [assets]);
 
-  // Nur geprüfte IDs zählen, die es im aktuellen Bestand noch gibt.
-  const checkedExistingIds = useMemo(
-    () => session.checkedAssetIds.filter((id) => assetById.has(id)),
-    [assetById, session.checkedAssetIds],
-  );
+  // Stabiler-Key → Asset, damit gespeicherte Prüfrunden und das Scan-Protokoll
+  // auch nach einem Reseed (neue asset.id) wieder auf das aktuelle Asset zeigen.
+  const assetByKey = useMemo(() => {
+    const map = new Map<string, Asset>();
+    for (const asset of assets) map.set(assetStableKey(asset), asset);
+    return map;
+  }, [assets]);
 
-  const checkedSet = useMemo(() => new Set(checkedExistingIds), [checkedExistingIds]);
+  const checkedKeySet = useMemo(() => new Set(session.checkedKeys), [session.checkedKeys]);
+
+  // Aktuelle Assets, deren stabiler Key in der Prüfrunde erfasst ist. Über den
+  // stabilen Key statt der id robust gegen Reseed/Re-Import.
+  const checkedSet = useMemo(() => {
+    const ids = new Set<string>();
+    for (const asset of assets) {
+      if (checkedKeySet.has(assetStableKey(asset))) ids.add(asset.id);
+    }
+    return ids;
+  }, [assets, checkedKeySet]);
 
   const openAssets = useMemo(
     () => assets.filter((asset) => !checkedSet.has(asset.id)),
@@ -161,12 +196,12 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
   const summary = useMemo(
     () => ({
       total: assets.length,
-      checked: checkedExistingIds.length,
-      open: Math.max(0, assets.length - checkedExistingIds.length),
+      checked: checkedSet.size,
+      open: Math.max(0, assets.length - checkedSet.size),
       duplicates: session.duplicateScanCount,
       unknown: session.unknownScanCount,
     }),
-    [assets.length, checkedExistingIds.length, session.duplicateScanCount, session.unknownScanCount],
+    [assets.length, checkedSet.size, session.duplicateScanCount, session.unknownScanCount],
   );
 
   const refocus = () => {
@@ -187,20 +222,22 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
 
     setSession((current) => {
       const next: AuditSession = {
-        checkedAssetIds: [...current.checkedAssetIds],
+        checkedKeys: [...current.checkedKeys],
         duplicateScanCount: current.duplicateScanCount,
         unknownScanCount: current.unknownScanCount,
         recent: current.recent,
       };
 
       if (match) {
+        const key = assetStableKey(match);
         event.assetId = match.id;
-        if (next.checkedAssetIds.includes(match.id)) {
+        event.assetKey = key;
+        if (next.checkedKeys.includes(key)) {
           event.kind = 'duplicate';
           next.duplicateScanCount += 1;
         } else {
           event.kind = 'match';
-          next.checkedAssetIds = [...next.checkedAssetIds, match.id];
+          next.checkedKeys = [...next.checkedKeys, key];
         }
       } else {
         event.kind = 'unknown';
@@ -237,10 +274,12 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
   };
 
   const exportCsv = () => {
-    const checkedAtById = new Map<string, string>();
+    // Zeitstempel der ersten Erfassung je stabilem Key — damit "Geprüft am"
+    // auch dann passt, wenn sich die asset.id zwischenzeitlich geändert hat.
+    const checkedAtByKey = new Map<string, string>();
     for (const entry of session.recent) {
-      if (entry.kind === 'match' && entry.assetId && !checkedAtById.has(entry.assetId)) {
-        checkedAtById.set(entry.assetId, entry.at);
+      if (entry.kind === 'match' && entry.assetKey && !checkedAtByKey.has(entry.assetKey)) {
+        checkedAtByKey.set(entry.assetKey, entry.at);
       }
     }
 
@@ -252,7 +291,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
       asset.serialNumber,
       asset.tagNumber,
       checkedSet.has(asset.id) ? 'ja' : 'nein',
-      checkedAtById.get(asset.id) ?? '',
+      checkedAtByKey.get(assetStableKey(asset)) ?? '',
     ]);
 
     const csv = [header, ...rows].map((line) => line.map(csvCell).join(';')).join('\r\n');
@@ -268,7 +307,15 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
     URL.revokeObjectURL(url);
   };
 
-  const lastResultAsset = lastResult?.assetId ? assetById.get(lastResult.assetId) ?? null : null;
+  // Auflösung bevorzugt über den stabilen Key (reseed-fest), Fallback id.
+  const resolveEventAsset = (event: ScanEvent | null): Asset | null => {
+    if (!event) return null;
+    if (event.assetKey && assetByKey.has(event.assetKey)) return assetByKey.get(event.assetKey) ?? null;
+    if (event.assetId && assetById.has(event.assetId)) return assetById.get(event.assetId) ?? null;
+    return null;
+  };
+
+  const lastResultAsset = resolveEventAsset(lastResult);
 
   return (
     <section className="space-y-4 sm:space-y-5">
@@ -365,15 +412,15 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         </div>
       </article>
 
-      <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
         {/* Zuletzt gescannt */}
-        <article className="surface-card animate-fade-up">
+        <article className="surface-card animate-fade-up min-w-0">
           <h3 className="text-base font-semibold text-slate-900">Zuletzt gescannt</h3>
           <p className="mt-1 text-xs text-slate-500">Neueste Scans dieser Prüfrunde (max. {RECENT_LIMIT}).</p>
           <div className="soft-scrollbar mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1 sm:max-h-[50vh]">
             {session.recent.length ? (
               session.recent.map((entry) => (
-                <RecentRow key={entry.id} entry={entry} asset={entry.assetId ? assetById.get(entry.assetId) ?? null : null} />
+                <RecentRow key={entry.id} entry={entry} asset={resolveEventAsset(entry)} />
               ))
             ) : (
               <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
@@ -384,7 +431,7 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
         </article>
 
         {/* Noch nicht geprüft */}
-        <article className="surface-card animate-fade-up">
+        <article className="surface-card animate-fade-up min-w-0">
           <h3 className="text-base font-semibold text-slate-900">Noch nicht geprüft ({openAssets.length})</h3>
           <p className="mt-1 text-xs text-slate-500">Assets, deren Label in dieser Runde noch nicht gescannt wurde.</p>
           <div className="soft-scrollbar mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1 sm:max-h-[50vh]">
