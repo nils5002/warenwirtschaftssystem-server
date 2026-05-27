@@ -32,6 +32,10 @@ import type { WmsOverview } from '../services/wmsApi';
 type WmsPageViewProps = {
   activePage: AppPage;
   activeRole: AppRole;
+  // Effektive Rechte-Keys des aktuellen Users (Feature „Rollen & Rechte").
+  // Optional: fehlt das Feld (älteres Backend), wird auf die Rollenlogik
+  // zurückgefallen, damit z. B. Admins nicht versehentlich Buttons verlieren.
+  permissions?: string[];
   currentUserId: string;
   currentUserName: string;
   projectContext: string;
@@ -140,6 +144,7 @@ type WmsPageViewProps = {
 export function WmsPageView({
   activePage,
   activeRole,
+  permissions,
   currentUserId,
   currentUserName,
   projectContext,
@@ -189,6 +194,18 @@ export function WmsPageView({
   isInitialLoading = false,
 }: WmsPageViewProps) {
   const isAdmin = activeRole === 'Admin';
+  // Rechte-gesteuerte Button-Sichtbarkeit (Feature „Rollen & Rechte"). Liegen
+  // effektive Rechte vor, entscheiden sie; sonst Fallback auf die bisherige
+  // Rollenlogik. So laufen die Buttons nicht mehr blind über role === 'Admin'.
+  const permsProvided = Array.isArray(permissions);
+  const can = (key: string, fallback: boolean): boolean =>
+    permsProvided ? permissions!.includes(key) : fallback;
+  // Inventar voll bearbeiten / Neue Hardware: assets.update (Default: nur Admin).
+  const canUpdateAssets = can('assets.update', isAdmin);
+  // Defekt-/Wartungsverwaltung (z. B. „In Wartung setzen"): defects.manage.
+  const canManageDefects = can('defects.manage', isAdmin);
+  // Defekt melden bleibt für Mitarbeiter offen, sofern defects.report aktiv ist.
+  const canReportDefects = can('defects.report', true);
   const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
   // QR-Scan-Aktionen sind in der Sidebar nur für Admin und Mitarbeiter
   // sichtbar (App.tsx visibleNavigation). Bisher konnte Projektmanager
@@ -266,13 +283,16 @@ export function WmsPageView({
           onCreateMaintenance={(payload) => {
             void onCreateMaintenance(payload);
           }}
-          canManageAssets={isAdmin}
+          canManageAssets={canUpdateAssets}
         />
       );
     case 'assetDetail':
       return (
         <AssetDetailPage
           activeRole={activeRole}
+          canEditAsset={canUpdateAssets}
+          canManageDefects={canManageDefects}
+          canReportDefects={canReportDefects}
           asset={selectedAsset}
           activities={activities}
           maintenanceItems={maintenanceItems}
