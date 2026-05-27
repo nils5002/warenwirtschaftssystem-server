@@ -207,11 +207,15 @@ export function WmsPageView({
   // Defekt melden bleibt für Mitarbeiter offen, sofern defects.report aktiv ist.
   const canReportDefects = can('defects.report', true);
   const canOperateCheckout = activeRole === 'Admin' || activeRole === 'Mitarbeiter' || activeRole === 'Projektmanager';
-  // QR-Scan-Aktionen sind in der Sidebar nur für Admin und Mitarbeiter
-  // sichtbar (App.tsx visibleNavigation). Bisher konnte Projektmanager
-  // die Seite per direktem URL-Aufruf trotzdem öffnen — der Page-Guard
-  // wird hier auf die gleichen Rollen wie das Menü beschränkt.
-  const canUseQrFunctions = activeRole === 'Admin' || activeRole === 'Mitarbeiter';
+  // QR-Code-Verwaltung: rechte-gesteuert über qrcode.manage. Liegen effektive
+  // Rechte vor, entscheiden sie (Menü in App.tsx filtert identisch). Fallback
+  // auf die bisherige Rollenlogik (Admin/Mitarbeiter), falls ein älteres
+  // Backend keine Rechte liefert. So wird die Seite auch bei direktem
+  // URL-Aufruf ohne Berechtigung geblockt.
+  const canUseQrFunctions = can(
+    'qrcode.manage',
+    activeRole === 'Admin' || activeRole === 'Mitarbeiter',
+  );
   // Einsatzplanung bearbeiten (Positionen anlegen/löschen/ändern): planning.update.
   // Fallback auf die bisherige Rollenlogik, falls keine Rechte vorliegen.
   const canEditPlanning = can('planning.update', activeRole === 'Admin' || activeRole === 'Projektmanager');

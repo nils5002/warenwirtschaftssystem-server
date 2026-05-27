@@ -6,11 +6,17 @@ Planungs- oder Benutzerdaten werden verändert.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..database.models import RolePermissionRecord
-from ..domain.permissions import DEFAULT_ROLE_PERMISSIONS, sanitize_permission_keys
+from ..domain.permissions import (
+    ALL_PERMISSION_KEYS,
+    DEFAULT_ROLE_PERMISSIONS,
+    sanitize_permission_keys,
+)
 
 
 def seed_default_role_permissions(db: Session) -> None:
@@ -27,6 +33,49 @@ def seed_default_role_permissions(db: Session) -> None:
         for permission_key in sorted(perms):
             db.add(RolePermissionRecord(role_key=role_key, permission_key=permission_key))
     db.commit()
+
+
+def ensure_default_permissions_present(
+    db: Session, permission_keys: Iterable[str] | None = None
+) -> None:
+    """Additiv & idempotent: trägt fehlende Default-Rechte nachträglich nach.
+
+    Hintergrund: ``seed_default_role_permissions`` greift nur bei *leerer*
+    Tabelle. Bestehende Installationen haben ``role_permissions`` bereits
+    gefüllt — ein neu eingeführter Permission-Key (z. B. ``qrcode.manage``)
+    muss dort additiv ergänzt werden, sonst hätte ihn keine Rolle.
+
+    Ein Key wird nur dann geseedet, wenn er in der gesamten Tabelle (über alle
+    Rollen) noch NICHT vorkommt. Sobald irgendeine Rolle ihn besitzt, gilt der
+    Key als bekannt/admin-gepflegt und wird nicht angefasst — so werden manuell
+    gesetzte Rechte (auch ein bewusster Entzug) nie überschrieben. Pro Rolle
+    wird der Default aus ``DEFAULT_ROLE_PERMISSIONS`` übernommen (erteilt = Zeile,
+    nicht erteilt = keine Zeile).
+
+    Ohne Argument werden alle Katalog-Keys geprüft; so versorgt der Aufruf auch
+    künftige neue Rechte automatisch.
+    """
+    if permission_keys is None:
+        candidates = set(ALL_PERMISSION_KEYS)
+    else:
+        candidates = {key for key in permission_keys if key in ALL_PERMISSION_KEYS}
+    if not candidates:
+        return
+
+    existing_keys = set(
+        db.scalars(select(RolePermissionRecord.permission_key).distinct()).all()
+    )
+    missing = candidates - existing_keys
+    if not missing:
+        return
+
+    added = False
+    for role_key, perms in DEFAULT_ROLE_PERMISSIONS.items():
+        for permission_key in sorted(perms & missing):
+            db.add(RolePermissionRecord(role_key=role_key, permission_key=permission_key))
+            added = True
+    if added:
+        db.commit()
 
 
 def permissions_for_role(db: Session, role_key: str) -> set[str]:

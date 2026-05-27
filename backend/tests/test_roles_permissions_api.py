@@ -182,6 +182,39 @@ def test_auth_me_includes_effective_permissions() -> None:
     assert "users.manage" not in perms
 
 
+def test_ensure_backfills_missing_key_with_defaults() -> None:
+    # Simuliert eine bestehende Installation, die den neuen Key noch nicht kennt:
+    # qrcode.manage komplett aus der Tabelle entfernen …
+    with SessionLocal() as db:
+        db.execute(
+            delete(RolePermissionRecord).where(
+                RolePermissionRecord.permission_key == "qrcode.manage"
+            )
+        )
+        db.commit()
+        # … additiv nachtragen.
+        role_permission_repository.ensure_default_permissions_present(db, ["qrcode.manage"])
+        perms = role_permission_repository.all_role_permissions(db)
+    # Admin bekommt das Recht, PM/Mitarbeiter nicht.
+    assert "qrcode.manage" in perms["admin"]
+    assert "qrcode.manage" not in perms.get("projektmanager", set())
+    assert "qrcode.manage" not in perms.get("mitarbeiter", set())
+
+
+def test_ensure_does_not_override_manual_state() -> None:
+    # Key ist bereits (irgendwo) vorhanden → gilt als gepflegt. Selbst wenn eine
+    # Rolle ihn bewusst NICHT hat, darf ensure ihn nicht nachtragen.
+    with SessionLocal() as db:
+        role_permission_repository.replace_role_permissions(
+            db, "mitarbeiter", ["assets.read"]
+        )
+        # admin behält qrcode.manage (Default) → Key existiert in der Tabelle.
+        role_permission_repository.ensure_default_permissions_present(db, ["qrcode.manage"])
+        perms = role_permission_repository.all_role_permissions(db)
+    assert perms["mitarbeiter"] == {"assets.read"}
+    assert "qrcode.manage" in perms["admin"]
+
+
 def test_seed_is_idempotent_after_edit() -> None:
     client = TestClient(app)
     client.put(
