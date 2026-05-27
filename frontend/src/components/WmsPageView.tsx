@@ -403,6 +403,7 @@ export function WmsPageView({
       return (
         <MaintenancePage
           activeRole={activeRole}
+          canManageDefects={canManageDefects}
           maintenanceItems={maintenanceItems}
           assets={assets}
           onOpenAssetDetail={onOpenAssetDetail}
