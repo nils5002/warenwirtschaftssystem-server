@@ -18,6 +18,10 @@ class AuthUserInfo(BaseModel):
     name: str
     email: str
     role: AppRole
+    # Effektive Rechte-Keys der Rolle (Feature „Rollen & Rechte"). Additiv mit
+    # Default [], damit bestehende Konstruktionen (Login/Token) ohne dieses Feld
+    # gültig bleiben und ältere Frontends das Feld ignorieren können.
+    permissions: list[str] = Field(default_factory=list)
 
 
 class AuthLoginResponse(BaseModel):

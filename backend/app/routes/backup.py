@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
-from ..routes.dependencies import AccessContext, get_access_context, require_roles
+from ..routes.dependencies import AccessContext, get_access_context, require_permission
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
 from ..services import backup_service
 
@@ -22,7 +22,7 @@ def export_backup(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> JSONResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "backup.manage")
     payload = backup_service.export_backup(db)
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M")
     filename = f"warehouse-backup-{timestamp}.json"
@@ -39,7 +39,7 @@ async def import_backup(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> BackupImportResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "backup.manage")
     if not file.filename:
         raise HTTPException(status_code=400, detail="Backup-Datei fehlt.")
     if not file.filename.lower().endswith(".json"):
@@ -75,7 +75,7 @@ def reset_for_import(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> BackupClearDataResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "backup.manage")
     result = backup_service.clear_data_for_import(db, keep_user_id=context.user_id)
     logger.warning("Systemdaten bereinigt (user_id=%s)", context.user_id)
     return result

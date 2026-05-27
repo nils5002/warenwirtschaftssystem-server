@@ -368,3 +368,24 @@ class LabelAuditScanRecord(Base):
     corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     corrected_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     correction_note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+
+class RolePermissionRecord(Base):
+    """Persistente, admin-editierbare Rollen-Rechte (Feature „Rollen & Rechte").
+
+    Je gewährtem Recht eine Zeile ``(role_key, permission_key)``. Die Tabelle
+    wird beim Startup mit Defaults geseedet (nur wenn leer), die das bisherige
+    hartkodierte Verhalten 1:1 abbilden. ``role_key`` entspricht der
+    normalisierten Rolle aus ``AccessContext.role``; es werden keine neuen
+    Rollen eingeführt. Diese Tabelle ersetzt keine Hardwaredaten — sie steuert
+    ausschließlich Berechtigungen.
+    """
+
+    __tablename__ = "role_permissions"
+    __table_args__ = (
+        UniqueConstraint("role_key", "permission_key", name="uq_role_permissions_role_perm"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    role_key: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    permission_key: Mapped[str] = mapped_column(String(64), nullable=False)

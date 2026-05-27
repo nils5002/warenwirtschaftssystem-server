@@ -41,6 +41,9 @@ export type AuthUser = {
   name: string;
   email: string;
   role: AppRole;
+  // Effektive Rechte-Keys der Rolle (Feature „Rollen & Rechte"). Optional →
+  // sicher, falls ein älteres Backend das Feld nicht liefert.
+  permissions?: string[];
 };
 
 /**
@@ -1213,4 +1216,34 @@ export async function updateLabelAuditScan(
     },
   );
   return parseResponse<LabelAuditScanResult>(response);
+}
+
+// --- Rollen & Rechte (admin-editierbare Rollenrechte, alle Endpunkte roles.manage) ---
+export type PermissionDef = { key: string; label: string; group: string };
+export type PermissionGroup = { group: string; label: string; permissions: PermissionDef[] };
+export type RolePermissions = { roleKey: string; label: string; permissions: string[] };
+
+export async function fetchPermissionCatalog(): Promise<{ groups: PermissionGroup[] }> {
+  const response = await apiFetch('/api/wms/admin/permissions');
+  return parseResponse<{ groups: PermissionGroup[] }>(response);
+}
+
+export async function fetchRoles(): Promise<{ roles: RolePermissions[] }> {
+  const response = await apiFetch('/api/wms/admin/roles');
+  return parseResponse<{ roles: RolePermissions[] }>(response);
+}
+
+export async function updateRolePermissions(
+  roleKey: string,
+  permissions: string[],
+): Promise<RolePermissions> {
+  const response = await apiFetch(
+    `/api/wms/admin/roles/${encodeURIComponent(roleKey)}/permissions`,
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizeOutbound({ permissions })),
+    },
+  );
+  return parseResponse<RolePermissions>(response);
 }

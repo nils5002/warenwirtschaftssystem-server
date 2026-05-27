@@ -102,6 +102,22 @@ def require_roles(context: AccessContext, *allowed: RoleName) -> None:
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Aktion.")
 
 
+def require_permission(context: AccessContext, db: Session, permission_key: str) -> None:
+    """Rechte-basierte Zugriffsprüfung (admin-editierbar, Feature „Rollen & Rechte").
+
+    ``role_key`` ist die bereits normalisierte ``context.role``. Die gewährten
+    Rechte der Rolle werden pro Request über einen indizierten SELECT geladen
+    (kleine Tabelle, vernachlässigbar). Gleiche 403-Message wie ``require_roles``,
+    damit bestehende UX/Tests unverändert bleiben.
+    """
+    # Lazy-Import vermeidet jeden potentiellen Import-Zyklus beim Modul-Load.
+    from ..repositories import role_permission_repository
+
+    granted = role_permission_repository.permissions_for_role(db, context.role)
+    if permission_key not in granted:
+        raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Aktion.")
+
+
 def require_project_scope(context: AccessContext) -> None:
     if context.role == "admin":
         return

@@ -37,6 +37,7 @@ const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
   massPrint: ['System', 'Massendruck'],
   labelAudit: ['System', 'Label-Prüfung'],
   updateNotes: ['System', 'Update-Notizen'],
+  rolesPermissions: ['Verwaltung', 'Rollen & Rechte'],
 };
 
 // Tailwind-Klassen für Icon-Buttons innerhalb der gruppierten Capsule rechts.

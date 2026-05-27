@@ -6,6 +6,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { InlineLoadingState } from './components/loading';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
+import type { AppPage, AppRole } from './asset-ui/types';
 import { useWmsController } from './hooks/useWmsController';
 import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
@@ -17,6 +18,31 @@ import {
   setUnauthorizedHandler,
   type AuthUser,
 } from './services/wmsApi';
+
+// Seiten, deren Sichtbarkeit über editierbare Rechte gesteuert wird. Die
+// übrigen Seiten (Dashboard, QR, Massendruck, Import, Label-Prüfung,
+// Update-Notizen, Fremdbestand) bleiben rollenbasiert (legacyVisible).
+const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
+  inventory: 'assets.read',
+  categories: 'categories.manage',
+  planning: 'planning.read',
+  checkinCheckout: 'checkinout.use',
+  tickets: 'defects.report',
+  backup: 'backup.manage',
+  users: 'users.manage',
+  rolesPermissions: 'roles.manage',
+};
+
+// Heutiges, hartkodiertes Rollen-Verhalten als sicherer Fallback — greift, wenn
+// das Backend (noch) keine effektiven Rechte liefert.
+function legacyVisible(key: AppPage, role: AppRole): boolean {
+  if (role === 'Admin') return true;
+  if (role === 'Projektmanager') {
+    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'rolesPermissions'].includes(key);
+  }
+  // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
+  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'rolesPermissions'].includes(key);
+}
 
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -73,23 +99,19 @@ function App() {
   }, []);
 
   const visibleNavigation = useMemo(() => {
-    if (activeRole === 'Admin') return navigation;
-    if (activeRole === 'Projektmanager') {
-      // Projektmanager: kein User-/Import-/Backup-/QR-/Massendruck-Zugriff.
-      // Kategorien IST sichtbar — PMs dürfen Stammdaten-Kategorien löschen
-      // (Anlegen bleibt admin-only, Hinweis dazu in der Page selbst).
-      // Fremdbestand IST Teil der Projektplanung und ebenfalls sichtbar.
-      return navigation.filter(
-        (item) =>
-          !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes'].includes(item.key),
-      );
+    const perms = authUser?.permissions;
+    // Ohne effektive Rechte (älteres Backend): rein rollenbasiert wie bisher.
+    if (!Array.isArray(perms)) {
+      return navigation.filter((item) => legacyVisible(item.key, activeRole));
     }
-    // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
-    return navigation.filter(
-      (item) =>
-        !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes'].includes(item.key),
-    );
-  }, [activeRole]);
+    // Rechte-gesteuerte Seiten über die Berechtigung filtern; alle übrigen
+    // Seiten behalten ihr bisheriges rollenbasiertes Verhalten.
+    const permSet = new Set(perms);
+    return navigation.filter((item) => {
+      const required = PAGE_PERMISSION[item.key];
+      return required ? permSet.has(required) : legacyVisible(item.key, activeRole);
+    });
+  }, [authUser?.permissions, activeRole]);
 
   useEffect(() => {
     if (controller.activePage === 'assetDetail') {

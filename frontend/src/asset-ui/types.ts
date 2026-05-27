@@ -32,7 +32,8 @@ export type AppPage =
   | 'importExport'
   | 'backup'
   | 'users'
-  | 'updateNotes';
+  | 'updateNotes'
+  | 'rolesPermissions';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 

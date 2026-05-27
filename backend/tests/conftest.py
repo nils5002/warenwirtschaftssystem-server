@@ -11,7 +11,7 @@ import pytest
 os.environ.setdefault("OVERVIEW_CACHE_TTL_SECONDS", "0")
 
 from app.database.session import SessionLocal, init_db
-from app.repositories import category_repository
+from app.repositories import category_repository, role_permission_repository
 from app.services.auth_service import ensure_initial_admin, ensure_user_passwords
 
 
@@ -26,6 +26,9 @@ def _bootstrap_database() -> None:
     init_db()
     with SessionLocal() as db:
         category_repository.seed_standard_categories(db)
+        # Default-Rollenrechte seeden — sonst würden die auf require_permission
+        # umgestellten Endpunkte mangels Daten 403 liefern.
+        role_permission_repository.seed_default_role_permissions(db)
         try:
             ensure_initial_admin(db)
             ensure_user_passwords(db)
