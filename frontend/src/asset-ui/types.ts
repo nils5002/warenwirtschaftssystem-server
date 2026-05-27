@@ -95,7 +95,7 @@ export type Asset = {
 };
 
 // --- Label-Prüfung (serverseitige Audit-Prüfrunden) ---
-export type LabelAuditScanKind = 'matched' | 'duplicate' | 'unknown';
+export type LabelAuditScanKind = 'matched' | 'duplicate' | 'unknown' | 'corrected';
 export type LabelAuditSessionStatus = 'active' | 'archived';
 
 export type LabelAuditScan = {
@@ -110,6 +110,10 @@ export type LabelAuditScan = {
   tagNumber?: string | null;
   scannedAt: string;
   scannedByUserId?: string | null;
+  // Admin-Korrektur-Felder.
+  note?: string | null;
+  ignored?: boolean;
+  ignoreReason?: string | null;
 };
 
 export type LabelAuditSummary = {
@@ -118,6 +122,8 @@ export type LabelAuditSummary = {
   open: number;
   duplicates: number;
   unknown: number;
+  // Ignorierte (soft-deletete) Scans — zählen nicht in checked/open.
+  ignored?: number;
 };
 
 export type LabelAuditSession = {

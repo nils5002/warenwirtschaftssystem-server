@@ -121,6 +121,16 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("assets", "assigned_planning_id", "VARCHAR(64)"),
     # Security-Audit Paket B2: serverseitige Token-Invalidierung pro Benutzer.
     ("users", "token_version", "INTEGER NOT NULL DEFAULT 0"),
+    # Label-Prüfung: Admin-Korrektur von Scans (Soft-Delete + Korrektur-Spur).
+    # Alle nullable → Altdaten ohne Wert verhalten sich wie bisher (nicht
+    # ignoriert / nicht korrigiert).
+    ("label_audit_scans", "note", "VARCHAR(256)"),
+    ("label_audit_scans", "ignored_at", "DATETIME"),
+    ("label_audit_scans", "ignored_by_user_id", "VARCHAR(64)"),
+    ("label_audit_scans", "ignore_reason", "VARCHAR(256)"),
+    ("label_audit_scans", "corrected_at", "DATETIME"),
+    ("label_audit_scans", "corrected_by_user_id", "VARCHAR(64)"),
+    ("label_audit_scans", "correction_note", "VARCHAR(256)"),
 )
 
 

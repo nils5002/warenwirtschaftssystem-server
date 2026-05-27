@@ -322,14 +322,21 @@ class LabelAuditScanRecord(Base):
     """Einzelner Scan innerhalb einer Prüfrunde.
 
     ``scan_kind``: ``matched`` (Asset erkannt, erstmals geprüft), ``duplicate``
-    (Asset in dieser Runde erneut gescannt) oder ``unknown`` (QR-Code/Wert
-    keinem Asset zuzuordnen — nur der Rohwert wird gespeichert).
+    (Asset in dieser Runde erneut gescannt), ``unknown`` (QR-Code/Wert keinem
+    Asset zuzuordnen — nur der Rohwert wird gespeichert) oder ``corrected``
+    (ein zuvor unbekannter Scan wurde von einem Admin nachträglich einem Asset
+    zugeordnet).
 
     Stabilität über Reimport hinweg: Neben der volatilen ``asset_id``
     (Asset-external_id zum Scan-Zeitpunkt) wird ``asset_stable_key`` gespeichert
     (Seriennummer → Inventarnummer → Fallback asset.id, normalisiert). Ändert
     sich die asset.id durch einen Reimport, bleibt die Prüfung über den stabilen
     Key wieder zuordenbar.
+
+    Admin-Korrektur (Soft-Delete statt Hard-Delete): Falsche/doppelte Scans
+    werden über ``ignored_at`` aus der Auswertung genommen, nicht gelöscht. So
+    bleibt die Audit-Spur erhalten und lässt sich rückgängig machen. Es werden
+    AUSSCHLIESSLICH diese Audit-Felder verändert — niemals echte Hardwaredaten.
     """
 
     __tablename__ = "label_audit_scans"
@@ -351,3 +358,13 @@ class LabelAuditScanRecord(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
     scanned_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Freie Notiz eines Admins zu diesem Scan (Audit-Spur).
+    note: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Soft-Delete / Ignorieren: gesetzt = Scan zählt nicht mehr in die Summary.
+    ignored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ignored_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ignore_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    # Nachträgliche Korrektur (z. B. unknown → Asset zugeordnet).
+    corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    corrected_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    correction_note: Mapped[str | None] = mapped_column(String(256), nullable=True)

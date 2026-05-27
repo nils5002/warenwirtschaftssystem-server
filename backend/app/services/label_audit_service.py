@@ -35,6 +35,14 @@ class LabelAuditArchivedError(Exception):
     """In eine archivierte Prüfrunde darf nicht mehr gescannt werden."""
 
 
+class LabelAuditActiveConflictError(Exception):
+    """Reaktivieren abgelehnt: es gibt bereits eine andere aktive Prüfrunde."""
+
+
+class LabelAuditAssetNotFoundError(Exception):
+    """Das beim Zuordnen angegebene Asset existiert nicht."""
+
+
 # ---------------------------------------------------------------------------
 # Stabile Asset-Identität + Scan-Auflösung (serverseitiger Port von qr.ts)
 # ---------------------------------------------------------------------------
@@ -132,6 +140,9 @@ def _scan_to_schema(record: LabelAuditScanRecord) -> LabelAuditScanResponse:
         tagNumber=record.tag_number,
         scannedAt=scanned_at,
         scannedByUserId=record.scanned_by_user_id,
+        note=record.note,
+        ignored=record.ignored_at is not None,
+        ignoreReason=record.ignore_reason,
     )
 
 
@@ -142,9 +153,13 @@ def _load_assets(db: Session) -> list[AssetRecord]:
 def _build_summary(
     db: Session, session: LabelAuditSessionRecord, assets: list[AssetRecord]
 ) -> tuple[LabelAuditSummary, list[str]]:
-    matched_keys = repo.get_matched_stable_keys(db, session.id)
+    # Geprüft = nicht-ignorierte matched/corrected Scans, gegen den aktuellen
+    # Bestand über den stabilen Key aufgelöst. Da hier über die Asset-Liste
+    # eindeutig aufgelöst wird, zählt jeder Key höchstens einmal (robust gegen
+    # mehrfache matched/corrected-Scans desselben Geräts).
+    checked_keys = repo.get_checked_stable_keys(db, session.id)
     checked_asset_ids = [
-        asset.external_id for asset in assets if asset_stable_key(asset) in matched_keys
+        asset.external_id for asset in assets if asset_stable_key(asset) in checked_keys
     ]
     counts = repo.count_by_kind(db, session.id)
     total = len(assets)
@@ -155,6 +170,7 @@ def _build_summary(
         open=max(0, total - checked),
         duplicates=int(counts.get("duplicate", 0)),
         unknown=int(counts.get("unknown", 0)),
+        ignored=repo.count_ignored(db, session.id),
     )
     return summary, checked_asset_ids
 
@@ -234,6 +250,112 @@ class LabelAuditService:
         return _build_session_response(db, record, _load_assets(db))
 
     @staticmethod
+    def update_session(
+        db: Session, external_id: str, *, fields: dict
+    ) -> LabelAuditSessionResponse | None:
+        """Bearbeitet Name/Notiz/Status einer Prüfrunde (nur gesetzte Felder).
+
+        Reaktivierung (archived → active) ist die risikoärmere Variante: Sie
+        wird ABGELEHNT, wenn bereits eine andere aktive Runde existiert
+        (statt diese still zu archivieren). So überrascht die Aktion den Admin
+        nicht damit, eine möglicherweise gerade laufende Runde zu beenden — er
+        archiviert die aktive Runde bewusst selbst und reaktiviert dann.
+        """
+        record = repo.get_session(db, external_id)
+        if record is None:
+            return None
+        new_status = fields.get("status")
+        if (
+            "status" in fields
+            and new_status == "active"
+            and record.status != "active"
+        ):
+            other = repo.get_active_session(db)
+            if other is not None and other.id != record.id:
+                raise LabelAuditActiveConflictError(other.external_id)
+        if "name" in fields and fields["name"] is not None:
+            record.name = fields["name"]
+        if "note" in fields:
+            record.note = fields["note"]
+        if "status" in fields and new_status is not None:
+            record.status = new_status
+        repo.save_session(db, record)
+        return _build_session_response(db, record, _load_assets(db))
+
+    @staticmethod
+    def update_scan(
+        db: Session,
+        session_external_id: str,
+        scan_external_id: str,
+        *,
+        fields: dict,
+        user_id: str | None,
+    ) -> LabelAuditScanResult | None:
+        """Korrigiert einen einzelnen Scan (Notiz, Ignorieren, Asset-Zuordnung).
+
+        Verändert ausschließlich den Audit-Scan — niemals echte Hardwaredaten.
+        """
+        session = repo.get_session(db, session_external_id)
+        if session is None:
+            return None
+        scan = repo.get_scan(db, session.id, scan_external_id)
+        if scan is None:
+            return None
+
+        now = datetime.utcnow()
+
+        # 1) Asset-Zuordnung (unknown/falsch zugeordnet → einem Asset zuweisen).
+        if fields.get("assetId"):
+            asset = db.scalar(
+                select(AssetRecord).where(AssetRecord.external_id == fields["assetId"])
+            )
+            if asset is None:
+                raise LabelAuditAssetNotFoundError(fields["assetId"])
+            stable_key = asset_stable_key(asset)
+            # Robust gegen Doppelzählung: ist der Key in dieser Runde bereits
+            # (nicht-ignoriert) geprüft, wird der korrigierte Scan als
+            # ``duplicate`` markiert; sonst als ``corrected``. Zusätzlich zählt
+            # die Summary nur eindeutige Keys — doppelte Sicherheit.
+            already = repo.has_checked_stable_key(
+                db, session.id, stable_key, exclude_scan_id=scan.id
+            )
+            scan.scan_kind = "duplicate" if already else "corrected"
+            scan.asset_id = asset.external_id
+            scan.asset_stable_key = stable_key
+            scan.asset_label = asset.name
+            scan.category = asset.category
+            scan.serial_number = asset.serial_number
+            scan.tag_number = asset.tag_number
+            scan.corrected_at = now
+            scan.corrected_by_user_id = user_id
+            # scan_value (Rohwert) bleibt bewusst unverändert erhalten.
+            if "correctionNote" in fields:
+                scan.correction_note = fields["correctionNote"]
+
+        # 2) Ignorieren / Ignorierung aufheben (Soft-Delete).
+        if "ignored" in fields and fields["ignored"] is not None:
+            if fields["ignored"]:
+                scan.ignored_at = now
+                scan.ignored_by_user_id = user_id
+                if "ignoreReason" in fields:
+                    scan.ignore_reason = fields["ignoreReason"]
+            else:
+                scan.ignored_at = None
+                scan.ignored_by_user_id = None
+                scan.ignore_reason = None
+        elif "ignoreReason" in fields:
+            # Grund nachpflegen ohne den Ignoriert-Status zu ändern.
+            scan.ignore_reason = fields["ignoreReason"]
+
+        # 3) Freie Notiz.
+        if "note" in fields:
+            scan.note = fields["note"]
+
+        repo.save_scan(db, scan, session)
+        session_response = _build_session_response(db, session, _load_assets(db))
+        return LabelAuditScanResult(scan=_scan_to_schema(scan), session=session_response)
+
+    @staticmethod
     def scan(
         db: Session, external_id: str, scan_value: str, *, user_id: str | None
     ) -> LabelAuditScanResult | None:
@@ -247,7 +369,7 @@ class LabelAuditService:
 
         if match is not None:
             stable_key = asset_stable_key(match)
-            is_duplicate = repo.has_matched_stable_key(db, session.id, stable_key)
+            is_duplicate = repo.has_checked_stable_key(db, session.id, stable_key)
             scan = repo.add_scan(
                 db,
                 session_id=session.id,

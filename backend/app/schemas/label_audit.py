@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
-ScanKind = Literal["matched", "duplicate", "unknown"]
+ScanKind = Literal["matched", "duplicate", "unknown", "corrected"]
 SessionStatus = Literal["active", "archived"]
 
 
@@ -28,6 +28,10 @@ class LabelAuditScanResponse(BaseModel):
     tagNumber: str | None = None
     scannedAt: datetime
     scannedByUserId: str | None = None
+    # Admin-Korrektur-Felder (Soft-Delete / Notiz).
+    note: str | None = None
+    ignored: bool = False
+    ignoreReason: str | None = None
 
 
 class LabelAuditSummary(BaseModel):
@@ -36,6 +40,8 @@ class LabelAuditSummary(BaseModel):
     open: int
     duplicates: int
     unknown: int
+    # Anzahl ignorierter (soft-deleteter) Scans — zählt NICHT in checked/open.
+    ignored: int = 0
 
 
 class LabelAuditSessionResponse(BaseModel):
@@ -105,3 +111,68 @@ class LabelAuditScanResult(BaseModel):
 
     scan: LabelAuditScanResponse
     session: LabelAuditSessionResponse
+
+
+class LabelAuditSessionUpdatePayload(BaseModel):
+    """Admin-Bearbeitung einer Prüfrunde. Nur gesetzte Felder werden geändert.
+
+    Verändert ausschließlich ``label_audit_sessions`` (Name/Notiz/Status) —
+    keine echten Hardwaredaten.
+    """
+
+    name: str | None = None
+    note: str | None = None
+    status: SessionStatus | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        if not cleaned:
+            raise ValueError("Name der Prüfrunde darf nicht leer sein.")
+        return cleaned[:180]
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+
+class LabelAuditScanUpdatePayload(BaseModel):
+    """Admin-Korrektur eines einzelnen Scans. Nur gesetzte Felder wirken.
+
+    - ``note`` / ``correctionNote``: freie Audit-Notiz.
+    - ``ignored`` (+ ``ignoreReason``): Scan aus der Auswertung nehmen / wieder
+      aufnehmen (Soft-Delete, kein Hard-Delete).
+    - ``assetId``: einen unbekannten/falsch zugeordneten Scan einem Asset
+      zuordnen (Snapshot wird aktualisiert, ``scanValue`` bleibt erhalten).
+
+    Verändert ausschließlich ``label_audit_scans`` — keine echten Hardwaredaten.
+    """
+
+    note: str | None = None
+    ignored: bool | None = None
+    ignoreReason: str | None = None
+    assetId: str | None = None
+    correctionNote: str | None = None
+
+    @field_validator("note", "ignoreReason", "correctionNote")
+    @classmethod
+    def _trim(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned[:256] or None
+
+    @field_validator("assetId")
+    @classmethod
+    def _asset_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
