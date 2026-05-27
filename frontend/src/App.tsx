@@ -242,6 +242,7 @@ function App() {
             ) : null}
             <WmsPageView
               activePage={controller.activePage}
+              permissions={authUser.permissions}
               currentUserId={authUser.userId}
               currentUserName={authUser.name}
               projectContext={controller.projectContext}

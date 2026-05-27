@@ -11,6 +11,11 @@ function trimActivityAssetPrefix(detail: string, assetName: string): string {
 
 type AssetDetailPageProps = {
   activeRole: AppRole;
+  // Rechte-gesteuerte Sichtbarkeit der Aktionsbuttons (Feature „Rollen & Rechte").
+  // Default true → ältere Aufrufer/Backends verhalten sich wie bisher.
+  canEditAsset?: boolean;
+  canManageDefects?: boolean;
+  canReportDefects?: boolean;
   asset: Asset | null;
   activities: ActivityItem[];
   maintenanceItems: MaintenanceItem[];
@@ -26,6 +31,9 @@ type AssetDetailPageProps = {
 
 export function AssetDetailPage({
   activeRole,
+  canEditAsset = true,
+  canManageDefects = true,
+  canReportDefects = true,
   asset,
   activities,
   maintenanceItems,
@@ -116,30 +124,36 @@ export function AssetDetailPage({
           >
             Zurücknehmen
           </button>
-          <button
-            className="w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 sm:w-auto"
-            onClick={() => onSetMaintenance(asset.id)}
-          >
-            In Wartung setzen
-          </button>
-          <button
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
-            onClick={() => onEditAsset(asset.id)}
-          >
-            Bearbeiten
-          </button>
-          <button
-            className="w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 sm:w-auto"
-            onClick={() =>
-              onCreateMaintenance({
-                assetName: asset.name,
-                issue: 'Gerät defekt',
-                comment: '',
-              })
-            }
-          >
-            Defekt melden
-          </button>
+          {canManageDefects ? (
+            <button
+              className="w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 sm:w-auto"
+              onClick={() => onSetMaintenance(asset.id)}
+            >
+              In Wartung setzen
+            </button>
+          ) : null}
+          {canEditAsset ? (
+            <button
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
+              onClick={() => onEditAsset(asset.id)}
+            >
+              Bearbeiten
+            </button>
+          ) : null}
+          {canReportDefects ? (
+            <button
+              className="w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 sm:w-auto"
+              onClick={() =>
+                onCreateMaintenance({
+                  assetName: asset.name,
+                  issue: 'Gerät defekt',
+                  comment: '',
+                })
+              }
+            >
+              Defekt melden
+            </button>
+          ) : null}
         </div>
       </div>
 
