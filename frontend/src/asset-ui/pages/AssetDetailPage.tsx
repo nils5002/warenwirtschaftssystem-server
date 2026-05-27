@@ -30,7 +30,6 @@ type AssetDetailPageProps = {
 };
 
 export function AssetDetailPage({
-  activeRole,
   canEditAsset = true,
   canManageDefects = true,
   canReportDefects = true,
@@ -72,7 +71,6 @@ export function AssetDetailPage({
   const latestMaintenance = relatedMaintenance[0] ?? null;
   const openMaintenanceCount = relatedMaintenance.filter((item) => item.status !== 'Erledigt').length;
   const qrValue = getAssetQrCode(asset);
-  const isAdmin = activeRole === 'Admin';
 
   return (
     <section className="space-y-5">
@@ -280,7 +278,7 @@ export function AssetDetailPage({
             <p className="text-sm font-semibold text-slate-900">{latestMaintenance.issue}</p>
             <p className="mt-1 text-xs text-slate-600">{latestMaintenance.comment || 'Keine Zusatznotiz'}</p>
             <p className="mt-1 text-xs text-slate-500">Gemeldet: {latestMaintenance.reportedAt}</p>
-            {isAdmin ? (
+            {canManageDefects ? (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {latestMaintenance.status !== 'In Bearbeitung' ? (
                   <button
@@ -342,7 +340,7 @@ export function AssetDetailPage({
                   <StatusBadge value={item.status} />
                 </div>
                 <p className="mt-1 text-xs text-slate-600">{item.comment}</p>
-                {isAdmin ? (
+                {canManageDefects ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {item.status !== 'In Bearbeitung' ? (
                       <button

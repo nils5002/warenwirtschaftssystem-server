@@ -2431,6 +2431,7 @@ export function PlanningPage({
                       type="date"
                       className="field-input"
                       value={editor.startDate}
+                      disabled={!canEdit}
                       onChange={(event) =>
                         patchEditor((current) => {
                           const nextStartDate = event.target.value;
@@ -2449,6 +2450,7 @@ export function PlanningPage({
                       type="date"
                       className="field-input"
                       value={editor.endDate}
+                      disabled={!canEdit}
                       onChange={(event) =>
                         patchEditor((current) => {
                           const nextEndDate = event.target.value;
@@ -2466,6 +2468,7 @@ export function PlanningPage({
                     <select
                       className="field-input"
                       value={editor.status}
+                      disabled={!canEdit}
                       onChange={(event) =>
                         patchEditor((current) => ({ ...current, status: event.target.value as PlanningStatus }))
                       }
@@ -2483,6 +2486,7 @@ export function PlanningPage({
                   <textarea
                     className="field-input min-h-[80px]"
                     value={editor.notes}
+                    disabled={!canEdit}
                     onChange={(event) => patchEditor((current) => ({ ...current, notes: event.target.value }))}
                   />
                 </label>
@@ -2546,6 +2550,7 @@ export function PlanningPage({
                                   data-testid={`planning-item-category-${dayIndex}-${itemIndex}`}
                                   className="field-input lg:col-span-4"
                                   value={item.categoryKey}
+                                  disabled={!canEdit}
                                   onChange={(event) =>
                                     patchEditor((current) => {
                                       const nextDays = [...current.days];
@@ -2570,6 +2575,7 @@ export function PlanningPage({
                                   min={0}
                                   className="field-input lg:col-span-2"
                                   value={item.qty}
+                                  disabled={!canEdit}
                                   onChange={(event) =>
                                     patchEditor((current) => {
                                       const nextDays = [...current.days];
@@ -2588,6 +2594,7 @@ export function PlanningPage({
                                   className="field-input lg:col-span-3"
                                   value={item.notes}
                                   placeholder="Notiz optional"
+                                  disabled={!canEdit}
                                   onChange={(event) =>
                                     patchEditor((current) => {
                                       const nextDays = [...current.days];

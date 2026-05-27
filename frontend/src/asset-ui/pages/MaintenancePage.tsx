@@ -6,6 +6,9 @@ import type { AppRole, Asset, MaintenanceItem } from '../types';
 
 type MaintenancePageProps = {
   activeRole: AppRole;
+  // Defekt-/Wartungsverwaltung (Reparatur-Board / Statuswechsel): defects.manage.
+  // Optional → ohne Wert Fallback auf die bisherige Rollenlogik (Admin/Techniker).
+  canManageDefects?: boolean;
   maintenanceItems: MaintenanceItem[];
   assets: Asset[];
   onOpenAssetDetail: (assetId: string) => void;
@@ -41,6 +44,7 @@ function canMoveBoardStatus(from: BoardStatus, to: BoardStatus): boolean {
 
 export function MaintenancePage({
   activeRole,
+  canManageDefects,
   maintenanceItems,
   assets,
   onOpenAssetDetail,
@@ -59,10 +63,13 @@ export function MaintenancePage({
   const [touchLike, setTouchLike] = useState(false);
 
   const normalizedRole = String(activeRole || '').toLowerCase();
+  // Rechte-gesteuert (defects.manage); ohne übergebenes Recht Fallback auf die
+  // bisherige Rollenlogik (Admin/Techniker).
   const canManageRepairBoard =
-    normalizedRole === 'admin' ||
-    normalizedRole === 'techniker' ||
-    normalizedRole === 'technician';
+    canManageDefects ??
+    (normalizedRole === 'admin' ||
+      normalizedRole === 'techniker' ||
+      normalizedRole === 'technician');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
