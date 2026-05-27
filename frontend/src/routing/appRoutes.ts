@@ -15,6 +15,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   massPrint: '/massendruck',
   labelAudit: '/label-pruefung',
   updateNotes: '/update-notizen',
+  rolesPermissions: '/rollen-rechte',
   assetDetail: '/inventar',
 };
 
@@ -62,6 +63,11 @@ const PATH_ALIASES: Record<string, AppPage> = {
 
   '/update-notizen': 'updateNotes',
   '/updatenotes': 'updateNotes',
+
+  '/rollen-rechte': 'rolesPermissions',
+  '/rollen-und-rechte': 'rolesPermissions',
+  '/rollen': 'rolesPermissions',
+  '/roles': 'rolesPermissions',
 };
 
 export function normalizePathname(pathname: string): string {

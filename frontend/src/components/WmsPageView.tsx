@@ -13,6 +13,7 @@ import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
 import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
+import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
 import type {
   ActivityItem,
@@ -414,6 +415,11 @@ export function WmsPageView({
         return <div className="surface-card p-6 text-sm text-slate-600">Update-Notizen nur für Admin / Techniker.</div>;
       }
       return <UpdateNotesAdminPage />;
+    case 'rolesPermissions':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Rollen &amp; Rechte nur für Admin / Techniker.</div>;
+      }
+      return <RolesPermissionsPage />;
     case 'users':
       if (!isAdmin) {
         return <div className="surface-card p-6 text-sm text-slate-600">Benutzerverwaltung nur für Admin / Techniker.</div>;

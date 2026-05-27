@@ -3,6 +3,7 @@ import {
   Boxes,
   CalendarRange,
   Download,
+  KeyRound,
   LayoutDashboard,
   PackagePlus,
   QrCode,
@@ -115,5 +116,12 @@ export const navigation: NavItem[] = [
     icon: Sparkles,
     group: 'administration',
     hint: 'Versionshinweise pflegen',
+  },
+  {
+    key: 'rolesPermissions',
+    label: 'Rollen & Rechte',
+    icon: KeyRound,
+    group: 'administration',
+    hint: 'Berechtigungen pflegen',
   },
 ];

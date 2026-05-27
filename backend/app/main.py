@@ -20,7 +20,7 @@ from .logging_setup import (
     set_response_status,
     setup_logging,
 )
-from .repositories import category_repository
+from .repositories import category_repository, role_permission_repository
 from .routes import api_router
 from .routes.dependencies import extract_request_token
 from .services.auth_service import decode_access_token, ensure_user_passwords
@@ -215,6 +215,10 @@ def create_app() -> FastAPI:
                 db.commit()
         with SessionLocal() as db:
             category_repository.seed_standard_categories(db)
+            # Default-Rollenrechte seeden (nur wenn leer) — bildet das bisherige
+            # hartkodierte Verhalten ab, sodass bestehende Installationen
+            # unverändert funktionieren.
+            role_permission_repository.seed_default_role_permissions(db)
         if settings.wms_seed_legacy_on_startup:
             base_dir = Path(__file__).resolve().parents[1]
             legacy_path = settings.resolve_legacy_json_path(base_dir)

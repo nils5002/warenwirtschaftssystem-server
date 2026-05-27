@@ -12,9 +12,11 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
+from ..database.session import get_db
 from ..logging_setup import LOG_FILE_NAME, get_log_dir
-from ..routes.dependencies import AccessContext, get_access_context, require_roles
+from ..routes.dependencies import AccessContext, get_access_context, require_permission
 
 router = APIRouter(prefix="/api/wms/admin/logs", tags=["WMS Admin Logs"])
 logger = logging.getLogger("cloud_web.admin.logs")
@@ -22,9 +24,10 @@ logger = logging.getLogger("cloud_web.admin.logs")
 
 @router.get("/download")
 def download_logs(
+    db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> StreamingResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "logs.read")
 
     log_dir = get_log_dir()
     candidates = sorted(

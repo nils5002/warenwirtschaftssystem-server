@@ -17,12 +17,14 @@ from ..database.models import (
     PlanningItemRecord,
     PlanningRecord,
     ReservationRecord,
+    RolePermissionRecord,
     UpdateNoteRecord,
     UserRecord,
     HardwareImportRunRecord,
     HardwareImportRowErrorRecord,
 )
-from ..repositories import category_repository
+from ..domain.permissions import ALL_PERMISSION_KEYS, is_valid_role_key
+from ..repositories import category_repository, role_permission_repository
 from ..repositories.wms_repository import (
     _normalize_asset_status,
     _normalize_maintenance_status,
@@ -217,6 +219,15 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                 }
                 for note in update_notes
             ],
+            "rolePermissions": [
+                {"roleKey": record.role_key, "permissionKey": record.permission_key}
+                for record in db.scalars(
+                    select(RolePermissionRecord).order_by(
+                        RolePermissionRecord.role_key.asc(),
+                        RolePermissionRecord.permission_key.asc(),
+                    )
+                ).all()
+            ],
         }
     )
 
@@ -236,6 +247,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         db.execute(delete(AssetRecord))
         db.execute(delete(LocationRecord))
         db.execute(delete(CategoryRecord))
+        db.execute(delete(RolePermissionRecord))
         db.execute(delete(UserRecord))
 
         for item in payload.categories:
@@ -417,6 +429,27 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 )
             )
 
+        # Rollenrechte: gültige Zeilen übernehmen (bekannter role_key +
+        # permission_key, dedupliziert). Fehlt die Sektion (Altbackup) oder ist
+        # sie komplett ungültig, werden die Default-Rechte geseedet — so ist nie
+        # ein leerer/ausgesperrter Zustand möglich.
+        seen_role_perms: set[tuple[str, str]] = set()
+        for item in payload.rolePermissions:
+            key = (item.roleKey, item.permissionKey)
+            if (
+                is_valid_role_key(item.roleKey)
+                and item.permissionKey in ALL_PERMISSION_KEYS
+                and key not in seen_role_perms
+            ):
+                seen_role_perms.add(key)
+                db.add(
+                    RolePermissionRecord(
+                        role_key=item.roleKey, permission_key=item.permissionKey
+                    )
+                )
+        if not seen_role_perms:
+            role_permission_repository.seed_default_role_permissions(db)
+
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -439,6 +472,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "locations": len(payload.locations),
             "plannings": len(payload.plannings),
             "updateNotes": len(payload.updateNotes),
+            "rolePermissions": len(payload.rolePermissions),
         }
     )
 
@@ -483,6 +517,7 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         db.execute(delete(CategoryRecord))
         db.execute(delete(HardwareImportRowErrorRecord))
         db.execute(delete(HardwareImportRunRecord))
+        db.execute(delete(RolePermissionRecord))
 
         db.execute(delete(UserRecord).where(UserRecord.id.notin_(preserved_admin_ids)))
 
@@ -490,6 +525,8 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         # after a wipe (without this, the lazy-seed from older code paths was
         # the only thing restoring them).
         category_repository.seed_standard_categories(db)
+        # Default-Rollenrechte wiederherstellen (Parität zu den Kategorien).
+        role_permission_repository.seed_default_role_permissions(db)
 
         db.commit()
     except HTTPException:

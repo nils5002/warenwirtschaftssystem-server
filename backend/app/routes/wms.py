@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
-from ..routes.dependencies import AccessContext, get_access_context, require_roles
+from ..routes.dependencies import (
+    AccessContext,
+    get_access_context,
+    require_permission,
+    require_roles,
+)
 
 logger = logging.getLogger("cloud_web.wms")
 from ..schemas.wms import (
@@ -299,7 +304,7 @@ def delete_maintenance(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> dict[str, bool]:
-    require_roles(context, "admin")
+    require_permission(context, db, "defects.manage")
     return {"deleted": WmsService.delete_maintenance(db, maintenance_id)}
 
 
@@ -332,7 +337,7 @@ def create_category(
     Erlaubt für Admin/Techniker (intern auf admin gemappt) UND Projektmanager,
     konsistent mit dem Lösch-Recht. Mitarbeiter/Junior bleiben ausgeschlossen.
     """
-    require_roles(context, "admin", "projektmanager")
+    require_permission(context, db, "categories.manage")
     return WmsService.create_category(db, payload.name)
 
 
@@ -353,7 +358,7 @@ def delete_category(
       - 404: Kategorie nicht gefunden
       - 409: noch von Assets verwendet — verständliche Meldung im detail
     """
-    require_roles(context, "admin", "projektmanager")
+    require_permission(context, db, "categories.manage")
     return WmsService.delete_category(db, category_id)
 
 
@@ -382,7 +387,7 @@ def list_users(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> list[UserItem]:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return WmsService.list_users(db)
 
 
@@ -392,7 +397,7 @@ def upsert_user(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> UserItem:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return WmsService.upsert_user(db, user)
 
 
@@ -403,7 +408,7 @@ def update_user(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> UserItem:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return WmsService.update_user(db, user_id, payload, actor_user_id=context.user_id)
 
 
@@ -414,7 +419,7 @@ def reset_user_password(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> UserPasswordResetResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return WmsService.reset_user_password(
         db,
         user_id,
@@ -429,7 +434,7 @@ def bulk_delete_users(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> BulkUserDeleteResponse:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return WmsService.bulk_delete_users(db, payload.userIds, actor_user_id=context.user_id)
 
 
@@ -439,7 +444,7 @@ def delete_user(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> dict[str, bool]:
-    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
     return {"deleted": WmsService.delete_user(db, user_id, actor_user_id=context.user_id)}
 
 

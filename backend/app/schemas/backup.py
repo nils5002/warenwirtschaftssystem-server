@@ -152,6 +152,12 @@ class BackupUpdateNote(BaseModel):
     publishedAt: datetime | None = None
 
 
+class BackupRolePermission(BaseModel):
+    # Feature „Rollen & Rechte": je gewährtem Recht eine Zeile.
+    roleKey: str
+    permissionKey: str
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -165,6 +171,9 @@ class WarehouseBackupPayload(BaseModel):
     plannings: list[BackupPlanning] = Field(default_factory=list)
     # Schritt E: Default-Liste → Altbackups ohne diese Collection bleiben gültig.
     updateNotes: list[BackupUpdateNote] = Field(default_factory=list)
+    # Rollenrechte: Default-Liste → Altbackups ohne diese Collection bleiben
+    # gültig; beim Import werden dann die Default-Rechte geseedet.
+    rolePermissions: list[BackupRolePermission] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):

@@ -28,7 +28,8 @@ from ..services.rate_limiter import (
     register_rate_limiter,
     too_many_requests,
 )
-from .dependencies import AUTH_COOKIE_NAME, extract_request_token
+from ..services.role_service import RoleService
+from .dependencies import AUTH_COOKIE_NAME, _normalize_role, extract_request_token
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -140,6 +141,10 @@ def login(
     # Die Browser-SPA authentifiziert sich darueber; der Token im Body bleibt
     # fuer API-/Test-Clients erhalten, die einen Authorization-Header nutzen.
     _set_auth_cookie(response, request, token)
+    # Effektive Rechte mitliefern, damit die Nav direkt nach dem Login passt.
+    user = user.model_copy(
+        update={"permissions": RoleService.effective_permissions(db, _normalize_role(user.role))}
+    )
     return AuthLoginResponse(
         accessToken=token,
         tokenType="bearer",
@@ -174,7 +179,11 @@ def auth_me(request: Request, db: Session = Depends(get_db)) -> AuthUserInfo:
     if not token:
         raise HTTPException(status_code=401, detail="Nicht authentifiziert.")
     # Vollpruefung inkl. token_version — ein invalidierter Token liefert 401.
-    return authenticate_token(db, token)
+    info = authenticate_token(db, token)
+    # Effektive Rechte der Rolle anhängen (Feature „Rollen & Rechte"). Die Rolle
+    # kommt als Label ("Admin") → vor dem Lookup auf den role_key normalisieren.
+    perms = RoleService.effective_permissions(db, _normalize_role(info.role))
+    return info.model_copy(update={"permissions": perms})
 
 
 @router.post("/logout")
