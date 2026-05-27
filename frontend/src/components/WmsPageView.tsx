@@ -212,7 +212,9 @@ export function WmsPageView({
   // die Seite per direktem URL-Aufruf trotzdem öffnen — der Page-Guard
   // wird hier auf die gleichen Rollen wie das Menü beschränkt.
   const canUseQrFunctions = activeRole === 'Admin' || activeRole === 'Mitarbeiter';
-  const canEditPlanning = activeRole === 'Admin' || activeRole === 'Projektmanager';
+  // Einsatzplanung bearbeiten (Positionen anlegen/löschen/ändern): planning.update.
+  // Fallback auf die bisherige Rollenlogik, falls keine Rechte vorliegen.
+  const canEditPlanning = can('planning.update', activeRole === 'Admin' || activeRole === 'Projektmanager');
 
   switch (activePage) {
     case 'dashboard':

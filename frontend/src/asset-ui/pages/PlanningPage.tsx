@@ -2653,22 +2653,24 @@ export function PlanningPage({
                                   )}
                                 </div>
 
-                                <button
-                                  type="button"
-                                  className="btn-danger px-2 py-1 text-xs lg:col-span-1"
-                                  onClick={() =>
-                                    patchEditor((current) => {
-                                      const nextDays = [...current.days];
-                                      nextDays[dayIndex] = {
-                                        ...nextDays[dayIndex],
-                                        items: nextDays[dayIndex].items.filter((_, index) => index !== itemIndex),
-                                      };
-                                      return { ...current, days: nextDays };
-                                    })
-                                  }
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    className="btn-danger px-2 py-1 text-xs lg:col-span-1"
+                                    onClick={() =>
+                                      patchEditor((current) => {
+                                        const nextDays = [...current.days];
+                                        nextDays[dayIndex] = {
+                                          ...nextDays[dayIndex],
+                                          items: nextDays[dayIndex].items.filter((_, index) => index !== itemIndex),
+                                        };
+                                        return { ...current, days: nextDays };
+                                      })
+                                    }
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                ) : null}
                                 </div>
 
                                 {visual?.status === 'open' ? (
@@ -3019,34 +3021,36 @@ export function PlanningPage({
                             );
                           })}
 
-                          <button
-                            type="button"
-                            data-testid={`planning-add-item-${dayIndex}`}
-                            className="btn-secondary px-2.5 py-1.5 text-xs"
-                            onClick={() =>
-                              patchEditor((current) => {
-                                const nextDays = [...current.days];
-                                nextDays[dayIndex] = {
-                                  ...nextDays[dayIndex],
-                                  items: [
-                                    ...nextDays[dayIndex].items,
-                                    {
-                                      categoryKey: categoryOptions[0] ?? '',
-                                      qty: 0,
-                                      notes: '',
-                                      handoverEnabled: false,
-                                      linkedPlanningId: '',
-                                      handoverNote: '',
-                                    },
-                                  ],
-                                };
-                                return { ...current, days: nextDays };
-                              })
-                            }
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            + Position
-                          </button>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              data-testid={`planning-add-item-${dayIndex}`}
+                              className="btn-secondary px-2.5 py-1.5 text-xs"
+                              onClick={() =>
+                                patchEditor((current) => {
+                                  const nextDays = [...current.days];
+                                  nextDays[dayIndex] = {
+                                    ...nextDays[dayIndex],
+                                    items: [
+                                      ...nextDays[dayIndex].items,
+                                      {
+                                        categoryKey: categoryOptions[0] ?? '',
+                                        qty: 0,
+                                        notes: '',
+                                        handoverEnabled: false,
+                                        linkedPlanningId: '',
+                                        handoverNote: '',
+                                      },
+                                    ],
+                                  };
+                                  return { ...current, days: nextDays };
+                                })
+                              }
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              + Position
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                     );
