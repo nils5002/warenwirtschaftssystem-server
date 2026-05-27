@@ -10,8 +10,14 @@ Status-Änderung an Hardware.
 - POST   /api/wms/label-audit/sessions                 → neue Runde starten
 - GET    /api/wms/label-audit/sessions/active          → aktive Runde (ggf. anlegen)
 - GET    /api/wms/label-audit/sessions/{session_id}    → Runde inkl. Scans/Summary
+- PATCH  /api/wms/label-audit/sessions/{session_id}    → Runde bearbeiten (Name/Notiz/Status)
+- PATCH  /api/wms/label-audit/sessions/{session_id}/scans/{scan_id} → Scan korrigieren
 - POST   /api/wms/label-audit/sessions/{session_id}/scan    → Scan erfassen
 - POST   /api/wms/label-audit/sessions/{session_id}/archive → Runde archivieren
+
+Die beiden PATCH-Endpunkte erlauben Admins die nachträgliche Korrektur einer
+Prüfrunde bzw. einzelner Scans (Soft-Delete statt Hard-Delete). Sie schreiben
+weiterhin ausschließlich die Audit-Tabellen.
 """
 
 from __future__ import annotations
@@ -24,11 +30,18 @@ from ..routes.dependencies import AccessContext, get_access_context, require_rol
 from ..schemas.label_audit import (
     LabelAuditScanPayload,
     LabelAuditScanResult,
+    LabelAuditScanUpdatePayload,
     LabelAuditSessionCreatePayload,
     LabelAuditSessionListItem,
     LabelAuditSessionResponse,
+    LabelAuditSessionUpdatePayload,
 )
-from ..services.label_audit_service import LabelAuditArchivedError, LabelAuditService
+from ..services.label_audit_service import (
+    LabelAuditActiveConflictError,
+    LabelAuditArchivedError,
+    LabelAuditAssetNotFoundError,
+    LabelAuditService,
+)
 
 router = APIRouter(prefix="/api/wms/label-audit", tags=["WMS Label Audit"])
 
@@ -73,6 +86,54 @@ def get_session(
     result = LabelAuditService.get_session(db, session_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Prüfrunde nicht gefunden.")
+    return result
+
+
+@router.patch("/sessions/{session_id}", response_model=LabelAuditSessionResponse)
+def update_session(
+    session_id: str,
+    payload: LabelAuditSessionUpdatePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> LabelAuditSessionResponse:
+    require_roles(context, "admin")
+    fields = payload.model_dump(exclude_unset=True)
+    try:
+        result = LabelAuditService.update_session(db, session_id, fields=fields)
+    except LabelAuditActiveConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Es gibt bereits eine aktive Prüfrunde. Bitte diese zuerst archivieren.",
+        ) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="Prüfrunde nicht gefunden.")
+    return result
+
+
+@router.patch(
+    "/sessions/{session_id}/scans/{scan_id}", response_model=LabelAuditScanResult
+)
+def update_scan(
+    session_id: str,
+    scan_id: str,
+    payload: LabelAuditScanUpdatePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> LabelAuditScanResult:
+    require_roles(context, "admin")
+    fields = payload.model_dump(exclude_unset=True)
+    try:
+        result = LabelAuditService.update_scan(
+            db, session_id, scan_id, fields=fields, user_id=context.user_id
+        )
+    except LabelAuditAssetNotFoundError as exc:
+        raise HTTPException(
+            status_code=404, detail="Das angegebene Asset wurde nicht gefunden."
+        ) from exc
+    if result is None:
+        raise HTTPException(
+            status_code=404, detail="Prüfrunde oder Scan nicht gefunden."
+        )
     return result
 
 

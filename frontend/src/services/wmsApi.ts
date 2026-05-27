@@ -6,6 +6,7 @@ import type {
   LabelAuditScanResult,
   LabelAuditSession,
   LabelAuditSessionListItem,
+  LabelAuditSessionStatus,
   LocationItem,
   MaintenanceItem,
   ReservationItem,
@@ -1176,4 +1177,40 @@ export function archiveLabelAuditSession(sessionId: string): Promise<LabelAuditS
     `/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}/archive`,
     {},
   );
+}
+
+// Admin-Bearbeitung einer Prüfrunde (Name/Notiz/Status). Nur gesetzte Felder werden geändert.
+export async function updateLabelAuditSession(
+  sessionId: string,
+  payload: { name?: string; note?: string | null; status?: LabelAuditSessionStatus },
+): Promise<LabelAuditSession> {
+  const response = await apiFetch(`/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalizeOutbound(payload)),
+  });
+  return parseResponse<LabelAuditSession>(response);
+}
+
+// Admin-Korrektur eines einzelnen Scans (Notiz/Ignorieren/Asset-Zuordnung).
+export async function updateLabelAuditScan(
+  sessionId: string,
+  scanId: string,
+  payload: {
+    note?: string | null;
+    ignored?: boolean;
+    ignoreReason?: string | null;
+    assetId?: string;
+    correctionNote?: string | null;
+  },
+): Promise<LabelAuditScanResult> {
+  const response = await apiFetch(
+    `/api/wms/label-audit/sessions/${encodeURIComponent(sessionId)}/scans/${encodeURIComponent(scanId)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(normalizeOutbound(payload)),
+    },
+  );
+  return parseResponse<LabelAuditScanResult>(response);
 }
