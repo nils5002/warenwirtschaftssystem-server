@@ -647,6 +647,10 @@ export function CheckinCheckoutPage({
     } else {
       setCheckoutProject(normalized);
     }
+    // Das gewählte Projekt zugleich als globalen Projektkontext übernehmen:
+    // so verschwindet der "Projektkontext fehlt"-Hinweis sofort und der
+    // X-Project-Context-Header wird gesetzt — ohne separates manuelles Feld.
+    onProjectContextChange(normalized);
     setProjectPickerMode(null);
     setProjectPickerSearch('');
   };
@@ -836,16 +840,9 @@ export function CheckinCheckoutPage({
       {activeRole === 'Mitarbeiter' && !projectContext.trim() ? (
         <article className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <p className="font-semibold">Projektkontext fehlt</p>
-          <p className="mt-1">Setze den Projektkontext, damit Ausgabe und Rücknahme direkt korrekt zugeordnet werden.</p>
-          <label className="field mt-2">
-            Projektkontext
-            <input
-              className="field-input bg-white"
-              placeholder="z. B. Kunde X · Akkreditierung 2026"
-              value={projectContext}
-              onChange={(event) => onProjectContextChange(event.target.value)}
-            />
-          </label>
+          <p className="mt-1">
+            Bitte unten ein Projekt auswählen, damit Ausgabe und Rücknahme korrekt zugeordnet werden.
+          </p>
         </article>
       ) : null}
 
@@ -976,7 +973,10 @@ export function CheckinCheckoutPage({
                   placeholder="Projekt wählen oder eintragen"
                   value={checkoutProject}
                   disabled={isAnyBusy}
-                  onChange={(event) => setCheckoutProject(event.target.value)}
+                  onChange={(event) => {
+                    setCheckoutProject(event.target.value);
+                    onProjectContextChange(event.target.value);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return;
                     event.preventDefault();
@@ -1258,7 +1258,10 @@ export function CheckinCheckoutPage({
                   placeholder="Projekt bestätigen"
                   value={checkinProject}
                   disabled={isAnyBusy}
-                  onChange={(event) => setCheckinProject(event.target.value)}
+                  onChange={(event) => {
+                    setCheckinProject(event.target.value);
+                    onProjectContextChange(event.target.value);
+                  }}
                 />
                 <datalist id="checkin-project-options">
                   {projectOptions.map((project) => (
