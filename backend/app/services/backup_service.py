@@ -451,6 +451,11 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             role_permission_repository.seed_default_role_permissions(db)
 
         db.commit()
+
+        # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
+        # qrcode.manage) nicht. Nach dem Import additiv mit Defaults ergänzen,
+        # ohne aus dem Backup übernommene Rechte zu überschreiben.
+        role_permission_repository.ensure_default_permissions_present(db)
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail="Backup konnte wegen inkonsistenter Daten nicht importiert werden.") from exc

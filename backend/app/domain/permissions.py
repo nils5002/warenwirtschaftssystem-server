@@ -41,6 +41,7 @@ PERMISSION_CATALOG: tuple[PermissionDef, ...] = (
     PermissionDef("defects.report", "Defekte melden", "operations"),
     PermissionDef("defects.manage", "Defekte verwalten/abschließen", "operations"),
     PermissionDef("categories.manage", "Kategorien verwalten", "masterdata"),
+    PermissionDef("qrcode.manage", "QR-Code verwalten", "administration"),
     PermissionDef("users.manage", "Benutzer verwalten", "administration"),
     PermissionDef("roles.manage", "Rollen & Rechte verwalten", "administration"),
     PermissionDef("backup.manage", "Backup verwalten", "administration"),

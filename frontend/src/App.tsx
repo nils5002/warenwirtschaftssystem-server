@@ -20,7 +20,7 @@ import {
 } from './services/wmsApi';
 
 // Seiten, deren Sichtbarkeit über editierbare Rechte gesteuert wird. Die
-// übrigen Seiten (Dashboard, QR, Massendruck, Import, Label-Prüfung,
+// übrigen Seiten (Dashboard, Massendruck, Import, Label-Prüfung,
 // Update-Notizen, Fremdbestand) bleiben rollenbasiert (legacyVisible).
 const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
   inventory: 'assets.read',
@@ -28,6 +28,7 @@ const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
   planning: 'planning.read',
   checkinCheckout: 'checkinout.use',
   tickets: 'defects.report',
+  qrFunctions: 'qrcode.manage',
   backup: 'backup.manage',
   users: 'users.manage',
   rolesPermissions: 'roles.manage',

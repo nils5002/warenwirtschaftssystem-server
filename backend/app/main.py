@@ -219,6 +219,10 @@ def create_app() -> FastAPI:
             # hartkodierte Verhalten ab, sodass bestehende Installationen
             # unverändert funktionieren.
             role_permission_repository.seed_default_role_permissions(db)
+            # Additiv: in bereits befüllten Tabellen fehlende (neu eingeführte)
+            # Permission-Keys mit ihren Defaults nachtragen, ohne bestehende,
+            # manuell gepflegte Rechte zu überschreiben.
+            role_permission_repository.ensure_default_permissions_present(db)
         if settings.wms_seed_legacy_on_startup:
             base_dir = Path(__file__).resolve().parents[1]
             legacy_path = settings.resolve_legacy_json_path(base_dir)
