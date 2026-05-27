@@ -18,8 +18,12 @@ export default {
         },
       },
       boxShadow: {
-        soft: '0 12px 32px rgba(15, 23, 42, 0.08)',
-        panel: '0 18px 45px rgba(15, 23, 42, 0.12)',
+        // Geschichteter Card-Schatten: eine feine Kontakt-/Hairline-Ebene für
+        // klare Kanten auf dem getönten Body + eine weiche Tiefe für die
+        // Schwebe. Wirkt deutlich "geerdeter" und hochwertiger als der reine
+        // Streuschatten zuvor (war: 0 12px 32px /0.08).
+        soft: '0 1px 2px 0 rgba(15, 23, 42, 0.05), 0 10px 28px -6px rgba(15, 23, 42, 0.10)',
+        panel: '0 4px 10px -2px rgba(15, 23, 42, 0.08), 0 18px 45px -8px rgba(15, 23, 42, 0.16)',
       },
       borderRadius: {
         xl2: '1.1rem',

@@ -240,7 +240,7 @@ function GroupRows({
         </td>
       </tr>
       {group.permissions.map((perm) => (
-        <tr key={perm.key} className="border-b border-slate-100">
+        <tr key={perm.key} className="border-b border-slate-100 transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40">
           <td className="py-2 pr-3 text-slate-700">{perm.label}</td>
           {roles.map((role) => {
             const checked = draft[role.roleKey]?.has(perm.key) ?? false;

@@ -962,7 +962,7 @@ export function AssetsPage({
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
-                        className="rounded border border-amber-400 bg-amber-50 px-2 py-1 text-sm text-amber-900"
+                        className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900"
                         onChange={(e) => {
                           if (e.target.value) onAdminUpdateAsset(asset.id, { category: e.target.value });
                         }}
