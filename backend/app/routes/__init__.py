@@ -10,6 +10,7 @@ from . import (
     health,
     label_audit,
     planning,
+    qr_groups,
     roles,
     update_notes,
     wms,
@@ -35,4 +36,5 @@ api_router.include_router(planning.router)
 api_router.include_router(admin_logs.router)
 api_router.include_router(update_notes.router)
 api_router.include_router(label_audit.router)
+api_router.include_router(qr_groups.router)
 api_router.include_router(roles.router)

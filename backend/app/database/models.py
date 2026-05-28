@@ -389,3 +389,58 @@ class RolePermissionRecord(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     role_key: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     permission_key: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class QrCodeGroupRecord(TimestampMixin, Base):
+    """Sammel-QR ("Sammel-QR") für eine Gruppe bereits vorhandener Assets.
+
+    Eine Gruppe bündelt mehrere echte Einzel-Assets (typisch Fremdbestand, z. B.
+    70 Miet-iPads) hinter einem einzigen QR-Code als schnellem Buchungseinstieg.
+    Sie erzeugt KEINEN eigenen Bestand: gebucht werden immer die echten Assets
+    über den bestehenden Ausgabe-/Rücknahme-Pfad (wms_repository.upsert_asset).
+    Die Einsatzplanung liest ausschließlich AssetRecord und sieht diese Tabellen
+    nie — daher kann durch eine Gruppe weder doppelter Bestand noch doppelte
+    Planungszählung entstehen.
+
+    ``qr_token`` ist der im QR-Code kodierte, zufällige Wert; der Scan-Wert
+    lautet ``GROUP:<qr_token>`` und ist damit eindeutig vom Einzel-Asset-Format
+    ``WMS|<id>|<tag>`` unterscheidbar.
+    """
+
+    __tablename__ = "qr_code_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    # Im QR-Code kodierter Token; Scan-Wert ist "GROUP:<qr_token>".
+    qr_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    # Kanonische Kategorie der Gruppe (einkategorig — macht den Mengen-Dialog
+    # eindeutig). Reine Anzeige/Filter-Hilfe; verändert keinen Bestand.
+    category: Mapped[str] = mapped_column(String(120), nullable=False)
+    # Informative Bestandsart (rented/borrowed/external) der Mitglieder.
+    stock_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_name: Mapped[str | None] = mapped_column(String(180), nullable=True)
+    # external_id des anlegenden Benutzers (nur Audit-Spur, kein FK-Enforcement).
+    created_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+
+
+class QrCodeGroupMemberRecord(Base):
+    """Zuordnung einer Gruppe zu einem vorhandenen Asset.
+
+    Referenziert ``AssetRecord.external_id`` als String (kein harter FK,
+    konsistent mit ``assigned_planning_id`` / Activity-Referenzen). Bei der
+    Auflösung werden Mitglieder live gegen vorhandene Assets gejoint; auf ein
+    gelöschtes Asset zeigende Mitglieder werden defensiv übersprungen.
+    """
+
+    __tablename__ = "qr_code_group_members"
+    __table_args__ = (
+        UniqueConstraint("group_id", "asset_external_id", name="uq_qr_group_members_group_asset"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    group_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("qr_code_groups.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    asset_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)

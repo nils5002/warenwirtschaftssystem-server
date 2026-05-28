@@ -16,6 +16,8 @@ from ..database.models import (
     PlanningDayRecord,
     PlanningItemRecord,
     PlanningRecord,
+    QrCodeGroupMemberRecord,
+    QrCodeGroupRecord,
     ReservationRecord,
     RolePermissionRecord,
     UpdateNoteRecord,
@@ -54,6 +56,14 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
     item_map: dict[int, list[PlanningItemRecord]] = {}
     for item in planning_items:
         item_map.setdefault(item.planning_day_id, []).append(item)
+
+    qr_groups = db.scalars(
+        select(QrCodeGroupRecord).order_by(QrCodeGroupRecord.created_at.asc())
+    ).all()
+    qr_members = db.scalars(select(QrCodeGroupMemberRecord)).all()
+    qr_member_map: dict[int, list[str]] = {}
+    for member in qr_members:
+        qr_member_map.setdefault(member.group_id, []).append(member.asset_external_id)
 
     return WarehouseBackupPayload.model_validate(
         {
@@ -228,6 +238,22 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     )
                 ).all()
             ],
+            # Sammel-QR-Gruppen mit ihren referenzierten Asset-external_ids. Es
+            # werden nur Verweise gesichert — kein eigener Bestand.
+            "qrCodeGroups": [
+                {
+                    "id": group.external_id,
+                    "name": group.name,
+                    "qrToken": group.qr_token,
+                    "category": group.category,
+                    "stockType": group.stock_type,
+                    "sourceName": group.source_name,
+                    "createdByUserId": group.created_by_user_id,
+                    "isActive": bool(group.is_active),
+                    "members": list(qr_member_map.get(group.id, [])),
+                }
+                for group in qr_groups
+            ],
         }
     )
 
@@ -237,6 +263,8 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         raise HTTPException(status_code=400, detail=f"Nicht unterstützte Backup-Version: {payload.version}")
 
     try:
+        db.execute(delete(QrCodeGroupMemberRecord))
+        db.execute(delete(QrCodeGroupRecord))
         db.execute(delete(PlanningItemRecord))
         db.execute(delete(PlanningDayRecord))
         db.execute(delete(PlanningRecord))
@@ -450,6 +478,29 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         if not seen_role_perms:
             role_permission_repository.seed_default_role_permissions(db)
 
+        # Sammel-QR-Gruppen + Mitgliedsverweise wiederherstellen. Verweisen nur
+        # auf bereits eingespielte Asset-external_ids; kein FK-Zwang.
+        for group_item in payload.qrCodeGroups:
+            group = QrCodeGroupRecord(
+                external_id=group_item.id,
+                name=group_item.name,
+                qr_token=group_item.qrToken,
+                category=group_item.category,
+                stock_type=group_item.stockType,
+                source_name=group_item.sourceName,
+                created_by_user_id=group_item.createdByUserId,
+                is_active=bool(group_item.isActive),
+            )
+            db.add(group)
+            db.flush()
+            for asset_external_id in group_item.members:
+                db.add(
+                    QrCodeGroupMemberRecord(
+                        group_id=group.id,
+                        asset_external_id=asset_external_id,
+                    )
+                )
+
         db.commit()
 
         # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
@@ -478,6 +529,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "plannings": len(payload.plannings),
             "updateNotes": len(payload.updateNotes),
             "rolePermissions": len(payload.rolePermissions),
+            "qrCodeGroups": len(payload.qrCodeGroups),
         }
     )
 
@@ -510,6 +562,8 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
             fallback.status = "Aktiv"
             preserved_admin_ids.add(fallback.id)
 
+        db.execute(delete(QrCodeGroupMemberRecord))
+        db.execute(delete(QrCodeGroupRecord))
         db.execute(delete(PlanningItemRecord))
         db.execute(delete(PlanningDayRecord))
         db.execute(delete(PlanningRecord))

@@ -368,6 +368,7 @@ export function WmsPageView({
           onProjectContextChange={onProjectContextChange}
           onCheckout={(payload) => onCheckoutFromForm(payload)}
           onCheckin={(payload) => onCheckinFromForm(payload)}
+          onReloadData={onReloadData}
         />
       );
     case 'qrFunctions':
