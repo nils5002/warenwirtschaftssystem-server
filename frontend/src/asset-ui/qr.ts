@@ -20,6 +20,45 @@ function safeDecode(value: string): string {
   }
 }
 
+const GROUP_PREFIX = 'group:';
+
+/**
+ * Erkennt einen Sammel-QR (Gruppen-QR). Der Scan-Wert lautet `GROUP:<token>`
+ * und ist damit eindeutig vom Einzel-Asset-Format `WMS|<id>|<tag>`
+ * unterscheidbar. Liefert den Token oder null, wenn es kein Sammel-QR ist.
+ *
+ * Berücksichtigt URL-codierte Werte und in URLs/Parametern eingebettete Codes,
+ * analog zu resolveAssetByScan.
+ */
+export function parseGroupScan(scanInput: string): string | null {
+  const raw = (scanInput ?? '').trim();
+  if (!raw) return null;
+
+  const candidates = new Set<string>();
+  for (const value of [raw, safeDecode(raw)]) {
+    candidates.add(value.trim());
+    const markerIndex = value.toLowerCase().indexOf(GROUP_PREFIX);
+    if (markerIndex >= 0) {
+      candidates.add(value.slice(markerIndex).trim());
+    }
+    try {
+      const asUrl = new URL(value);
+      asUrl.searchParams.forEach((paramValue) => candidates.add(paramValue.trim()));
+      candidates.add(asUrl.pathname.replace(/^\/+/, '').trim());
+    } catch {
+      // ignore non-URL values
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.toLowerCase().startsWith(GROUP_PREFIX)) {
+      const token = candidate.slice(GROUP_PREFIX.length).trim();
+      if (token) return token;
+    }
+  }
+  return null;
+}
+
 function lowerSet(values: string[]): Set<string> {
   return new Set(
     values

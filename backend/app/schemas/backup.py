@@ -158,6 +158,21 @@ class BackupRolePermission(BaseModel):
     permissionKey: str
 
 
+class BackupQrCodeGroup(BaseModel):
+    # Sammel-QR: Gruppe + Liste der referenzierten Asset-external_ids. Alle
+    # Felder mit sicheren Defaults, damit ältere Backups OHNE diese Collection
+    # weiterhin importierbar bleiben.
+    id: str
+    name: str
+    qrToken: str
+    category: str
+    stockType: str | None = None
+    sourceName: str | None = None
+    createdByUserId: str | None = None
+    isActive: bool = True
+    members: list[str] = Field(default_factory=list)
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -174,6 +189,9 @@ class WarehouseBackupPayload(BaseModel):
     # Rollenrechte: Default-Liste → Altbackups ohne diese Collection bleiben
     # gültig; beim Import werden dann die Default-Rechte geseedet.
     rolePermissions: list[BackupRolePermission] = Field(default_factory=list)
+    # Sammel-QR-Gruppen: Default-Liste → Altbackups ohne diese Collection bleiben
+    # gültig (keine Gruppen werden angelegt).
+    qrCodeGroups: list[BackupQrCodeGroup] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):
