@@ -1,10 +1,30 @@
-import { CalendarClock, PackagePlus, RefreshCw, Search, Trash2, Undo2 } from 'lucide-react';
+import {
+  CalendarClock,
+  PackagePlus,
+  Power,
+  QrCode,
+  RefreshCw,
+  ScanLine,
+  Search,
+  Trash2,
+  Undo2,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { LoadingButton } from '../../components/loading';
-import { createExternalPool, deleteAsset, markAssetReturned } from '../../services/wmsApi';
+import {
+  createExternalPool,
+  createQrGroup,
+  deactivateQrGroup,
+  deleteAsset,
+  listQrGroups,
+  markAssetReturned,
+  type QrGroup,
+} from '../../services/wmsApi';
 import type { Asset, CategoryItem, OwnershipType } from '../types';
+import { AssetQrCard } from '../components/AssetQrCard';
+import { BulkGroupDialog } from '../components/BulkGroupDialog';
 
 type ExternalPoolPageProps = {
   assets: Asset[];
@@ -139,6 +159,34 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
   const [returningId, setReturningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // --- Sammel-QR (Gruppen-QR) ---
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [groups, setGroups] = useState<QrGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
+  const [createdGroup, setCreatedGroup] = useState<QrGroup | null>(null);
+  const [viewQrGroup, setViewQrGroup] = useState<QrGroup | null>(null);
+  const [bookingGroup, setBookingGroup] = useState<QrGroup | null>(null);
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+
+  const reloadGroups = async () => {
+    setGroupsLoading(true);
+    try {
+      setGroups(await listQrGroups());
+    } catch {
+      setGroups([]);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void reloadGroups();
+  }, []);
+
   useEffect(() => {
     if (!categoryNames.length) return;
     setCreateForm((current) =>
@@ -172,6 +220,110 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     const zurueckgegeben = externalAssets.filter((a) => determineStatus(a) === 'zurueckgegeben').length;
     return { aktiv, rueckgabeBald, ueberfaellig, zurueckgegeben, total: externalAssets.length };
   }, [externalAssets]);
+
+  // --- Auswahl für Sammel-QR ---
+  const selectedAssets = useMemo(
+    () => externalAssets.filter((asset) => selectedIds.has(asset.id)),
+    [externalAssets, selectedIds],
+  );
+  const selectedCategories = useMemo(
+    () => new Set(selectedAssets.map((asset) => asset.category)),
+    [selectedAssets],
+  );
+  const selectionSingleCategory = selectedCategories.size === 1;
+  const filteredAllSelected = filtered.length > 0 && filtered.every((asset) => selectedIds.has(asset.id));
+
+  const toggleSelect = (assetId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(assetId)) next.delete(assetId);
+      else next.add(assetId);
+      return next;
+    });
+  };
+  const toggleSelectAllFiltered = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (filtered.every((asset) => next.has(asset.id))) {
+        for (const asset of filtered) next.delete(asset.id);
+      } else {
+        for (const asset of filtered) next.add(asset.id);
+      }
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const openGroupDialog = () => {
+    if (selectedAssets.length === 0) return;
+    const category = selectedAssets[0]?.category ?? '';
+    setGroupName(`${category} Sammelbuchung`.trim());
+    setGroupError(null);
+    setCreatedGroup(null);
+    setGroupDialogOpen(true);
+  };
+
+  const submitCreateGroup = async () => {
+    if (selectedAssets.length === 0) {
+      setGroupError('Bitte zuerst Mietgeräte auswählen.');
+      return;
+    }
+    if (!selectionSingleCategory) {
+      setGroupError('Alle Geräte einer Sammel-QR müssen dieselbe Kategorie haben.');
+      return;
+    }
+    if (!groupName.trim()) {
+      setGroupError('Bitte einen Namen vergeben.');
+      return;
+    }
+    setGroupBusy(true);
+    setGroupError(null);
+    try {
+      const category = selectedAssets[0].category;
+      const stockType = selectedAssets[0].ownershipType;
+      const created = await createQrGroup({
+        name: groupName.trim(),
+        category,
+        stockType:
+          stockType === 'rented' || stockType === 'borrowed' || stockType === 'external'
+            ? stockType
+            : null,
+        sourceName: selectedAssets[0].sourceName ?? null,
+        assetIds: selectedAssets.map((asset) => asset.id),
+      });
+      setCreatedGroup(created);
+      clearSelection();
+      await reloadGroups();
+    } catch (error) {
+      setGroupError(error instanceof Error ? error.message : 'Sammel-QR konnte nicht erstellt werden.');
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const submitDeactivateGroup = async (group: QrGroup) => {
+    const confirmed = await confirm({
+      title: 'Sammel-QR deaktivieren?',
+      message:
+        'Der QR-Code kann danach nicht mehr für Sammelbuchungen gescannt werden. Die einzelnen Geräte bleiben unverändert erhalten.',
+      confirmLabel: 'Deaktivieren',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setDeactivatingId(group.id);
+    try {
+      await deactivateQrGroup(group.id);
+      await reloadGroups();
+    } catch (error) {
+      await alert({
+        title: 'Deaktivieren nicht möglich',
+        message: error instanceof Error ? error.message : 'Unbekannter Fehler.',
+      });
+    } finally {
+      setDeactivatingId(null);
+    }
+  };
 
   const submitCreate = async () => {
     if (!createForm.category.trim()) {
@@ -366,7 +518,45 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
           </button>
         </div>
 
-        <p className="mt-3 text-xs text-slate-500">{filtered.length} von {externalAssets.length} angezeigt</p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-slate-500">{filtered.length} von {externalAssets.length} angezeigt</p>
+          <button
+            type="button"
+            className="text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={toggleSelectAllFiltered}
+            disabled={filtered.length === 0}
+          >
+            {filteredAllSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+          </button>
+        </div>
+
+        {selectedAssets.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2.5 dark:border-brand-800/60 dark:bg-brand-950/30">
+            <div className="text-sm text-slate-700 dark:text-slate-200">
+              <span className="font-semibold">{selectedAssets.length}</span> Mietgerät
+              {selectedAssets.length === 1 ? '' : 'e'} ausgewählt
+              {!selectionSingleCategory ? (
+                <span className="ml-2 text-xs font-semibold text-rose-600">
+                  Bitte nur eine Kategorie auswählen.
+                </span>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button" className="btn-ghost text-xs" onClick={clearSelection}>
+                Auswahl leeren
+              </button>
+              <button
+                type="button"
+                className="btn-primary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={openGroupDialog}
+                disabled={!selectionSingleCategory}
+              >
+                <QrCode className="h-4 w-4" />
+                Sammel-QR erstellen
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {/* Desktop: Tabelle. Mobile: Karten-Liste. */}
         {!isMobile ? (
@@ -374,6 +564,15 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                  <th className="w-10 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-brand-600"
+                      checked={filteredAllSelected}
+                      onChange={toggleSelectAllFiltered}
+                      aria-label="Alle sichtbaren Geräte auswählen"
+                    />
+                  </th>
                   <th className="px-3 py-2.5">Name</th>
                   <th className="px-3 py-2.5">Bestandsart</th>
                   <th className="px-3 py-2.5">Kategorie</th>
@@ -386,7 +585,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-8 text-center text-sm text-slate-500">
+                    <td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500">
                       Kein Fremdbestand vorhanden. Lege oben neuen Bestand an.
                     </td>
                   </tr>
@@ -398,8 +597,21 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                     return (
                       <tr
                         key={asset.id}
-                        className="border-t border-slate-200 bg-white text-slate-800 hover:bg-sky-50/40 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                        className={`border-t border-slate-200 text-slate-800 hover:bg-sky-50/40 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/60 ${
+                          selectedIds.has(asset.id)
+                            ? 'bg-brand-50/60 dark:bg-brand-950/30'
+                            : 'bg-white dark:bg-slate-900'
+                        }`}
                       >
+                        <td className="px-3 py-3">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer accent-brand-600"
+                            checked={selectedIds.has(asset.id)}
+                            onChange={() => toggleSelect(asset.id)}
+                            aria-label={`${asset.name} auswählen`}
+                          />
+                        </td>
                         <td className="px-3 py-3">
                           <p className="font-semibold text-slate-900 dark:text-slate-100">{asset.name}</p>
                           <p className="text-[11px] text-slate-500">{asset.tagNumber}</p>
@@ -493,9 +705,18 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                   className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-900 dark:text-slate-100">{asset.name}</p>
-                      <p className="text-[11px] text-slate-500">{asset.tagNumber} · {asset.category}</p>
+                    <div className="flex min-w-0 items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
+                        checked={selectedIds.has(asset.id)}
+                        onChange={() => toggleSelect(asset.id)}
+                        aria-label={`${asset.name} auswählen`}
+                      />
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900 dark:text-slate-100">{asset.name}</p>
+                        <p className="text-[11px] text-slate-500">{asset.tagNumber} · {asset.category}</p>
+                      </div>
                     </div>
                     <span
                       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${OWNERSHIP_TONE[ownership]}`}
@@ -553,6 +774,253 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
           </div>
         )}
       </article>
+
+      {/* Sammel-QR: vorhandene Gruppen */}
+      <article className="surface-card animate-fade-up">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="page-kicker">Sammel-QR</p>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Sammel-QR-Codes
+            </h3>
+            <p className="text-xs text-slate-500">
+              Ein QR-Code bucht mehrere vorhandene Geräte gesammelt.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              void reloadGroups();
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Neu laden
+          </button>
+        </div>
+
+        {groups.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
+            {groupsLoading
+              ? 'Wird geladen …'
+              : 'Noch keine Sammel-QR-Codes. Wähle oben Mietgeräte aus und erstelle einen.'}
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {groups.map((group) => (
+              <article
+                key={group.id}
+                className={`rounded-xl border p-3 ${
+                  group.isActive
+                    ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+                    : 'border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950/40'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">
+                      {group.name}
+                      {!group.isActive ? (
+                        <span className="ml-2 rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                          deaktiviert
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {group.category} · {group.memberCount} Gerät{group.memberCount === 1 ? '' : 'e'} ·{' '}
+                      <span className="text-emerald-600">{group.availableCount} verfügbar</span> ·{' '}
+                      <span className="text-amber-600">{group.loanedCount} verliehen</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="btn-primary px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => setBookingGroup(group)}
+                      disabled={!group.isActive}
+                    >
+                      <ScanLine className="h-3.5 w-3.5" />
+                      Buchen
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary px-2.5 py-1.5 text-xs"
+                      onClick={() => setViewQrGroup(group)}
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      QR anzeigen
+                    </button>
+                    {group.isActive ? (
+                      <LoadingButton
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-0 py-0 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200"
+                        onClick={() => {
+                          void submitDeactivateGroup(group);
+                        }}
+                        isLoading={deactivatingId === group.id}
+                        loadingText=""
+                        disabled={deactivatingId !== null}
+                        aria-label="Sammel-QR deaktivieren"
+                        title="Sammel-QR deaktivieren"
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                      </LoadingButton>
+                    ) : null}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </article>
+
+      {/* Modal: Sammel-QR erstellen / anzeigen */}
+      {groupDialogOpen ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-3 sm:items-center"
+          onClick={() => {
+            if (!groupBusy) setGroupDialogOpen(false);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-panel dark:border-slate-700 dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {createdGroup ? (
+              <>
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Sammel-QR erstellt
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {createdGroup.name} · {createdGroup.memberCount} Gerät
+                    {createdGroup.memberCount === 1 ? '' : 'e'}. QR-Code drucken und am Lagerort anbringen.
+                  </p>
+                </div>
+                <AssetQrCard
+                  qrValue={createdGroup.qrCode}
+                  assetName={createdGroup.name}
+                  tagNumber={createdGroup.category}
+                />
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => setGroupDialogOpen(false)}
+                  >
+                    Fertig
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-3">
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                    Sammel-QR erstellen
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Dieser QR-Code erzeugt keinen neuen Bestand, sondern bucht vorhandene Geräte gesammelt.
+                  </p>
+                </div>
+                <label className="field">
+                  Name der QR-Gruppe
+                  <input
+                    className="field-input"
+                    placeholder="z. B. Miet-iPads Sammelbuchung"
+                    value={groupName}
+                    onChange={(event) => setGroupName(event.target.value)}
+                  />
+                </label>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                  <div className="surface-muted px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kategorie</p>
+                    <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">
+                      {selectedAssets[0]?.category ?? '—'}
+                    </p>
+                  </div>
+                  <div className="surface-muted px-3 py-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Anzahl Geräte</p>
+                    <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">
+                      {selectedAssets.length}
+                    </p>
+                  </div>
+                </div>
+                {groupError ? (
+                  <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {groupError}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setGroupDialogOpen(false)}
+                    disabled={groupBusy}
+                  >
+                    Abbrechen
+                  </button>
+                  <LoadingButton
+                    className="btn-primary"
+                    onClick={() => {
+                      void submitCreateGroup();
+                    }}
+                    isLoading={groupBusy}
+                    loadingText="Wird erstellt …"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    QR-Code erzeugen
+                  </LoadingButton>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Modal: vorhandenen Sammel-QR anzeigen/drucken */}
+      {viewQrGroup ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-3 sm:items-center"
+          onClick={() => setViewQrGroup(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-panel dark:border-slate-700 dark:bg-slate-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                {viewQrGroup.name}
+              </h3>
+              <button
+                type="button"
+                className="btn-ghost h-9 w-9 p-0"
+                onClick={() => setViewQrGroup(null)}
+                aria-label="Schließen"
+              >
+                <Undo2 className="h-4 w-4" />
+              </button>
+            </div>
+            <AssetQrCard
+              qrValue={viewQrGroup.qrCode}
+              assetName={viewQrGroup.name}
+              tagNumber={viewQrGroup.category}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* Sammelbuchung per Antippen (gleicher Dialog wie beim Scan) */}
+      {bookingGroup ? (
+        <BulkGroupDialog
+          group={bookingGroup}
+          initialMode="checkout"
+          onClose={() => setBookingGroup(null)}
+          onBooked={async () => {
+            setBookingGroup(null);
+            await onReloadData();
+            await reloadGroups();
+          }}
+        />
+      ) : null}
 
       {/* Modal: Fremdbestand hinzufügen */}
       {createOpen ? (

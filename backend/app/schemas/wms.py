@@ -108,6 +108,65 @@ class AssetMarkReturnedPayload(BaseModel):
     returnedAt: Optional[date] = None  # default = heute
 
 
+# --- Sammel-QR (Gruppen-QR für vorhandene Fremdbestand-Assets) ---
+
+
+class QrGroupCreatePayload(BaseModel):
+    """Legt einen Sammel-QR für bereits vorhandene Assets an.
+
+    Verweist NUR auf vorhandene Asset-IDs — es entsteht kein neuer Bestand.
+    """
+
+    name: str = Field(min_length=1, max_length=180)
+    category: str = Field(min_length=1, max_length=120)
+    stockType: Optional[OwnershipType] = None
+    sourceName: Optional[str] = None
+    assetIds: list[str] = Field(min_length=1)
+
+
+class QrGroupItem(BaseModel):
+    id: str
+    name: str
+    qrToken: str
+    # Im QR-Code zu kodierender Wert: "GROUP:<qrToken>".
+    qrCode: str
+    category: str
+    stockType: Optional[OwnershipType] = None
+    sourceName: Optional[str] = None
+    isActive: bool = True
+    memberCount: int = 0
+    availableCount: int = 0
+    loanedCount: int = 0
+    createdAt: Optional[str] = None
+
+
+class QrGroupResolveResponse(BaseModel):
+    group: QrGroupItem
+
+
+class QrGroupCheckoutPayload(BaseModel):
+    quantity: int = Field(ge=1, le=500)
+    assignee: Optional[str] = None
+    projectName: Optional[str] = None
+    planningId: Optional[str] = None
+    dueDate: Optional[str] = None
+    note: Optional[str] = None
+
+
+class QrGroupCheckinPayload(BaseModel):
+    quantity: int = Field(ge=1, le=500)
+    projectName: Optional[str] = None
+    condition: Optional[str] = None
+
+
+class QrGroupBookingResult(BaseModel):
+    groupId: str
+    requestedCount: int
+    bookedCount: int
+    bookedAssetIds: list[str] = Field(default_factory=list)
+    message: str
+
+
 class ActivityItem(BaseModel):
     id: str
     title: str
