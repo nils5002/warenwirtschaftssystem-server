@@ -6,7 +6,8 @@ import { LoginPage } from './components/auth/LoginPage';
 import { InlineLoadingState } from './components/loading';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
-import type { AppPage, AppRole } from './asset-ui/types';
+import { PAGE_PERMISSION, legacyVisible } from './config/pageAccess';
+import type { AppPage } from './asset-ui/types';
 import { useWmsController } from './hooks/useWmsController';
 import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
@@ -18,32 +19,6 @@ import {
   setUnauthorizedHandler,
   type AuthUser,
 } from './services/wmsApi';
-
-// Seiten, deren Sichtbarkeit über editierbare Rechte gesteuert wird. Die
-// übrigen Seiten (Dashboard, Massendruck, Import, Label-Prüfung,
-// Update-Notizen, Fremdbestand) bleiben rollenbasiert (legacyVisible).
-const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
-  inventory: 'assets.read',
-  categories: 'categories.manage',
-  planning: 'planning.read',
-  checkinCheckout: 'checkinout.use',
-  tickets: 'defects.report',
-  qrFunctions: 'qrcode.manage',
-  backup: 'backup.manage',
-  users: 'users.manage',
-  rolesPermissions: 'roles.manage',
-};
-
-// Heutiges, hartkodiertes Rollen-Verhalten als sicherer Fallback — greift, wenn
-// das Backend (noch) keine effektiven Rechte liefert.
-function legacyVisible(key: AppPage, role: AppRole): boolean {
-  if (role === 'Admin') return true;
-  if (role === 'Projektmanager') {
-    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'rolesPermissions'].includes(key);
-  }
-  // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
-  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'rolesPermissions'].includes(key);
-}
 
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -290,6 +265,9 @@ function App() {
               onCheckinFromForm={controller.checkinFromForm}
               onNavigate={controller.setActivePage}
               onOpenInventoryWithQuery={controller.openInventoryWithQuery}
+              onOpenInventoryWithStatus={controller.openInventoryWithStatus}
+              inventoryStatusFilter={controller.inventoryStatusFilter}
+              onConsumeInventoryStatusFilter={controller.consumeInventoryStatusFilter}
               activeRole={activeRole}
               isMobile={isMobile}
             />

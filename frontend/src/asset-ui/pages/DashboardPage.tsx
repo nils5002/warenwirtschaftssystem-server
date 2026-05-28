@@ -1,7 +1,8 @@
 import { Boxes, CalendarRange, CheckCircle2, Handshake, TriangleAlert, Users, Wrench } from 'lucide-react';
 import { KpiCard } from '../components/KpiCard';
 import { normalizeCategory } from '../categories';
-import type { ActivityItem, AppPage, Asset, MaintenanceItem, ReservationItem } from '../types';
+import { canAccessPage } from '../../config/pageAccess';
+import type { ActivityItem, AppPage, AppRole, Asset, MaintenanceItem, ReservationItem } from '../types';
 import type { Theme } from '../../hooks/useTheme';
 import type { WmsOverview } from '../../services/wmsApi';
 
@@ -12,7 +13,14 @@ type DashboardPageProps = {
   maintenanceItems: MaintenanceItem[];
   planningSummary: WmsOverview['planningSummary'];
   theme: Theme;
+  // Effektive Rechte-Keys + Rolle des aktuellen Users — entscheiden, welche
+  // KPI-Kacheln als Schnellzugriff klickbar sind (gleiche Logik wie die
+  // Navigationsfilterung in App.tsx).
+  permissions?: string[];
+  activeRole: AppRole;
   onNavigate: (page: AppPage) => void;
+  // Inventar gefiltert auf einen Status öffnen (Status-Kacheln).
+  onOpenInventoryWithStatus: (status: Asset['status'] | null) => void;
   // True solange der erste Overview-Call noch läuft. KPI-Kacheln zeigen
   // dann "—" statt "0", damit der Bestand nicht fälschlich leer wirkt.
   isInitialLoading?: boolean;
@@ -128,9 +136,15 @@ export function DashboardPage({
   maintenanceItems,
   planningSummary,
   theme,
+  permissions,
+  activeRole,
   onNavigate,
+  onOpenInventoryWithStatus,
   isInitialLoading = false,
 }: DashboardPageProps) {
+  // Schnellzugriff-Berechtigungen: identisch zur Seiten-/Navigationsprüfung.
+  const canInventory = canAccessPage('inventory', permissions, activeRole);
+  const canPlanning = canAccessPage('planning', permissions, activeRole);
   // Solange der erste Overview-Call läuft, zeigen wir einen Em-Dash
   // statt "0" — sonst wirkt das Inventar fälschlich leer. Sobald echte
   // Werte da sind, springen die Zahlen ein.
@@ -209,6 +223,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : 'Aktiver Bestand'}
           tone="neutral"
           icon={Boxes}
+          onClick={() => onOpenInventoryWithStatus(null)}
+          disabled={!canInventory}
         />
         <KpiCard
           title="Verfügbar"
@@ -216,6 +232,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : 'Direkt ausleihbar'}
           tone="positive"
           icon={CheckCircle2}
+          onClick={() => onOpenInventoryWithStatus('Verfügbar')}
+          disabled={!canInventory}
         />
         <KpiCard
           title="Verliehen"
@@ -223,6 +241,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : 'Aktuell ausgegeben'}
           tone="warning"
           icon={Handshake}
+          onClick={() => onOpenInventoryWithStatus('Verliehen')}
+          disabled={!canInventory}
         />
         <KpiCard
           title="Defekte Geräte"
@@ -230,6 +250,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : 'Benötigen Bearbeitung'}
           tone="critical"
           icon={TriangleAlert}
+          onClick={() => onOpenInventoryWithStatus('Defekt')}
+          disabled={!canInventory}
         />
         <KpiCard
           title="In Wartung"
@@ -237,6 +259,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : 'Technikprüfung'}
           tone="warning"
           icon={Wrench}
+          onClick={() => onOpenInventoryWithStatus('In Wartung')}
+          disabled={!canInventory}
         />
         <KpiCard
           title="Engpass-Kategorien"
@@ -244,6 +268,8 @@ export function DashboardPage({
           trend={showPlaceholders ? 'Wird geladen …' : '<= 1 verfügbar'}
           tone={!showPlaceholders && bottleneckCount > 0 ? 'critical' : 'neutral'}
           icon={TriangleAlert}
+          onClick={() => onNavigate('planning')}
+          disabled={!canPlanning}
         />
       </div>
 

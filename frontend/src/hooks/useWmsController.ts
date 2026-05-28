@@ -191,6 +191,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
   });
   const [projectContext, setProjectContextState] = useState<string>(accessContext.projectContext ?? '');
   const [search, setSearch] = useState('');
+  // Transienter Statusfilter für einen Inventar-Deep-Link (z. B. Klick auf eine
+  // Dashboard-Kachel). Wird von AssetsPage beim Mount übernommen und sofort
+  // wieder geleert (consumeInventoryStatusFilter), damit ein späterer normaler
+  // Inventar-Aufruf den alten Filter nicht erbt.
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState<Asset['status'] | 'Alle Status' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -1259,6 +1264,21 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setActivePage('inventory');
   };
 
+  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff). Die
+  // Freitextsuche wird geleert, damit der Statusfilter eine saubere Sicht zeigt.
+  // status === null ⇒ kein Statusfilter (alle Assets).
+  const openInventoryWithStatus = (status: Asset['status'] | null) => {
+    setSearch('');
+    setInventoryStatusFilter(status);
+    setActivePage('inventory');
+  };
+
+  // Einmaliges Abräumen nach dem AssetsPage-Mount — verhindert ein Nachwirken
+  // des Filters bei späteren regulären Inventar-Aufrufen.
+  const consumeInventoryStatusFilter = () => {
+    setInventoryStatusFilter(null);
+  };
+
   const editLocation = async (name: string) => {
     const location = locations.find((item) => item.name === name);
     if (!location) return;
@@ -1347,6 +1367,9 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setActivePage,
     search,
     setSearch,
+    inventoryStatusFilter,
+    openInventoryWithStatus,
+    consumeInventoryStatusFilter,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     selectedAsset,
