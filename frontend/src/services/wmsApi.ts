@@ -841,6 +841,87 @@ export function markAssetReturned(
   });
 }
 
+// --- Sammel-QR (Gruppen-QR für vorhandene Fremdbestand-Assets) ---
+export type QrGroupStockType = 'rented' | 'borrowed' | 'external';
+
+export type QrGroup = {
+  id: string;
+  name: string;
+  qrToken: string;
+  // Im QR-Code zu kodierender Wert ("GROUP:<token>").
+  qrCode: string;
+  category: string;
+  stockType?: QrGroupStockType | null;
+  sourceName?: string | null;
+  isActive: boolean;
+  memberCount: number;
+  availableCount: number;
+  loanedCount: number;
+  createdAt?: string | null;
+};
+
+export type QrGroupCreatePayload = {
+  name: string;
+  category: string;
+  stockType?: QrGroupStockType | null;
+  sourceName?: string | null;
+  assetIds: string[];
+};
+
+export type QrGroupBookingResult = {
+  groupId: string;
+  requestedCount: number;
+  bookedCount: number;
+  bookedAssetIds: string[];
+  message: string;
+};
+
+export async function listQrGroups(): Promise<QrGroup[]> {
+  const response = await apiFetch('/api/wms/qr-groups');
+  return parseResponse<QrGroup[]>(response);
+}
+
+export function createQrGroup(payload: QrGroupCreatePayload): Promise<QrGroup> {
+  return postJson<QrGroup>('/api/wms/qr-groups', payload);
+}
+
+export async function resolveQrGroup(token: string): Promise<QrGroup> {
+  const response = await apiFetch(`/api/wms/qr-groups/resolve/${encodeURIComponent(token)}`);
+  const data = await parseResponse<{ group: QrGroup }>(response);
+  return data.group;
+}
+
+export function qrGroupCheckout(
+  groupId: string,
+  payload: {
+    quantity: number;
+    assignee?: string | null;
+    projectName?: string | null;
+    planningId?: string | null;
+    dueDate?: string | null;
+    note?: string | null;
+  },
+): Promise<QrGroupBookingResult> {
+  return postJson<QrGroupBookingResult>(
+    `/api/wms/qr-groups/${encodeURIComponent(groupId)}/checkout`,
+    payload,
+  );
+}
+
+export function qrGroupCheckin(
+  groupId: string,
+  payload: { quantity: number; projectName?: string | null; condition?: string | null },
+): Promise<QrGroupBookingResult> {
+  return postJson<QrGroupBookingResult>(
+    `/api/wms/qr-groups/${encodeURIComponent(groupId)}/checkin`,
+    payload,
+  );
+}
+
+export function deactivateQrGroup(groupId: string): Promise<QrGroup> {
+  return postJson<QrGroup>(`/api/wms/qr-groups/${encodeURIComponent(groupId)}/deactivate`, {});
+}
+
 // Holt die Kategorien-Stammdaten aus dem Backend (mit ids), damit das
 // Frontend für Delete die richtige id mitschicken kann. Die abgeleitete
 // "Kategorien aus vorhandenen Assets"-Liste im Controller hat keine ids.

@@ -1,8 +1,9 @@
 import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
-import { listPlannings, type PlanningListItem } from '../../services/wmsApi';
-import { resolveAssetByScan } from '../qr';
+import { listPlannings, resolveQrGroup, type PlanningListItem, type QrGroup } from '../../services/wmsApi';
+import { parseGroupScan, resolveAssetByScan } from '../qr';
+import { BulkGroupDialog } from '../components/BulkGroupDialog';
 import { QrScannerDialog } from '../components/QrScannerDialog';
 import { StatusBadge } from '../components/StatusBadge';
 import type { AppRole, Asset, UserItem } from '../types';
@@ -24,6 +25,7 @@ type CheckinCheckoutPageProps = {
     note: string;
   }) => Promise<void>;
   onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => Promise<void>;
+  onReloadData?: () => Promise<void>;
 };
 
 type Mode = 'checkout' | 'checkin';
@@ -87,6 +89,7 @@ export function CheckinCheckoutPage({
   onProjectContextChange,
   onCheckout,
   onCheckin,
+  onReloadData,
 }: CheckinCheckoutPageProps) {
   const today = useMemo(() => toIsoDate(new Date()), []);
   const plusTwoDays = useMemo(() => toIsoDate(new Date(Date.now() + 2 * 86400000)), []);
@@ -112,6 +115,8 @@ export function CheckinCheckoutPage({
   const [lastProject, setLastProject] = useState('');
 
   const [scannerTarget, setScannerTarget] = useState<Mode | null>(null);
+  // Sammel-QR: erkannte Gruppe + Modus für den Mengen-Dialog.
+  const [bulkGroup, setBulkGroup] = useState<QrGroup | null>(null);
   const [showCheckoutOptions, setShowCheckoutOptions] = useState(false);
   const [showCheckinOptions, setShowCheckinOptions] = useState(false);
   // projectPickerMode steuert das Bottom-Sheet für die mobile Projekt-
@@ -304,6 +309,21 @@ export function CheckinCheckoutPage({
     setShowAllCheckoutQueue(false);
   };
 
+  // Sammel-QR (GROUP:<token>) auflösen und Mengen-Dialog öffnen. Liefert true,
+  // wenn der Scan eine Gruppe war (dann NICHT als Einzel-Asset behandeln).
+  const handleGroupToken = async (token: string): Promise<void> => {
+    try {
+      const grp = await resolveQrGroup(token);
+      setBulkGroup(grp);
+      setMessage(null);
+    } catch (err) {
+      setMessage({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Sammel-QR nicht gefunden.',
+      });
+    }
+  };
+
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
     setScanBusyMode('checkout');
     const scanValue = (rawScan ?? checkoutScan).trim();
@@ -311,6 +331,14 @@ export function CheckinCheckoutPage({
       if (!scanValue) {
         setScannerTarget('checkout');
         return false;
+      }
+
+      // Sammel-QR? → Mengen-Dialog statt Einzel-Asset-Buchung.
+      const groupToken = parseGroupScan(scanValue);
+      if (groupToken) {
+        setCheckoutScan('');
+        await handleGroupToken(groupToken);
+        return true;
       }
 
       const asset = resolveAssetByScan(scanValue, assets);
@@ -388,6 +416,14 @@ export function CheckinCheckoutPage({
       if (!scanValue) {
         setScannerTarget('checkin');
         return false;
+      }
+
+      // Sammel-QR? → Mengen-Dialog statt Einzel-Asset-Buchung.
+      const groupToken = parseGroupScan(scanValue);
+      if (groupToken) {
+        setCheckinScan('');
+        await handleGroupToken(groupToken);
+        return true;
       }
 
       const asset = resolveAssetByScan(scanValue, assets);
@@ -1337,6 +1373,21 @@ export function CheckinCheckoutPage({
           title={scannerTarget === 'checkout' ? 'Ausgabe: QR scannen' : 'Rücknahme: QR scannen'}
           onDetected={onDetectedByCamera}
           onClose={() => setScannerTarget(null)}
+        />
+      ) : null}
+
+      {bulkGroup ? (
+        <BulkGroupDialog
+          group={bulkGroup}
+          initialMode={mode}
+          users={users}
+          defaultProject={projectContext}
+          onClose={() => setBulkGroup(null)}
+          onBooked={(result) => {
+            setBulkGroup(null);
+            setMessage({ kind: 'success', text: result.message });
+            void onReloadData?.();
+          }}
         />
       ) : null}
 
