@@ -135,6 +135,12 @@ type WmsPageViewProps = {
   }) => Promise<void>;
   onNavigate: (page: AppPage) => void;
   onOpenInventoryWithQuery: (query: string) => void;
+  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff).
+  onOpenInventoryWithStatus: (status: Asset['status'] | null) => void;
+  // Transienter Statusfilter, den AssetsPage beim Mount übernimmt und danach
+  // über onConsumeInventoryStatusFilter wieder leert.
+  inventoryStatusFilter?: Asset['status'] | 'Alle Status' | null;
+  onConsumeInventoryStatusFilter: () => void;
   isMobile?: boolean;
   // True solange der erste /api/wms/overview-Call noch läuft. Pages
   // verwenden das, um keine 0-Werte als Bestand anzuzeigen.
@@ -190,6 +196,9 @@ export function WmsPageView({
   onCheckinFromForm,
   onNavigate,
   onOpenInventoryWithQuery,
+  onOpenInventoryWithStatus,
+  inventoryStatusFilter,
+  onConsumeInventoryStatusFilter,
   isMobile = false,
   isInitialLoading = false,
 }: WmsPageViewProps) {
@@ -233,7 +242,10 @@ export function WmsPageView({
           maintenanceItems={maintenanceItems}
           planningSummary={planningSummary}
           theme={theme}
+          permissions={permissions}
+          activeRole={activeRole}
           onNavigate={onNavigate}
+          onOpenInventoryWithStatus={onOpenInventoryWithStatus}
           isInitialLoading={isInitialLoading}
         />
       );
@@ -267,6 +279,8 @@ export function WmsPageView({
           onNavigate={onNavigate}
           onOpenDetail={onOpenAssetDetail}
           initialSearch={search}
+          initialStatus={inventoryStatusFilter ?? undefined}
+          onInitialStatusConsumed={onConsumeInventoryStatusFilter}
           onCreateAsset={() => {
             void onCreateAsset();
           }}

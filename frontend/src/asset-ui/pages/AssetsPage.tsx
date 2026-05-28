@@ -16,6 +16,10 @@ type AssetsPageProps = {
   isMobile?: boolean;
   canManageAssets?: boolean;
   initialSearch?: string;
+  // Statusfilter für einen Deep-Link (z. B. Dashboard-Kachel). Wird einmalig
+  // als Startwert übernommen und über onInitialStatusConsumed wieder geleert.
+  initialStatus?: string;
+  onInitialStatusConsumed?: () => void;
   // True solange der erste Overview-Call noch läuft. Wenn true, zeigt die
   // Seite Skeleton-Platzhalter ("—") in den Statuskacheln an, statt
   // irreführend "0" auszugeben.
@@ -123,6 +127,8 @@ export function AssetsPage({
   isMobile = false,
   canManageAssets = true,
   initialSearch,
+  initialStatus,
+  onInitialStatusConsumed,
   isInitialLoading = false,
   onOpenDetail,
   onCreateAsset,
@@ -143,7 +149,7 @@ export function AssetsPage({
   const [search, setSearch] = useState(initialSearch ?? '');
   const [category, setCategory] = useState('Alle Kategorien');
   const [location, setLocation] = useState('Alle Standorte');
-  const [status, setStatus] = useState('Alle Status');
+  const [status, setStatus] = useState(initialStatus ?? 'Alle Status');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [onlyBroken, setOnlyBroken] = useState(false);
   const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
@@ -178,6 +184,14 @@ export function AssetsPage({
     cardPrinterCompatible: true,
     availableForPlanning: true,
   });
+
+  // Deep-Link-Status nur als Startwert nutzen und sofort im Controller leeren,
+  // damit ein späterer regulärer Inventar-Aufruf wieder "Alle Status" zeigt.
+  // Manuelle Statuswechsel des Nutzers bleiben davon unberührt.
+  useEffect(() => {
+    if (initialStatus) onInitialStatusConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const categories = ['Alle Kategorien', ...new Set(assets.map((asset) => asset.category))];
   const locations = ['Alle Standorte', ...new Set(assets.map((asset) => asset.location))];
