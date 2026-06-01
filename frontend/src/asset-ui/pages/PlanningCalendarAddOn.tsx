@@ -7,6 +7,7 @@ import type {
   PlanningResponse,
   PlanningStatus,
 } from '../../services/wmsApi';
+import { PlanningPeriod } from './planningPeriod';
 
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
 
@@ -447,7 +448,7 @@ export function PlanningCalendarAddOn({
                       {visual.label}
                     </span>
                   </div>
-                  <p className="mt-2 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
+                  <PlanningPeriod start={planning.startDate} end={planning.endDate} className="mt-2 text-xs" />
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     {demandText ? <span>{demandText}</span> : <span>Hardwarebedarf beim Öffnen sichtbar</span>}
                     {networkMeta ? (
@@ -521,7 +522,7 @@ export function PlanningCalendarAddOn({
                     </div>
                     <Calendar className="h-4 w-4 opacity-70 shrink-0" />
                   </div>
-                  <p className="mt-1 text-xs">{formatGermanDate(planning.startDate)} - {formatGermanDate(planning.endDate)}</p>
+                  <PlanningPeriod start={planning.startDate} end={planning.endDate} className="mt-1 text-xs" />
                   {/* Status-Badge in Statusfarbe (mobile) — auch hier
                       sichtbar in rot/blau/gelb/grün/grau. */}
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
