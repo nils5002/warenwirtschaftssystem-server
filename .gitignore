@@ -62,3 +62,12 @@ Hardwareplannung/
 .local-backups/
 .github
 actions-runner/
+
+# Local tooling / agent & audit artifacts (per-user, never commit)
+# Damit "git add ." nicht versehentlich lokale Werkzeug-Dateien oder grosse
+# Audit-Artefakte (Screenshots o. ae.) ins Repo zieht.
+.claude/settings.local.json
+.claude/skills/
+.agents/
+skills-lock.json
+artifacts/
