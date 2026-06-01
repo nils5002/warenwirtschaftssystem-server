@@ -176,6 +176,23 @@ class BackupQrCodeGroup(BaseModel):
     members: list[str] = Field(default_factory=list)
 
 
+class BackupHandoverExecution(BaseModel):
+    # Automatische Projektübergabe (Audit). Optional mit Defaults → Altbackups
+    # OHNE diese Collection bleiben importierbar.
+    id: str
+    batchId: str
+    assetId: str
+    category: str
+    sourcePlanningId: str
+    targetPlanningId: str
+    prevAssignedPlanningId: str | None = None
+    prevExpectedReturnDate: DateType | None = None
+    prevAssignedTo: str = "-"
+    prevNextReturn: str = "-"
+    executedByUserId: str | None = None
+    status: str = "active"
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -195,6 +212,9 @@ class WarehouseBackupPayload(BaseModel):
     # Sammel-QR-Gruppen: Default-Liste → Altbackups ohne diese Collection bleiben
     # gültig (keine Gruppen werden angelegt).
     qrCodeGroups: list[BackupQrCodeGroup] = Field(default_factory=list)
+    # Automatische Projektübergaben (Audit): Default-Liste → Altbackups ohne diese
+    # Collection bleiben gültig.
+    handoverExecutions: list[BackupHandoverExecution] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):

@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     wms_legacy_json_path: str = "app/data/wms_db.json"
     hardware_import_path: str = "/app/data/hardware_imports"
 
+    # Automatische Projektübergabe (Asset-Handover A→B). Der Hintergrund-Job führt
+    # fällige Übergaben selbstständig aus. In Tests/Dev per ENV abschaltbar
+    # (HANDOVER_AUTORUN_ENABLED=0), damit kein Background-Task die DB mutiert.
+    handover_autorun_enabled: bool = True
+    handover_autorun_interval_seconds: int = 3600
+
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
         env_file_encoding="utf-8",

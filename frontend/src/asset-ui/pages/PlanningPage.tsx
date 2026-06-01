@@ -20,10 +20,14 @@ import {
   getPlanning,
   getPlanningAvailability,
   getPlanningAssignedAssets,
+  getHandoverStatus,
+  runHandover,
+  undoHandover,
   listPlannings,
   updatePlanning,
   updatePlanningStatus,
   type ConflictBadge,
+  type HandoverStatusResponse,
   type PlanningAssignedAssetsResponse,
   type PlanningAvailabilityResponse,
   type PlanningConflictSeverity,
@@ -564,6 +568,8 @@ export function PlanningPage({
   const [availability, setAvailability] = useState<PlanningAvailabilityResponse | null>(null);
   // Schritt C: geplant vs. ausgegeben + zugeordnete Geräte (reine Anzeige).
   const [assignedAssets, setAssignedAssets] = useState<PlanningAssignedAssetsResponse | null>(null);
+  const [handoverStatus, setHandoverStatus] = useState<HandoverStatusResponse | null>(null);
+  const [handoverBusy, setHandoverBusy] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1368,11 +1374,12 @@ export function PlanningPage({
     if (!options?.silentBusy) setBusyState('open');
     setError(null);
     try {
-      const [planning, planningAvailability, planningAssigned] = await Promise.all([
+      const [planning, planningAvailability, planningAssigned, planningHandover] = await Promise.all([
         getPlanning(planningId),
         getPlanningAvailability(planningId),
         // Schritt C: darf den Detail-Load nicht blockieren → Fehler tolerieren.
         getPlanningAssignedAssets(planningId).catch(() => null),
+        getHandoverStatus(planningId).catch(() => null),
       ]);
       const editable = toEditablePlanning(planning);
       if (openPlanningRequestSeq.current !== requestSeq) return;
@@ -1380,6 +1387,7 @@ export function PlanningPage({
       setEditorInitial(cloneEditablePlanning(editable));
       setAvailability(planningAvailability);
       setAssignedAssets(planningAssigned);
+      setHandoverStatus(planningHandover);
       setPlanningListDetails((current) => ({ ...current, [planning.id]: planning }));
       setCalendarAvailabilitiesByPlanningId((current) => ({
         ...current,
@@ -1400,6 +1408,43 @@ export function PlanningPage({
       await onRefreshOverview?.();
     } catch {
       // Keep planning flows stable even if global overview refresh fails.
+    }
+  };
+
+  // Fallback/Notfall: stößt die (sonst automatische) Übergabe manuell an bzw.
+  // macht sie rückgängig. Standardweg ist der automatische Scheduler.
+  const runHandoverNow = async () => {
+    if (!editor || handoverBusy) return;
+    setHandoverBusy(true);
+    setError(null);
+    try {
+      const result = await runHandover(editor.id, true);
+      setHandoverStatus(await getHandoverStatus(editor.id).catch(() => null));
+      await openPlanning(editor.id, { silentBusy: true });
+      await refreshOverview();
+      if (result.transferredCount === 0) {
+        setError('Keine übergabefähigen Geräte gefunden (Konfiguration, Mengen oder Zeitpunkt prüfen).');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Übergabe konnte nicht ausgeführt werden.');
+    } finally {
+      setHandoverBusy(false);
+    }
+  };
+
+  const undoHandoverNow = async () => {
+    if (!editor || handoverBusy) return;
+    setHandoverBusy(true);
+    setError(null);
+    try {
+      await undoHandover(editor.id);
+      setHandoverStatus(await getHandoverStatus(editor.id).catch(() => null));
+      await openPlanning(editor.id, { silentBusy: true });
+      await refreshOverview();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Übergabe konnte nicht rückgängig gemacht werden.');
+    } finally {
+      setHandoverBusy(false);
     }
   };
 
@@ -1494,12 +1539,14 @@ export function PlanningPage({
     setError(null);
     try {
       const saved = await updatePlanning(planning.id, toUpsertPayload(planning));
-      const [freshPlanning, planningAvailability, planningAssigned] = await Promise.all([
+      const [freshPlanning, planningAvailability, planningAssigned, planningHandover] = await Promise.all([
         getPlanning(saved.id),
         getPlanningAvailability(saved.id),
         getPlanningAssignedAssets(saved.id).catch(() => null),
+        getHandoverStatus(saved.id).catch(() => null),
         loadPlannings(saved.id, { silentBusy: true }),
       ]);
+      setHandoverStatus(planningHandover);
       await refreshOverview();
       const savedEditor = toEditablePlanning(freshPlanning);
       setEditor(savedEditor);
@@ -1550,6 +1597,7 @@ export function PlanningPage({
     setEditorInitial(null);
     setAvailability(null);
     setAssignedAssets(null);
+    setHandoverStatus(null);
     setSelectedId('');
   };
 
@@ -1649,6 +1697,7 @@ export function PlanningPage({
         setEditor(null);
         setAvailability(null);
         setAssignedAssets(null);
+    setHandoverStatus(null);
       }
       setPlanningListDetails((current) => {
         if (!current[planningId]) return current;
@@ -3110,6 +3159,84 @@ export function PlanningPage({
                   })}
                 </div>
               </div>
+
+              {handoverStatus && handoverStatus.categories.some((c) => c.state !== 'not_applicable') ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-800 dark:bg-emerald-950/30">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-semibold text-slate-900 dark:text-slate-100">Automatische Projektübergabe</h4>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                        Geräte gehen automatisch direkt ins Folgeprojekt — kein Rücklauf ins Lager. Die Übergabe
+                        greift selbstständig zum Rückgabetag ({formatGermanDate(handoverStatus.sourceReturnDay)}).
+                      </p>
+                    </div>
+                    {handoverStatus.totalAlreadyTransferred > 0 ? (
+                      <span className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200">
+                        🟢 {handoverStatus.totalAlreadyTransferred} automatisch übergeben
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {handoverStatus.categories
+                      .filter((cat) => cat.state !== 'not_applicable')
+                      .map((cat) => {
+                        const meta =
+                          cat.state === 'executed'
+                            ? { label: 'Automatisch übergeben', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' }
+                            : cat.state === 'partially_executed'
+                              ? { label: 'Teilweise übergeben', cls: 'border-amber-200 bg-amber-50 text-amber-700' }
+                              : cat.state === 'due'
+                                ? { label: 'Übergabe fällig', cls: 'border-amber-200 bg-amber-50 text-amber-700' }
+                                : { label: 'Übergabe geplant', cls: 'border-sky-200 bg-sky-50 text-sky-700' };
+                        const done = cat.alreadyTransferredQty;
+                        const total = cat.plannedTotal;
+                        return (
+                          <div
+                            key={`ho-${cat.categoryKey}`}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-950"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{cat.categoryKey}</span>
+                              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}>
+                                {meta.label}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                              {done > 0 ? `${done} von ${total}` : `${total}`} {cat.categoryKey} → {cat.targetPlanningLabel ?? cat.targetPlanningId}
+                            </p>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {canEdit ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn-secondary px-2.5 py-1.5 text-xs"
+                        disabled={handoverBusy}
+                        onClick={() => void runHandoverNow()}
+                      >
+                        {handoverBusy ? 'Bitte warten …' : 'Jetzt ausführen (Fallback)'}
+                      </button>
+                      {handoverStatus.totalAlreadyTransferred > 0 ? (
+                        <button
+                          type="button"
+                          className="btn-secondary px-2.5 py-1.5 text-xs"
+                          disabled={handoverBusy}
+                          onClick={() => void undoHandoverNow()}
+                        >
+                          Rückgängig
+                        </button>
+                      ) : null}
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                        Notfallwerkzeug — normalerweise läuft die Übergabe automatisch.
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {assignedAssets ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">

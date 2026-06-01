@@ -1180,6 +1180,69 @@ export async function getPlanningAssignedAssets(planningId: string): Promise<Pla
   return parseResponse<PlanningAssignedAssetsResponse>(response);
 }
 
+// --- Automatische Projektübergabe (Asset-Handover A→B) ---
+export type HandoverCategoryState =
+  | "not_applicable"
+  | "planned"
+  | "due"
+  | "partially_executed"
+  | "executed";
+
+export type HandoverCategoryStatus = {
+  categoryKey: string;
+  targetPlanningId?: string | null;
+  targetPlanningLabel?: string | null;
+  issuedQty: number;
+  configuredQty: number;
+  targetDemand: number;
+  plannedTotal: number;
+  alreadyTransferredQty: number;
+  transferableQty: number;
+  state: HandoverCategoryState;
+  transferAssetIds: string[];
+};
+
+export type HandoverStatusResponse = {
+  planningId: string;
+  sourceReturnDay: string;
+  dueNow: boolean;
+  autoEligible: boolean;
+  totalTransferable: number;
+  totalAlreadyTransferred: number;
+  categories: HandoverCategoryStatus[];
+};
+
+export type HandoverRunResponse = {
+  planningId: string;
+  batchId?: string | null;
+  transferredCount: number;
+  transferred: { assetId: string; name: string; category: string; targetPlanningId: string }[];
+  skippedCount: number;
+};
+
+export type HandoverUndoResponse = {
+  planningId: string;
+  revertedCount: number;
+  skippedCount: number;
+};
+
+export async function getHandoverStatus(planningId: string): Promise<HandoverStatusResponse> {
+  const response = await apiFetch(`/api/wms/planning/${planningId}/handover/status`);
+  return parseResponse<HandoverStatusResponse>(response);
+}
+
+export async function runHandover(planningId: string, force = false): Promise<HandoverRunResponse> {
+  const response = await apiFetch(`/api/wms/planning/${planningId}/handover/run?force=${force ? "true" : "false"}`, {
+    method: "POST",
+  });
+  return parseResponse<HandoverRunResponse>(response);
+}
+
+export async function undoHandover(planningId: string): Promise<HandoverUndoResponse> {
+  const response = await apiFetch(`/api/wms/planning/${planningId}/handover/undo`, { method: "POST" });
+  return parseResponse<HandoverUndoResponse>(response);
+}
+
 // --- Schritt E: admin-pflegbare Update-Notes ---
 export type UpdateNote = {
   id: string;
