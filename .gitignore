@@ -21,6 +21,8 @@ __pycache__/
 
 # Logs / runtime artifacts
 *.log
+*.log.*
+backend/app/data/logs/
 *.out
 *.err
 npm-debug.log*
