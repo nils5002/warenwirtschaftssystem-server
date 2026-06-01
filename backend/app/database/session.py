@@ -131,6 +131,9 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("label_audit_scans", "corrected_at", "DATETIME"),
     ("label_audit_scans", "corrected_by_user_id", "VARCHAR(64)"),
     ("label_audit_scans", "correction_note", "VARCHAR(256)"),
+    # Rückgabe-Puffer je Planung. NOT NULL DEFAULT 0 → Altzeilen verhalten sich
+    # unverändert (Puffer 0 = bisheriges Verhalten).
+    ("planning", "return_buffer_days", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 
