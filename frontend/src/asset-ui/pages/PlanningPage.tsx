@@ -36,6 +36,15 @@ import {
 } from '../../services/wmsApi';
 import { categoryOptionsFromRecords, normalizeKnownCategory } from '../categories';
 import { conflictSeverityRank, conflictSeverityVisual } from './conflictSeverityVisuals';
+import {
+  PlanningPeriod,
+  formatEinsatz,
+  formatRueckgabe,
+  getBookedDayCount,
+  getReturnDayIso,
+  getStockFreeAgainIso,
+  isDateBooked,
+} from './planningPeriod';
 import type { Asset, CategoryItem, UserItem } from '../types';
 
 type PlanningPageProps = {
@@ -60,6 +69,7 @@ type EditablePlanning = {
   endDate: string;
   notes: string;
   status: PlanningStatus;
+  returnBufferDays: number;
   days: Array<{
     planningDate: string;
     weekday: string;
@@ -236,11 +246,6 @@ function getGermanWeekday(isoDate: string): string {
   return weekdays[date.getDay()] ?? 'Tag';
 }
 
-function formatPeriod(start: string, end: string): string {
-  if (!start && !end) return '-';
-  return `${start || '-'} bis ${end || '-'}`;
-}
-
 function formatGermanDate(isoDate: string): string {
   if (!isoDate) return '';
   const [year, month, day] = isoDate.split('-');
@@ -354,6 +359,7 @@ function toEditablePlanning(item: PlanningResponse): EditablePlanning {
     endDate: item.endDate,
     notes: item.notes,
     status: item.status === 'Bestaetigt' ? 'Bestätigt' : item.status,
+    returnBufferDays: Math.min(3, Math.max(0, Number(item.returnBufferDays ?? 0))),
     days: buildRangePlanningDays(item.startDate, normalizedDays),
   };
 }
@@ -380,6 +386,7 @@ function toUpsertPayload(item: EditablePlanning): PlanningUpsertPayload {
     endDate: item.endDate,
     notes: item.notes,
     status: item.status,
+    returnBufferDays: Math.min(3, Math.max(0, Number(item.returnBufferDays ?? 0))),
     days: item.days.map((day) => ({
       planningDate: day.planningDate,
       weekday: day.weekday || getGermanWeekday(day.planningDate),
@@ -586,6 +593,7 @@ export function PlanningPage({
     endDate: toIsoDate(new Date()),
     notes: '',
     status: 'Entwurf' as PlanningStatus,
+    returnBufferDays: 0,
   });
 
   const categoryOptions = useMemo(() => categoryOptionsFromRecords(categories), [categories]);
@@ -1583,6 +1591,7 @@ export function PlanningPage({
         endDate: createForm.endDate,
         notes: createForm.notes,
         status: createForm.status,
+        returnBufferDays: createForm.returnBufferDays,
         days: buildRangePlanningDays(createForm.startDate),
       });
       setCreateOpen(false);
@@ -1798,9 +1807,15 @@ export function PlanningPage({
   const todayIso = toIsoDate(new Date());
   const tomorrowIso = toIsoDate(new Date(Date.now() + 86400000));
   const weekEndIso = toIsoDate(new Date(Date.now() + 6 * 86400000));
-  const mobileToday = visiblePlannings.filter((item) => item.startDate <= todayIso && item.endDate >= todayIso);
-  const mobileTomorrow = visiblePlannings.filter((item) => item.startDate <= tomorrowIso && item.endDate >= tomorrowIso);
-  const mobileWeek = visiblePlannings.filter((item) => item.startDate <= weekEndIso && item.endDate >= todayIso);
+  // Enddatum ist exklusiv (= Rückgabetag, kein Einsatztag). Eine Planung gilt
+  // an einem Tag nur dann als aktiv, wenn dieser Tag belegt ist
+  // (start <= Tag < Rückgabetag) — sonst erschiene sie noch an ihrem
+  // Rückgabetag fälschlich unter "Heute".
+  const mobileToday = visiblePlannings.filter((item) => isDateBooked(todayIso, item.startDate, item.endDate));
+  const mobileTomorrow = visiblePlannings.filter((item) => isDateBooked(tomorrowIso, item.startDate, item.endDate));
+  const mobileWeek = visiblePlannings.filter(
+    (item) => item.startDate <= weekEndIso && getReturnDayIso(item.startDate, item.endDate) > todayIso,
+  );
   const busyMessage =
     busyState === 'list'
       ? 'Planungsliste wird geladen ...'
@@ -2048,7 +2063,13 @@ export function PlanningPage({
                 >
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{item.projectName}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    {formatPeriod(item.startDate, item.endDate)} · {item.status}
+                    Einsatz: {formatEinsatz(item.startDate, item.endDate)} · {item.status}
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Rückgabe: {formatRueckgabe(item.startDate, item.endDate)}
+                    {Number(item.returnBufferDays ?? 0) > 0
+                      ? ` · Puffer +${Math.min(3, Number(item.returnBufferDays))} · frei ab ${formatGermanDate(getStockFreeAgainIso(item.startDate, item.endDate, item.returnBufferDays))}`
+                      : ''}
                   </p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                     {handoverSummary ? 'Übergabe/Verbund aktiv' : 'Kein Verbund'}
@@ -2243,7 +2264,7 @@ export function PlanningPage({
                     </p>
                   ) : null}
 
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-300">{formatPeriod(item.startDate, item.endDate)}</p>
+                  <PlanningPeriod start={item.startDate} end={item.endDate} buffer={item.returnBufferDays} className="mt-2 text-xs text-slate-500 dark:text-slate-300" />
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
                     PM:{' '}
                     {item.projectManagerUserId
@@ -2462,6 +2483,34 @@ export function PlanningPage({
                         })
                       }
                     />
+                    <span className="mt-1 block text-xs font-normal text-slate-400 dark:text-slate-500">
+                      = Rückgabetag (kein Einsatztag)
+                    </span>
+                  </label>
+                  <label className="field">
+                    Rückgabe-Puffer
+                    <select
+                      className="field-input"
+                      value={editor.returnBufferDays}
+                      disabled={!canEdit}
+                      onChange={(event) =>
+                        patchEditor((current) => ({
+                          ...current,
+                          returnBufferDays: Math.min(3, Math.max(0, Number(event.target.value) || 0)),
+                        }))
+                      }
+                    >
+                      <option value={0}>0 Tage</option>
+                      <option value={1}>1 Tag</option>
+                      <option value={2}>2 Tage</option>
+                      <option value={3}>3 Tage</option>
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-slate-400 dark:text-slate-500">
+                      Blockiert den Bestand zusätzlich für Rücktransport, Abbau oder verspätete Rückgabe.
+                    </span>
+                    <span className="mt-1 block text-xs font-normal text-amber-600 dark:text-amber-300">
+                      Bestand wieder verfügbar: {formatGermanDate(getStockFreeAgainIso(editor.startDate, editor.endDate, editor.returnBufferDays))}
+                    </span>
                   </label>
                   <label className="field">
                     Status
@@ -2494,8 +2543,8 @@ export function PlanningPage({
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="surface-muted px-3 py-2.5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Zeitraumtage</p>
-                  <p className="mt-1 text-xl font-semibold text-slate-900">{editorStats.dayCount}</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Belegte Tage</p>
+                  <p className="mt-1 text-xl font-semibold text-slate-900">{getBookedDayCount(editor.startDate, editor.endDate)}</p>
                 </div>
                 <div className="surface-muted px-3 py-2.5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Gesamtbedarf</p>
@@ -2516,7 +2565,6 @@ export function PlanningPage({
                 <div className="soft-scrollbar max-h-[560px] space-y-3 overflow-y-auto pr-1">
                   {editor.days.map((day, dayIndex) => {
                     const dayTotal = day.items.reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0)), 0);
-                    const periodLabel = `${formatGermanDate(editor.startDate)} – ${formatGermanDate(editor.endDate)}`;
                     return (
                       <div
                         key={`${day.planningDate}-${dayIndex}`}
@@ -2525,9 +2573,7 @@ export function PlanningPage({
                       >
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div className="inline-flex items-center gap-2">
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
-                              {periodLabel}
-                            </span>
+                            <PlanningPeriod start={editor.startDate} end={editor.endDate} buffer={editor.returnBufferDays} variant="detail" />
                           </div>
                           <div className="inline-flex items-center gap-2">
                             <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600">
@@ -3613,6 +3659,33 @@ export function PlanningPage({
                   value={createForm.endDate}
                   onChange={(event) => setCreateForm((current) => ({ ...current, endDate: event.target.value }))}
                 />
+                <span className="mt-1 block text-xs font-normal text-slate-400 dark:text-slate-500">
+                  = Rückgabetag (kein Einsatztag)
+                </span>
+              </label>
+              <label className="field">
+                Rückgabe-Puffer
+                <select
+                  className="field-input"
+                  value={createForm.returnBufferDays}
+                  onChange={(event) =>
+                    setCreateForm((current) => ({
+                      ...current,
+                      returnBufferDays: Math.min(3, Math.max(0, Number(event.target.value) || 0)),
+                    }))
+                  }
+                >
+                  <option value={0}>0 Tage</option>
+                  <option value={1}>1 Tag</option>
+                  <option value={2}>2 Tage</option>
+                  <option value={3}>3 Tage</option>
+                </select>
+                <span className="mt-1 block text-xs font-normal text-slate-400 dark:text-slate-500">
+                  Blockiert den Bestand zusätzlich für Rücktransport, Abbau oder verspätete Rückgabe.
+                </span>
+                <span className="mt-1 block text-xs font-normal text-amber-600 dark:text-amber-300">
+                  Bestand wieder verfügbar: {formatGermanDate(getStockFreeAgainIso(createForm.startDate, createForm.endDate, createForm.returnBufferDays))}
+                </span>
               </label>
               <label className="field">
                 Status

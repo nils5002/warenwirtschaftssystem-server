@@ -196,6 +196,7 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "notes": planning.notes,
                     "status": planning.status,
                     "templateSourcePlanningId": planning.template_source_planning_id,
+                    "returnBufferDays": int(planning.return_buffer_days or 0),
                     "days": [
                         {
                             "planningDate": day.planning_date,
@@ -419,6 +420,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 notes=item.notes,
                 status=_normalize_planning_status(item.status),
                 template_source_planning_id=item.templateSourcePlanningId,
+                return_buffer_days=int(item.returnBufferDays or 0),
             )
             db.add(planning)
             db.flush()

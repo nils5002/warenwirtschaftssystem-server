@@ -39,6 +39,8 @@ class PlanningUpsertPayload(BaseModel):
     endDate: date
     notes: str = ""
     status: PlanningStatus = "Entwurf"
+    # Rückgabe-Puffer in Tagen (0-3). 0 = bisheriges Verhalten.
+    returnBufferDays: int = Field(default=0, ge=0, le=3)
     days: list[PlanningDayPayload] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -99,6 +101,7 @@ class PlanningResponse(BaseModel):
     notes: str
     status: PlanningStatus
     templateSourcePlanningId: str | None = None
+    returnBufferDays: int = 0
     createdAt: datetime
     updatedAt: datetime
     days: list[PlanningDayResponse] = Field(default_factory=list)
@@ -231,6 +234,7 @@ class PlanningListItem(BaseModel):
     endDate: date
     status: PlanningStatus
     updatedAt: datetime
+    returnBufferDays: int = 0
     handoverSummary: PlanningListHandoverSummary | None = None
     openConflictCount: int = 0
     missingItems: list[PlanningListMissingItem] = Field(default_factory=list)
