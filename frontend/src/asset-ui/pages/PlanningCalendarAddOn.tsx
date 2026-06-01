@@ -448,7 +448,7 @@ export function PlanningCalendarAddOn({
                       {visual.label}
                     </span>
                   </div>
-                  <PlanningPeriod start={planning.startDate} end={planning.endDate} className="mt-2 text-xs" />
+                  <PlanningPeriod start={planning.startDate} end={planning.endDate} buffer={planning.returnBufferDays} className="mt-2 text-xs" />
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     {demandText ? <span>{demandText}</span> : <span>Hardwarebedarf beim Öffnen sichtbar</span>}
                     {networkMeta ? (
@@ -522,7 +522,7 @@ export function PlanningCalendarAddOn({
                     </div>
                     <Calendar className="h-4 w-4 opacity-70 shrink-0" />
                   </div>
-                  <PlanningPeriod start={planning.startDate} end={planning.endDate} className="mt-1 text-xs" />
+                  <PlanningPeriod start={planning.startDate} end={planning.endDate} buffer={planning.returnBufferDays} className="mt-1 text-xs" />
                   {/* Status-Badge in Statusfarbe (mobile) — auch hier
                       sichtbar in rot/blau/gelb/grün/grau. */}
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">

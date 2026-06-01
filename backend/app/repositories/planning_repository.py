@@ -41,6 +41,11 @@ from ..schemas.planning import (
 # Keep both confirmed variants for legacy rows that may still contain umlauts.
 ACTIVE_PLANNING_STATUSES = {"Entwurf", "Geplant", "Bestaetigt", "Bestätigt"}
 
+# Obergrenze des Rückgabe-Puffers (siehe schemas/planning.PlanningUpsertPayload).
+# Wird genutzt, um den SQL-Overlap-Vorfilter konservativ um diese Tage zu weiten,
+# damit eine reine Puffer-Überlappung nicht stillschweigend übersehen wird.
+_MAX_RETURN_BUFFER_DAYS = 3
+
 
 def _to_conflict_badges(classification) -> list[ConflictBadge]:
     """Wandelt die Sekundaer-Badges einer Klassifikation ins Response-Schema."""
@@ -103,6 +108,7 @@ def _planning_to_list_item(
         endDate=record.end_date,
         status=_normalize_status(record.status),
         updatedAt=record.updated_at,
+        returnBufferDays=int(getattr(record, "return_buffer_days", 0) or 0),
         handoverSummary=handover_summary,
         openConflictCount=int(open_conflict_count),
         missingItems=list(missing_items or []),
@@ -401,9 +407,13 @@ def get_open_conflict_summaries_for_plannings(
     # Bestand pro (Datum, Kategorie). Fremdbestand wird nur an Tagen mitgezählt,
     # an denen er laut available_from / available_until / returned_at verfügbar
     # ist; Eigenbestand bleibt jeden Tag verfügbar.
+    # Inklusive Puffertage, damit der nutzbare Bestand auch an den durch einen
+    # Rückgabe-Puffer zusätzlich blockierten Tagen bekannt ist.
     bound_dates_for_active_plannings: set[date] = set()
     for record in all_active_records:
-        for bound_date in _iter_bound_dates(record.start_date, record.end_date):
+        for bound_date in _iter_blocking_dates(
+            record.start_date, record.end_date, getattr(record, "return_buffer_days", 0)
+        ):
             bound_dates_for_active_plannings.add(bound_date)
     stock_usable_by_day: dict[tuple[date, str], int] = defaultdict(int)
     # Zusätzlicher Counter: Laptops mit card_printer_compatible == True. Wird
@@ -499,6 +509,31 @@ def get_open_conflict_summaries_for_plannings(
     total_demand: dict[tuple[date, str], int] = defaultdict(int)
     for (ext_id, bound_date, category), qty in effective_qty.items():
         total_demand[(bound_date, category)] += qty
+
+    # Rückgabe-Puffer: blockiert den Pool zusätzlich an den Tagen NACH dem
+    # Rückgabetag. Es entsteht bewusst KEINE Eigenbedarfszeile (kein
+    # effective_qty) — nur total_demand wird auf den Puffertagen um die
+    # Spitzen-Tagesmenge (default_qty) der puffernden Planung erhöht. Dadurch
+    # treffen Konflikte an Puffertagen ausschließlich Folgeplanungen mit echtem
+    # Bedarf, nicht die puffernde Planung selbst. Spiegelt 1:1 die Erweiterung im
+    # Detailpfad (Overlap iteriert dort ebenfalls über _iter_blocking_dates).
+    for (ext_id, category), default_qty in max_qty_by_planning_category.items():
+        if default_qty <= 0:
+            continue
+        record = planning_records_by_external.get(ext_id)
+        if record is None:
+            continue
+        buffer_days = max(0, int(getattr(record, "return_buffer_days", 0) or 0))
+        if buffer_days <= 0:
+            continue
+        real_end_exclusive = _period_end_exclusive(record.start_date, record.end_date)
+        block_end_exclusive = _blocking_end_exclusive(
+            record.start_date, record.end_date, buffer_days
+        )
+        cursor = real_end_exclusive
+        while cursor < block_end_exclusive:
+            total_demand[(cursor, category)] += default_qty
+            cursor += timedelta(days=1)
 
     # Planungen, in denen mindestens ein Kartendrucker geplant ist. Für deren
     # Laptop-Bedarf gilt: nur Kartendrucker-kompatible Laptops zählen als
@@ -1183,6 +1218,7 @@ def _planning_to_response(
         notes=record.notes,
         status=_normalize_status(record.status),
         templateSourcePlanningId=record.template_source_planning_id,
+        returnBufferDays=int(getattr(record, "return_buffer_days", 0) or 0),
         createdAt=record.created_at,
         updatedAt=record.updated_at,
         days=day_responses,
@@ -1327,6 +1363,7 @@ def upsert_planning(db: Session, payload: PlanningUpsertPayload, planning_id: st
             end_date=payload.endDate,
             notes=payload.notes.strip(),
             status=_normalize_status(payload.status),
+            return_buffer_days=max(0, int(getattr(payload, "returnBufferDays", 0) or 0)),
         )
         db.add(planning)
         db.flush()
@@ -1342,6 +1379,7 @@ def upsert_planning(db: Session, payload: PlanningUpsertPayload, planning_id: st
         planning.end_date = payload.endDate
         planning.notes = payload.notes.strip()
         planning.status = _normalize_status(payload.status)
+        planning.return_buffer_days = max(0, int(getattr(payload, "returnBufferDays", 0) or 0))
 
     _upsert_days_and_items(db, planning.id, payload)
     db.commit()
@@ -1372,6 +1410,7 @@ def duplicate_planning(db: Session, planning_id: str) -> PlanningResponse | None
         endDate=source.endDate,
         notes=source.notes,
         status="Entwurf",
+        returnBufferDays=int(getattr(source, "returnBufferDays", 0) or 0),
         days=[
             {
                 "planningDate": day.planningDate,
@@ -1431,6 +1470,36 @@ def _iter_bound_dates(start_date: date, end_date: date) -> list[date]:
 
 def _date_in_bound_window(target: date, start_date: date, end_date: date) -> bool:
     return start_date <= target < _period_end_exclusive(start_date, end_date)
+
+
+def _blocking_end_exclusive(start_date: date, end_date: date, buffer_days: int | None) -> date:
+    """Exklusives Ende des Blockier-Fensters inkl. Rückgabe-Puffer.
+
+    Das normale Projektfenster ist und bleibt ``[start, _period_end_exclusive)``.
+    Der Rückgabe-Puffer verlängert AUSSCHLIESSLICH die Bestandsblockierung um
+    ``buffer_days`` Tage über den Rückgabetag hinaus (Rücktransport/Abbau/
+    verspätete Rückgabe). ``buffer_days`` <= 0 ⇒ identisch zum bisherigen
+    Verhalten (kein Puffer).
+    """
+    safe_buffer = max(0, int(buffer_days or 0))
+    return _period_end_exclusive(start_date, end_date) + timedelta(days=safe_buffer)
+
+
+def _iter_blocking_dates(start_date: date, end_date: date, buffer_days: int | None) -> list[date]:
+    """Alle Tage ``[start, _blocking_end_exclusive)`` — Einsatztage PLUS Puffertage.
+
+    Bei ``buffer_days`` <= 0 deckungsgleich mit ``_iter_bound_dates`` (Puffer 0 =
+    bisheriges Verhalten). Die Puffertage tragen in der Konkurrenzrechnung die
+    Spitzen-Tagesmenge der Planung (Default-Menge), erzeugen aber KEINE
+    Eigenbedarfszeile für die puffernde Planung selbst.
+    """
+    dates: list[date] = []
+    cursor = start_date
+    end_exclusive = _blocking_end_exclusive(start_date, end_date, buffer_days)
+    while cursor < end_exclusive:
+        dates.append(cursor)
+        cursor += timedelta(days=1)
+    return dates
 
 
 def _availability_state(requested_qty: int, remaining_qty: int) -> str:
@@ -1738,6 +1807,7 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
             PlanningRecord.external_id,
             PlanningRecord.start_date,
             PlanningRecord.end_date,
+            PlanningRecord.return_buffer_days,
             PlanningDayRecord.planning_date,
             PlanningItemRecord.category_key,
             PlanningItemRecord.qty,
@@ -1748,17 +1818,22 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         .where(PlanningRecord.status.in_(tuple(ACTIVE_PLANNING_STATUSES)))
         .where(PlanningRecord.start_date < _period_end_exclusive(planning.start_date, planning.end_date))
         # Include single-day plans where end_date == start_date so they participate in
-        # cross-project overlap calculations for that day.
-        .where(PlanningRecord.end_date >= planning.start_date)
+        # cross-project overlap calculations for that day. Der Vorfilter wird um den
+        # maximalen Rückgabe-Puffer geweitet, damit eine Planung, deren Blockier-
+        # Fenster erst per Puffer in diese Planung hineinreicht, nicht herausfällt;
+        # die exakte Eingrenzung erfolgt unten über _iter_blocking_dates.
+        .where(PlanningRecord.end_date >= planning.start_date - timedelta(days=_MAX_RETURN_BUFFER_DAYS))
     ).all()
     overlap_explicit_qty_map: dict[tuple[str, date, str], int] = defaultdict(int)
     overlap_default_qty_map: dict[tuple[str, str], int] = defaultdict(int)
     overlap_period_map: dict[str, tuple[date, date]] = {}
+    overlap_buffer_map: dict[str, int] = {}
     for row in overlap_items:
         other_id = str(row.external_id or "").strip()
         if not other_id:
             continue
         overlap_period_map[other_id] = (row.start_date, row.end_date)
+        overlap_buffer_map[other_id] = max(0, int(row.return_buffer_days or 0))
         category = category_repository.normalize_category_value(str(row.category_key), active_names)
         if category not in categories:
             continue
@@ -1784,7 +1859,11 @@ def get_planning_availability(db: Session, planning_id: str) -> PlanningAvailabi
         if start_end is None:
             continue
         other_start, other_end = start_end
-        for bound_date in _iter_bound_dates(other_start, other_end):
+        # Inkl. Puffertage: an Tagen NACH dem Rückgabetag der anderen Planung gibt
+        # es keinen expliziten Eintrag → es greift die Spitzen-Tagesmenge
+        # (default_qty), und _issued liefert dort 0. Damit blockiert der Puffer den
+        # Pool, ohne Schritt-B-Abzug — identisch zur Batch-Konfliktsummary.
+        for bound_date in _iter_blocking_dates(other_start, other_end, overlap_buffer_map.get(other_id, 0)):
             if bound_date not in bound_dates_set:
                 continue
             effective_qty = int(overlap_explicit_qty_map.get((other_id, bound_date, category), default_qty))
