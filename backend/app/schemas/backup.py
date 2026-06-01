@@ -137,6 +137,9 @@ class BackupPlanning(BaseModel):
     notes: str
     status: str
     templateSourcePlanningId: str | None = None
+    # Rückgabe-Puffer. Default 0 → Altbackups OHNE dieses Feld bleiben
+    # unverändert importierbar (Verhalten wie bisher).
+    returnBufferDays: int = 0
     days: list[BackupPlanningDay] = Field(default_factory=list)
 
 

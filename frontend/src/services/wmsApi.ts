@@ -184,6 +184,9 @@ export type PlanningUpsertPayload = {
   endDate: string;
   notes: string;
   status: PlanningStatus;
+  // Rückgabe-Puffer in Tagen (0-3). Blockiert den Bestand zusätzlich nach dem
+  // Projektende. Optional → ältere Clients/Payloads bleiben kompatibel (Default 0).
+  returnBufferDays?: number;
   days: PlanningDayPayload[];
 };
 
@@ -293,6 +296,7 @@ export type PlanningListItem = {
   endDate: string;
   status: PlanningStatus;
   updatedAt: string;
+  returnBufferDays?: number;
   handoverSummary?: {
     direction: "outgoing" | "incoming" | "mixed";
     partnerPlanningId?: string | null;
@@ -346,6 +350,7 @@ export type PlanningResponse = {
   notes: string;
   status: PlanningStatus;
   templateSourcePlanningId?: string | null;
+  returnBufferDays?: number;
   createdAt: string;
   updatedAt: string;
   days: PlanningDayResponse[];

@@ -46,6 +46,17 @@ export function getLastBookedDayIso(startIso: string, endIso: string): string {
   return addDaysIso(getReturnDayIso(startIso, endIso), -1);
 }
 
+function normalizeBuffer(buffer: number | null | undefined): number {
+  const n = Math.trunc(Number(buffer ?? 0));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(3, n);
+}
+
+/** Tag, ab dem der Bestand wieder verfügbar ist = Rückgabetag + Puffer. */
+export function getStockFreeAgainIso(startIso: string, endIso: string, buffer?: number | null): string {
+  return addDaysIso(getReturnDayIso(startIso, endIso), normalizeBuffer(buffer));
+}
+
 /** Anzahl belegter Tage = Tage in [start, returnDay). Immer >= 1 (defensiv). */
 export function getBookedDayCount(startIso: string, endIso: string): number {
   if (!startIso) return 0;
@@ -91,6 +102,8 @@ export function formatRueckgabe(startIso: string, endIso: string): string {
 type PlanningPeriodProps = {
   start: string;
   end: string;
+  /** Rückgabe-Puffer in Tagen (0-3). > 0 zeigt zusätzlich "frei ab …". */
+  buffer?: number | null;
   /** 'card' = zwei Zeilen (Liste/Kalender), 'detail' = inline-Pills im Badge. */
   variant?: 'card' | 'detail';
   className?: string;
@@ -100,10 +113,14 @@ type PlanningPeriodProps = {
  * Zeigt den Einsatzzeitraum getrennt nach belegten Tagen und Rückgabetag:
  *   Einsatz: 17.–18.06.2026 · 2 Tage
  *   Rückgabe: 19.06.2026
+ * Bei aktivem Rückgabe-Puffer zusätzlich der Tag, ab dem der Bestand wieder
+ * verfügbar ist (Rückgabetag + Puffer).
  */
-export function PlanningPeriod({ start, end, variant = 'card', className }: PlanningPeriodProps) {
+export function PlanningPeriod({ start, end, buffer, variant = 'card', className }: PlanningPeriodProps) {
   const einsatz = formatEinsatz(start, end);
   const rueckgabe = formatRueckgabe(start, end);
+  const bufferDays = normalizeBuffer(buffer);
+  const freeAgain = bufferDays > 0 ? formatGermanDate(getStockFreeAgainIso(start, end, bufferDays)) : '';
   if (variant === 'detail') {
     return (
       <span className={`inline-flex flex-wrap items-center gap-1.5 ${className ?? ''}`}>
@@ -113,13 +130,21 @@ export function PlanningPeriod({ start, end, variant = 'card', className }: Plan
         <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300">
           Rückgabe: {rueckgabe}
         </span>
+        {bufferDays > 0 ? (
+          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+            Puffer +{bufferDays} · frei ab {freeAgain}
+          </span>
+        ) : null}
       </span>
     );
   }
   return (
     <span className={`block ${className ?? ''}`}>
       <span className="block">Einsatz: {einsatz}</span>
-      <span className="block text-slate-400 dark:text-slate-500">Rückgabe: {rueckgabe}</span>
+      <span className="block text-slate-400 dark:text-slate-500">
+        Rückgabe: {rueckgabe}
+        {bufferDays > 0 ? ` · Puffer +${bufferDays} · frei ab ${freeAgain}` : ''}
+      </span>
     </span>
   );
 }

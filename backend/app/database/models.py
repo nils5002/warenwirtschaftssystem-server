@@ -206,6 +206,13 @@ class PlanningRecord(TimestampMixin, Base):
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="Entwurf", index=True)
     template_source_planning_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Rückgabe-Puffer (0-3 Tage). Verlängert AUSSCHLIESSLICH das Blockier-Fenster
+    # über den Rückgabetag hinaus (Rücktransport/Abbau/verspätete Rückgabe) — das
+    # normale Projektfenster [start, end) und der Eigenbedarf bleiben unverändert.
+    # Default 0 = exakt bisheriges Verhalten. Siehe planning_repository.
+    return_buffer_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
 
 class PlanningDayRecord(TimestampMixin, Base):
