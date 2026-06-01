@@ -7,7 +7,13 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from ..database.models import AssetRecord, PlanningDayRecord, PlanningItemRecord, PlanningRecord
+from ..database.models import (
+    AssetRecord,
+    HandoverExecutionRecord,
+    PlanningDayRecord,
+    PlanningItemRecord,
+    PlanningRecord,
+)
 from ..domain.categories import normalize_category_or_self
 from ..domain.conflict_classification import (
     ConflictCellFacts,
@@ -236,6 +242,44 @@ def _issued_assets_by_planning_day_category(
         for bound_date in _iter_bound_dates(start_date, end_date):
             if not _is_asset_usable_on_date(asset, bound_date):
                 issued[(ext_id, bound_date, category)] += 1
+
+    # Automatische Projektübergabe: ein A→B übergebenes Gerät ist jetzt B
+    # zugeordnet (oben für B's Tage gezählt). Es hat aber zuvor den Bedarf der
+    # QUELLE A erfüllt — daher wird es zusätzlich der Quelle A für DEREN Tage
+    # gutgeschrieben, damit eine Übergabe der Quelle keinen künstlichen Engpass
+    # beschert. A und B überschneiden sich zeitlich nicht (B.start >=
+    # A_Rückgabetag), also entsteht keine Doppelzählung.
+    handover_rows = db.scalars(
+        select(HandoverExecutionRecord).where(HandoverExecutionRecord.status == "active")
+    ).all()
+    if handover_rows:
+        wanted_ids = {
+            row.asset_external_id
+            for row in handover_rows
+            if row.source_planning_id in period_by_planning
+        }
+        asset_by_ext = (
+            {
+                a.external_id: a
+                for a in db.scalars(
+                    select(AssetRecord).where(AssetRecord.external_id.in_(tuple(wanted_ids)))
+                ).all()
+            }
+            if wanted_ids
+            else {}
+        )
+        for row in handover_rows:
+            period = period_by_planning.get(row.source_planning_id)
+            if period is None:
+                continue
+            asset = asset_by_ext.get(row.asset_external_id)
+            if asset is None:
+                continue
+            category = category_repository.normalize_category_value(asset.category, active_names)
+            start_date, end_date = period
+            for bound_date in _iter_bound_dates(start_date, end_date):
+                if not _is_asset_usable_on_date(asset, bound_date):
+                    issued[(row.source_planning_id, bound_date, category)] += 1
     return issued
 
 

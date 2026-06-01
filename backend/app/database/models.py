@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -451,3 +451,51 @@ class QrCodeGroupMemberRecord(Base):
         Integer, ForeignKey("qr_code_groups.id", ondelete="CASCADE"), nullable=False, index=True
     )
     asset_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+
+class HandoverExecutionRecord(TimestampMixin, Base):
+    """Audit-/Protokollzeile einer automatischen Projektübergabe (Asset A→B).
+
+    Eine Zeile je übergebenem Asset. Quelle der Wahrheit für die exakte
+    Wiederherstellung (Undo) und für die lückenlose Protokollierung. Es werden
+    nur Verweise gespeichert (Asset-/Planning-external_ids), kein harter FK —
+    konsistent mit ``assigned_planning_id`` / Activity-Referenzen.
+
+    Doppel-Ausführungs-Schutz: partieller Unique-Index auf ``asset_external_id``
+    nur für ``status='active'`` → höchstens EINE aktive Übergabe je Asset. Ein
+    konkurrierender Zweit-Insert (Race / mehrere Worker) schlägt mit
+    IntegrityError fehl und wird im Service übersprungen.
+    """
+
+    __tablename__ = "handover_executions"
+    __table_args__ = (
+        Index(
+            "uq_handover_active_per_asset",
+            "asset_external_id",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    # Execution-Kennung: gruppiert alle Transfers EINES Laufs (auto oder manuell).
+    batch_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    asset_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_planning_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target_planning_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # Vorwerte für exaktes Undo.
+    prev_assigned_planning_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prev_expected_return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    prev_assigned_to: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
+    prev_next_return: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # None = automatisch durch den Scheduler (System), sonst external_id des Admins.
+    executed_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    undone_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

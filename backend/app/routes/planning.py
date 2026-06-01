@@ -8,6 +8,12 @@ from sqlalchemy.orm import Session
 
 from ..database.session import get_db
 from ..routes.dependencies import AccessContext, get_access_context, require_roles
+from ..repositories import handover_repository
+from ..schemas.handover import (
+    HandoverRunResponse,
+    HandoverStatusResponse,
+    HandoverUndoResponse,
+)
 from ..schemas.planning import (
     PlanningAssignedAssetsResponse,
     PlanningAvailabilityResponse,
@@ -16,6 +22,7 @@ from ..schemas.planning import (
     PlanningStatusUpdatePayload,
     PlanningUpsertPayload,
 )
+from ..services import handover_service
 from ..services.planning_service import PlanningService
 
 router = APIRouter(prefix="/api/wms/planning", tags=["Planning"])
@@ -232,6 +239,55 @@ def get_planning_assigned_assets(
     if response is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     return response
+
+
+@router.get("/{planning_id}/handover/status", response_model=HandoverStatusResponse)
+def get_handover_status(
+    planning_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> HandoverStatusResponse:
+    # Rein lesend: Erkennung + Zustände der automatischen Übergabe (geplant /
+    # fällig / automatisch übergeben). Mutiert NICHTS.
+    _ensure_planning_read_access(context)
+    plan = handover_repository.compute_handover_plan(db, planning_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    return handover_repository.build_status_response(plan, today=date.today())
+
+
+@router.post("/{planning_id}/handover/run", response_model=HandoverRunResponse)
+def run_handover(
+    planning_id: str,
+    force: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> HandoverRunResponse:
+    # Fallback/Notfall: stößt die (sonst automatische) Übergabe für DIESE Planung
+    # manuell an. ``force`` überspringt nur die Timing-Schranke, nie die
+    # strukturelle Gültigkeit (B aktiv, B.start >= A_Rückgabetag).
+    require_roles(context, "admin", "projektmanager")
+    existing = PlanningService.get_planning(db, planning_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    _ensure_planning_write_access(context, existing)
+    return handover_service.run_due_handovers(
+        db, source_id=planning_id, force=force, actor_user_id=context.user_id
+    )
+
+
+@router.post("/{planning_id}/handover/undo", response_model=HandoverUndoResponse)
+def undo_handover(
+    planning_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> HandoverUndoResponse:
+    require_roles(context, "admin", "projektmanager")
+    existing = PlanningService.get_planning(db, planning_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    _ensure_planning_write_access(context, existing)
+    return handover_service.undo_handover(db, planning_id, actor_user_id=context.user_id)
 
 
 @router.delete("/{planning_id}")

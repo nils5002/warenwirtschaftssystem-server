@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import sys
 import time
@@ -241,6 +243,54 @@ def create_app() -> FastAPI:
                 # einer kontrollierten 401/403 vom Login-Endpoint. Fehler
                 # wird ausführlich geloggt; Operator kann nachsteuern.
                 logger.exception("Passwort-Initialisierung fehlgeschlagen — App startet trotzdem")
+
+    def _run_due_handovers_once() -> None:
+        # Lazy-Import vermeidet Import-Zyklen beim Modul-Load.
+        from .services import handover_service
+
+        with SessionLocal() as db:
+            result = handover_service.run_due_handovers(db)
+            if result.transferredCount:
+                logger.info(
+                    "Handover-Autorun: %s Asset(s) automatisch übergeben (batch %s)",
+                    result.transferredCount,
+                    result.batchId,
+                )
+
+    @app.on_event("startup")
+    async def _start_handover_scheduler() -> None:
+        """Kleiner, idempotenter Background-Scheduler für automatische Übergaben.
+
+        Mutiert NIE in einem Request-/Read-Pfad — er läuft als eigener
+        Background-Task. Per Setting abschaltbar (Tests/Dev). Crasht nie: jeder
+        Durchlauf ist in try/except gekapselt; die Idempotenz schützt vor
+        Doppelläufen (Restart/mehrere Worker).
+        """
+        if not settings.handover_autorun_enabled:
+            logger.info("Handover-Autorun deaktiviert (handover_autorun_enabled=False).")
+            return
+        interval = max(60, int(settings.handover_autorun_interval_seconds))
+
+        async def _loop() -> None:
+            while True:
+                try:
+                    await asyncio.sleep(interval)
+                    await asyncio.to_thread(_run_due_handovers_once)
+                except asyncio.CancelledError:
+                    break
+                except Exception:  # noqa: BLE001
+                    logger.exception("Handover-Autorun-Durchlauf fehlgeschlagen — Scheduler läuft weiter")
+
+        app.state.handover_task = asyncio.create_task(_loop())
+        logger.info("Handover-Autorun aktiv (Intervall %ss).", interval)
+
+    @app.on_event("shutdown")
+    async def _stop_handover_scheduler() -> None:
+        task = getattr(app.state, "handover_task", None)
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
 
     return app
 

@@ -16,6 +16,7 @@ from ..database.models import (
     PlanningDayRecord,
     PlanningItemRecord,
     PlanningRecord,
+    HandoverExecutionRecord,
     QrCodeGroupMemberRecord,
     QrCodeGroupRecord,
     ReservationRecord,
@@ -255,6 +256,25 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                 }
                 for group in qr_groups
             ],
+            "handoverExecutions": [
+                {
+                    "id": row.external_id,
+                    "batchId": row.batch_id,
+                    "assetId": row.asset_external_id,
+                    "category": row.category,
+                    "sourcePlanningId": row.source_planning_id,
+                    "targetPlanningId": row.target_planning_id,
+                    "prevAssignedPlanningId": row.prev_assigned_planning_id,
+                    "prevExpectedReturnDate": row.prev_expected_return_date,
+                    "prevAssignedTo": row.prev_assigned_to,
+                    "prevNextReturn": row.prev_next_return,
+                    "executedByUserId": row.executed_by_user_id,
+                    "status": row.status,
+                }
+                for row in db.scalars(
+                    select(HandoverExecutionRecord).order_by(HandoverExecutionRecord.executed_at.asc())
+                ).all()
+            ],
         }
     )
 
@@ -264,6 +284,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         raise HTTPException(status_code=400, detail=f"Nicht unterstützte Backup-Version: {payload.version}")
 
     try:
+        db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
         db.execute(delete(QrCodeGroupRecord))
         db.execute(delete(PlanningItemRecord))
@@ -503,6 +524,24 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     )
                 )
 
+        for item in payload.handoverExecutions:
+            db.add(
+                HandoverExecutionRecord(
+                    external_id=item.id,
+                    batch_id=item.batchId,
+                    asset_external_id=item.assetId,
+                    category=item.category,
+                    source_planning_id=item.sourcePlanningId,
+                    target_planning_id=item.targetPlanningId,
+                    prev_assigned_planning_id=item.prevAssignedPlanningId,
+                    prev_expected_return_date=item.prevExpectedReturnDate,
+                    prev_assigned_to=item.prevAssignedTo,
+                    prev_next_return=item.prevNextReturn,
+                    executed_by_user_id=item.executedByUserId,
+                    status=item.status,
+                )
+            )
+
         db.commit()
 
         # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
@@ -532,6 +571,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "updateNotes": len(payload.updateNotes),
             "rolePermissions": len(payload.rolePermissions),
             "qrCodeGroups": len(payload.qrCodeGroups),
+            "handoverExecutions": len(payload.handoverExecutions),
         }
     )
 
@@ -564,6 +604,7 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
             fallback.status = "Aktiv"
             preserved_admin_ids.add(fallback.id)
 
+        db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
         db.execute(delete(QrCodeGroupRecord))
         db.execute(delete(PlanningItemRecord))
