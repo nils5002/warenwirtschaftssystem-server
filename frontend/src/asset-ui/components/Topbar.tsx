@@ -38,6 +38,7 @@ const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
   labelAudit: ['System', 'Label-Prüfung'],
   updateNotes: ['System', 'Update-Notizen'],
   rolesPermissions: ['Verwaltung', 'Rollen & Rechte'],
+  telecomPass: ['Verwaltung', 'Telekompass'],
 };
 
 // Tailwind-Klassen für Icon-Buttons innerhalb der gruppierten Capsule rechts.

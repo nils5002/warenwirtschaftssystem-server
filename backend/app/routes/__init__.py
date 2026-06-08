@@ -12,6 +12,7 @@ from . import (
     planning,
     qr_groups,
     roles,
+    telecom_pass,
     update_notes,
     wms,
     wms_import,
@@ -38,3 +39,4 @@ api_router.include_router(update_notes.router)
 api_router.include_router(label_audit.router)
 api_router.include_router(qr_groups.router)
 api_router.include_router(roles.router)
+api_router.include_router(telecom_pass.router)

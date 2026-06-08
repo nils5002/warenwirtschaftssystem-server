@@ -33,7 +33,8 @@ export type AppPage =
   | 'backup'
   | 'users'
   | 'updateNotes'
-  | 'rolesPermissions';
+  | 'rolesPermissions'
+  | 'telecomPass';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 
@@ -93,6 +94,10 @@ export type Asset = {
   // Wird beim Checkout gesetzt (wenn ein Planungsprojekt gewählt wurde) und
   // beim Checkin serverseitig wieder geleert.
   assignedPlanningId?: string | null;
+  // Telekompass: kumulierte Buchungsanzahl (fachlich nur für LTE-Router). Wird
+  // ausschließlich über den Telekompass-Endpunkt gepflegt, nie über den
+  // generischen Asset-Upsert. Default 0.
+  telecomPassBookingCountTotal?: number;
 };
 
 // --- Label-Prüfung (serverseitige Audit-Prüfrunden) ---

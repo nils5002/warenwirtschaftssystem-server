@@ -70,6 +70,9 @@ class BackupAsset(BaseModel):
     # None → ältere Backups OHNE dieses Feld bleiben importierbar (keine
     # Verknüpfung, Verhalten wie Schritt A).
     assignedPlanningId: str | None = None
+    # Telekompass-Zähler. Default 0 → ältere Backups OHNE dieses Feld bleiben
+    # importierbar und starten bei 0.
+    telecomPassBookingCountTotal: int = 0
 
 
 class BackupActivity(BaseModel):
@@ -193,6 +196,27 @@ class BackupHandoverExecution(BaseModel):
     status: str = "active"
 
 
+class BackupSystemSetting(BaseModel):
+    # Globale Key/Value-Systemeinstellung (z. B. Telekompass-Preis). Optional mit
+    # Defaults → Altbackups OHNE diese Collection bleiben importierbar.
+    key: str
+    value: str = ""
+
+
+class BackupTelecomPassBooking(BaseModel):
+    # Telekompass-Verlaufseintrag. Optional mit Defaults → Altbackups OHNE diese
+    # Collection bleiben importierbar.
+    id: str
+    assetId: str
+    planningId: str | None = None
+    quantity: int = 0
+    unitPriceSnapshot: str = "0"
+    totalPriceSnapshot: str = "0"
+    kind: str = "booking"
+    idempotencyKey: str | None = None
+    createdByUserId: str | None = None
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -215,6 +239,10 @@ class WarehouseBackupPayload(BaseModel):
     # Automatische Projektübergaben (Audit): Default-Liste → Altbackups ohne diese
     # Collection bleiben gültig.
     handoverExecutions: list[BackupHandoverExecution] = Field(default_factory=list)
+    # Globale Systemeinstellungen (Key/Value, z. B. Telekompass-Preis).
+    systemSettings: list[BackupSystemSetting] = Field(default_factory=list)
+    # Telekompass-Verlauf (Buchungen/Korrekturen je Asset).
+    telecomPassBookings: list[BackupTelecomPassBooking] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):

@@ -173,6 +173,9 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         availableForPlanning=bool(getattr(record, "available_for_planning", True)),
         expectedReturnDate=getattr(record, "expected_return_date", None),
         assignedPlanningId=getattr(record, "assigned_planning_id", None),
+        telecomPassBookingCountTotal=int(
+            getattr(record, "telecom_pass_booking_count_total", 0) or 0
+        ),
     )
 
 
@@ -385,6 +388,9 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         "available_for_planning": bool(item.availableForPlanning),
         "expected_return_date": item.expectedReturnDate,
         "assigned_planning_id": item.assignedPlanningId,
+        # Bewusst NICHT enthalten: telecom_pass_booking_count_total. Der
+        # Telekompass-Zähler wird ausschließlich über telecom_pass_repository
+        # gepflegt — so kann ein Bearbeiten/Checkout den Wert nie überschreiben.
     }
     # Schritt A: erwartetes Rückgabedatum eines Eigengeräts strukturiert pflegen.
     # Beim Checkout (-> Verliehen) wird, falls die UI noch kein strukturiertes

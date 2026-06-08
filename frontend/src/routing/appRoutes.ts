@@ -16,6 +16,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   labelAudit: '/label-pruefung',
   updateNotes: '/update-notizen',
   rolesPermissions: '/rollen-rechte',
+  telecomPass: '/telekompass',
   assetDetail: '/inventar',
 };
 
@@ -68,6 +69,9 @@ const PATH_ALIASES: Record<string, AppPage> = {
   '/rollen-und-rechte': 'rolesPermissions',
   '/rollen': 'rolesPermissions',
   '/roles': 'rolesPermissions',
+
+  '/telekompass': 'telecomPass',
+  '/telecom-pass': 'telecomPass',
 };
 
 export function normalizePathname(pathname: string): string {

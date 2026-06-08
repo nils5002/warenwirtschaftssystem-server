@@ -134,6 +134,9 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Rückgabe-Puffer je Planung. NOT NULL DEFAULT 0 → Altzeilen verhalten sich
     # unverändert (Puffer 0 = bisheriges Verhalten).
     ("planning", "return_buffer_days", "INTEGER NOT NULL DEFAULT 0"),
+    # Telekompass: kumulierte Buchungsanzahl je Asset. NOT NULL DEFAULT 0 →
+    # bestehende Geräte starten bei 0, kein Datenmigrationsbedarf.
+    ("assets", "telecom_pass_booking_count_total", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 

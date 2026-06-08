@@ -21,6 +21,8 @@ from ..database.models import (
     QrCodeGroupRecord,
     ReservationRecord,
     RolePermissionRecord,
+    SystemSettingRecord,
+    TelecomPassBookingRecord,
     UpdateNoteRecord,
     UserRecord,
     HardwareImportRunRecord,
@@ -135,6 +137,10 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "expectedReturnDate": item.expected_return_date,
                     # Schritt B: Planungs-Zuordnung mit ausgeben.
                     "assignedPlanningId": item.assigned_planning_id,
+                    # Telekompass-Zähler mit ausgeben.
+                    "telecomPassBookingCountTotal": int(
+                        item.telecom_pass_booking_count_total or 0
+                    ),
                 }
                 for item in assets
             ],
@@ -275,6 +281,30 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     select(HandoverExecutionRecord).order_by(HandoverExecutionRecord.executed_at.asc())
                 ).all()
             ],
+            "systemSettings": [
+                {"key": row.key, "value": row.value}
+                for row in db.scalars(
+                    select(SystemSettingRecord).order_by(SystemSettingRecord.key.asc())
+                ).all()
+            ],
+            "telecomPassBookings": [
+                {
+                    "id": row.external_id,
+                    "assetId": row.asset_external_id,
+                    "planningId": row.planning_id,
+                    "quantity": int(row.quantity or 0),
+                    "unitPriceSnapshot": row.unit_price_snapshot,
+                    "totalPriceSnapshot": row.total_price_snapshot,
+                    "kind": row.kind,
+                    "idempotencyKey": row.idempotency_key,
+                    "createdByUserId": row.created_by_user_id,
+                }
+                for row in db.scalars(
+                    select(TelecomPassBookingRecord).order_by(
+                        TelecomPassBookingRecord.created_at.asc()
+                    )
+                ).all()
+            ],
         }
     )
 
@@ -284,6 +314,8 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         raise HTTPException(status_code=400, detail=f"Nicht unterstützte Backup-Version: {payload.version}")
 
     try:
+        db.execute(delete(TelecomPassBookingRecord))
+        db.execute(delete(SystemSettingRecord))
         db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
         db.execute(delete(QrCodeGroupRecord))
@@ -375,6 +407,11 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     # Schritt B: Planungs-Zuordnung beim Restore weitergeben.
                     # Default None hält Altbackups OHNE dieses Feld importierbar.
                     assigned_planning_id=item.assignedPlanningId,
+                    # Telekompass-Zähler beim Restore weitergeben. Default 0 hält
+                    # Altbackups OHNE dieses Feld importierbar.
+                    telecom_pass_booking_count_total=int(
+                        item.telecomPassBookingCountTotal or 0
+                    ),
                 )
             )
 
@@ -542,6 +579,33 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 )
             )
 
+        for item in payload.systemSettings:
+            db.add(SystemSettingRecord(key=item.key, value=item.value))
+
+        # Telekompass-Verlauf wiederherstellen. idempotency_key dedupliziert, damit
+        # ein doppelt vorhandener Key beim Restore keinen IntegrityError auslöst.
+        seen_idempotency_keys: set[str] = set()
+        for item in payload.telecomPassBookings:
+            key = item.idempotencyKey or None
+            if key is not None:
+                if key in seen_idempotency_keys:
+                    key = None
+                else:
+                    seen_idempotency_keys.add(key)
+            db.add(
+                TelecomPassBookingRecord(
+                    external_id=item.id,
+                    asset_external_id=item.assetId,
+                    planning_id=item.planningId,
+                    quantity=int(item.quantity or 0),
+                    unit_price_snapshot=item.unitPriceSnapshot or "0",
+                    total_price_snapshot=item.totalPriceSnapshot or "0",
+                    kind=item.kind or "booking",
+                    idempotency_key=key,
+                    created_by_user_id=item.createdByUserId,
+                )
+            )
+
         db.commit()
 
         # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
@@ -572,6 +636,8 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "rolePermissions": len(payload.rolePermissions),
             "qrCodeGroups": len(payload.qrCodeGroups),
             "handoverExecutions": len(payload.handoverExecutions),
+            "systemSettings": len(payload.systemSettings),
+            "telecomPassBookings": len(payload.telecomPassBookings),
         }
     )
 
@@ -604,6 +670,10 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
             fallback.status = "Aktiv"
             preserved_admin_ids.add(fallback.id)
 
+        # Telekompass-Verlauf hängt an Assets, die gleich geleert werden →
+        # mitlöschen. Die globale Preis-Einstellung (system_settings) bleibt als
+        # Konfiguration bewusst erhalten.
+        db.execute(delete(TelecomPassBookingRecord))
         db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
         db.execute(delete(QrCodeGroupRecord))

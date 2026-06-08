@@ -14,6 +14,7 @@ import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
+import { TelecomPassSettingsPage } from '../asset-ui/pages/TelecomPassSettingsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
 import type {
   ActivityItem,
@@ -462,6 +463,11 @@ export function WmsPageView({
         return <div className="surface-card p-6 text-sm text-slate-600">Rollen &amp; Rechte nur für Admin / Techniker.</div>;
       }
       return <RolesPermissionsPage />;
+    case 'telecomPass':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Telekompass-Einstellungen nur für Admin / Techniker.</div>;
+      }
+      return <TelecomPassSettingsPage />;
     case 'users':
       if (!isAdmin) {
         return <div className="surface-card p-6 text-sm text-slate-600">Benutzerverwaltung nur für Admin / Techniker.</div>;

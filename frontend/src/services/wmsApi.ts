@@ -722,6 +722,15 @@ async function postJson<T>(path: string, payload: unknown): Promise<T> {
   return parseResponse<T>(response);
 }
 
+async function putJson<T>(path: string, payload: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalizeOutbound(payload)),
+  });
+  return parseResponse<T>(response);
+}
+
 export async function fetchWmsOverview(signal?: AbortSignal): Promise<WmsOverview> {
   // Optionales AbortSignal: der Aufrufer kann einen noch laufenden
   // Overview-Request abbrechen, sobald ein neuer ihn ersetzt.
@@ -925,6 +934,65 @@ export function qrGroupCheckin(
 
 export function deactivateQrGroup(groupId: string): Promise<QrGroup> {
   return postJson<QrGroup>(`/api/wms/qr-groups/${encodeURIComponent(groupId)}/deactivate`, {});
+}
+
+// --- Telekompass (LTE-Router) ---
+export type TelecomPassSettings = {
+  unitPrice: number;
+};
+
+export type TelecomPassBookingItem = {
+  id: string;
+  assetId: string;
+  planningId?: string | null;
+  quantity: number;
+  unitPriceSnapshot: number;
+  totalPriceSnapshot: number;
+  kind: 'booking' | 'correction';
+  createdAt?: string | null;
+  createdByUserId?: string | null;
+};
+
+export type TelecomPassBookingResult = {
+  asset: Asset;
+  booking?: TelecomPassBookingItem | null;
+  duplicate: boolean;
+};
+
+export async function getTelecomPassSettings(): Promise<TelecomPassSettings> {
+  const response = await apiFetch('/api/wms/telecom-pass/settings');
+  return parseResponse<TelecomPassSettings>(response);
+}
+
+export function updateTelecomPassSettings(unitPrice: number): Promise<TelecomPassSettings> {
+  return putJson<TelecomPassSettings>('/api/wms/telecom-pass/settings', { unitPrice });
+}
+
+export function recordTelecomPassBooking(
+  assetId: string,
+  payload: { quantity: number; idempotencyKey?: string | null; planningId?: string | null },
+): Promise<TelecomPassBookingResult> {
+  return postJson<TelecomPassBookingResult>(
+    `/api/wms/assets/${encodeURIComponent(assetId)}/telecom-pass-booking`,
+    payload,
+  );
+}
+
+export async function listTelecomPassBookings(assetId: string): Promise<TelecomPassBookingItem[]> {
+  const response = await apiFetch(
+    `/api/wms/assets/${encodeURIComponent(assetId)}/telecom-pass-bookings`,
+  );
+  return parseResponse<TelecomPassBookingItem[]>(response);
+}
+
+export function correctTelecomPassCount(
+  assetId: string,
+  total: number,
+): Promise<TelecomPassBookingResult> {
+  return putJson<TelecomPassBookingResult>(
+    `/api/wms/assets/${encodeURIComponent(assetId)}/telecom-pass-count`,
+    { total },
+  );
 }
 
 // Holt die Kategorien-Stammdaten aus dem Backend (mit ids), damit das
