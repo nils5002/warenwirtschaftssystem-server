@@ -20,10 +20,10 @@ export const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
 export function legacyVisible(key: AppPage, role: AppRole): boolean {
   if (role === 'Admin') return true;
   if (role === 'Projektmanager') {
-    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'rolesPermissions'].includes(key);
+    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'rolesPermissions', 'telecomPass'].includes(key);
   }
   // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
-  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'rolesPermissions'].includes(key);
+  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'rolesPermissions', 'telecomPass'].includes(key);
 }
 
 // Kanonische "darf diese Rolle/dieser Nutzer Seite X sehen?"-Prüfung — exakt

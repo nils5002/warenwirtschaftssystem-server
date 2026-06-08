@@ -1,8 +1,14 @@
-import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Wrench } from 'lucide-react';
+import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
+import { getTelecomPassSettings } from '../../services/wmsApi';
 import type { ActivityItem, AppRole, Asset, MaintenanceItem } from '../types';
+
+function formatEuro(value: number): string {
+  return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
+}
 
 function trimActivityAssetPrefix(detail: string, assetName: string): string {
   const escaped = assetName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -45,6 +51,26 @@ export function AssetDetailPage({
   onUpdateMaintenanceStatus,
   onOpenInventoryWithQuery,
 }: AssetDetailPageProps) {
+  const isLteRouter = (asset?.category ?? '').trim().toLowerCase() === 'lte-router';
+  // Telekompass-Preis nur für LTE-Router laden (Kostenanzeige). null = nicht
+  // verfügbar/geladen → dann nur die Buchungsanzahl zeigen.
+  const [telecomUnitPrice, setTelecomUnitPrice] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isLteRouter) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await getTelecomPassSettings();
+        if (!cancelled) setTelecomUnitPrice(settings.unitPrice || 0);
+      } catch {
+        if (!cancelled) setTelecomUnitPrice(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLteRouter]);
+
   if (!asset) {
     return (
       <section className="surface-card animate-fade-up">
@@ -247,6 +273,40 @@ export function AssetDetailPage({
           </div>
         </div>
       </article>
+
+      {isLteRouter ? (
+        <article className="surface-card animate-fade-up">
+          <h3 className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">
+            <Signal className="h-4 w-4 text-brand-700" />
+            Telekompass
+          </h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Telekompass gesamt
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-900">
+                {asset.telecomPassBookingCountTotal ?? 0} Buchungen
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Aktueller Wert
+              </p>
+              <p className="mt-1 text-sm font-medium text-slate-900">
+                {telecomUnitPrice !== null
+                  ? formatEuro((asset.telecomPassBookingCountTotal ?? 0) * telecomUnitPrice)
+                  : '—'}
+              </p>
+              {telecomUnitPrice !== null ? (
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Basis: {formatEuro(telecomUnitPrice)} pro Buchung
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </article>
+      ) : null}
 
       <article className="surface-card animate-fade-up">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">

@@ -83,6 +83,11 @@ class AssetItem(BaseModel):
     # ohne Verknüpfung. Wird in der Availability-Berechnung als erfüllter Bedarf
     # der zugeordneten Planung verrechnet.
     assignedPlanningId: Optional[str] = None
+    # Telekompass: kumulierte Buchungsanzahl (fachlich nur für LTE-Router). Aus
+    # Sicht des generischen Upserts read-only — ein eingehender Wert wird beim
+    # Upsert IGNORIERT (Zähler-Schutz); gepflegt wird er nur über den
+    # Telekompass-Endpunkt. Default 0 = abwärtskompatibel.
+    telecomPassBookingCountTotal: int = 0
 
 
 class ExternalPoolCreatePayload(BaseModel):

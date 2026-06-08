@@ -11,6 +11,7 @@ import {
   Printer,
   Shapes,
   ShieldCheck,
+  Signal,
   Sparkles,
   TriangleAlert,
   UserCircle2,
@@ -123,5 +124,12 @@ export const navigation: NavItem[] = [
     icon: KeyRound,
     group: 'administration',
     hint: 'Berechtigungen pflegen',
+  },
+  {
+    key: 'telecomPass',
+    label: 'Telekompass',
+    icon: Signal,
+    group: 'administration',
+    hint: 'Preis pro Buchung',
   },
 ];

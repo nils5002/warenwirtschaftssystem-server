@@ -1,12 +1,37 @@
 import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
-import { listPlannings, resolveQrGroup, type PlanningListItem, type QrGroup } from '../../services/wmsApi';
+import {
+  getTelecomPassSettings,
+  listPlannings,
+  recordTelecomPassBooking,
+  resolveQrGroup,
+  type PlanningListItem,
+  type QrGroup,
+} from '../../services/wmsApi';
 import { parseGroupScan, resolveAssetByScan } from '../qr';
 import { BulkGroupDialog } from '../components/BulkGroupDialog';
 import { QrScannerDialog } from '../components/QrScannerDialog';
 import { StatusBadge } from '../components/StatusBadge';
+import { TelekompassReturnDialog, type TelekompassEntry } from '../components/TelekompassReturnDialog';
 import type { AppRole, Asset, UserItem } from '../types';
+
+// Robuste Erkennung eines LTE-Routers über die kanonische Kategorie. Das Backend
+// liefert die normalisierte Kategorie ("LTE-Router"), daher genügt der Vergleich.
+function isLteRouterCategory(category: string): boolean {
+  return category.trim().toLowerCase() === 'lte-router';
+}
+
+function genIdempotencyKey(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // ignore — Fallback unten
+  }
+  return `tpk-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
 
 type CheckinCheckoutPageProps = {
   assets: Asset[];
@@ -143,6 +168,15 @@ export function CheckinCheckoutPage({
   const [showAllCheckoutQueue, setShowAllCheckoutQueue] = useState(false);
   const [showAllCheckinQueue, setShowAllCheckinQueue] = useState(false);
 
+  // Telekompass: globaler Preis (für die Kostenanzeige im Dialog) + die LTE-Router
+  // der aktuellen Rücknahme, für die der Dialog noch offen ist.
+  const [telecomUnitPrice, setTelecomUnitPrice] = useState(0);
+  const [telecomDialogEntries, setTelecomDialogEntries] = useState<TelekompassEntry[]>([]);
+  // Stabile Idempotenz-Schlüssel je Asset, damit ein Retry nach Teil-Fehlern den
+  // Telekompass-Zähler NICHT doppelt erhöht. Wird nach erfolgreichem Checkin je
+  // Asset wieder geleert.
+  const telecomKeysRef = useRef<Record<string, string>>({});
+
   const checkoutScanRef = useRef<HTMLInputElement | null>(null);
   const checkoutRecipientRef = useRef<HTMLInputElement | null>(null);
   const checkoutProjectRef = useRef<HTMLInputElement | null>(null);
@@ -170,6 +204,18 @@ export function CheckinCheckoutPage({
         setPlanningProjects([]);
       } finally {
         setPlanningProjectsLoading(false);
+      }
+    })();
+  }, []);
+
+  // Telekompass-Preis einmalig laden (für die Kostenanzeige im Rückgabe-Dialog).
+  useEffect(() => {
+    void (async () => {
+      try {
+        const settings = await getTelecomPassSettings();
+        setTelecomUnitPrice(settings.unitPrice || 0);
+      } catch {
+        setTelecomUnitPrice(0);
       }
     })();
   }, []);
@@ -595,6 +641,23 @@ export function CheckinCheckoutPage({
       return;
     }
 
+    // Telekompass: sind LTE-Router in der Rücknahme, zuerst die Buchungsanzahl
+    // erfassen. Der Dialog ruft anschließend performCheckin mit den Anzahlen auf.
+    // Andere Kategorien sind davon nicht betroffen.
+    const lteEntries: TelekompassEntry[] = checkinQueue
+      .filter((entry) => isLteRouterCategory(entry.category))
+      .map((entry) => ({ assetId: entry.assetId, name: entry.name }));
+    if (lteEntries.length > 0) {
+      setTelecomDialogEntries(lteEntries);
+      return;
+    }
+
+    await performCheckin(null);
+  };
+
+  const performCheckin = async (telecomCounts: Record<string, number> | null) => {
+    if (checkinQueue.length === 0 || batchSubmitting === 'checkin') return;
+
     const explicitProject = checkinProject.trim();
     const normalizedCondition = checkinCondition.trim() || 'Zustand geprüft.';
     const total = checkinQueue.length;
@@ -621,12 +684,30 @@ export function CheckinCheckoutPage({
 
       const resolvedProject = explicitProject || entry.contextProject;
       try {
+        // Telekompass-Erfassung VOR der eigentlichen Rücknahme buchen. Der
+        // Idempotenz-Schlüssel je Asset verhindert Doppelzählung bei Retries.
+        if (telecomCounts && isLteRouterCategory(entry.category)) {
+          const quantity = telecomCounts[entry.assetId] ?? 0;
+          if (quantity > 0) {
+            const key =
+              telecomKeysRef.current[entry.assetId] ??
+              (telecomKeysRef.current[entry.assetId] = genIdempotencyKey());
+            try {
+              await recordTelecomPassBooking(entry.assetId, { quantity, idempotencyKey: key });
+            } catch {
+              throw new Error(
+                'Telekompass-Anzahl konnte nicht gespeichert werden. Rücknahme wurde nicht abgeschlossen.',
+              );
+            }
+          }
+        }
         await onCheckin({
           assetId: entry.assetId,
           condition: normalizedCondition,
           projectName: resolvedProject,
         });
         successIds.add(entry.assetId);
+        delete telecomKeysRef.current[entry.assetId];
       } catch (err) {
         const reason =
           err instanceof Error && err.message
@@ -1373,6 +1454,21 @@ export function CheckinCheckoutPage({
           title={scannerTarget === 'checkout' ? 'Ausgabe: QR scannen' : 'Rücknahme: QR scannen'}
           onDetected={onDetectedByCamera}
           onClose={() => setScannerTarget(null)}
+        />
+      ) : null}
+
+      {telecomDialogEntries.length > 0 ? (
+        <TelekompassReturnDialog
+          entries={telecomDialogEntries}
+          unitPrice={telecomUnitPrice}
+          busy={checkinBusy}
+          onCancel={() => setTelecomDialogEntries([])}
+          onConfirm={(counts) => {
+            void (async () => {
+              await performCheckin(counts);
+              setTelecomDialogEntries([]);
+            })();
+          }}
         />
       ) : null}
 

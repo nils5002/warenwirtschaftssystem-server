@@ -100,6 +100,17 @@ class AssetRecord(TimestampMixin, Base):
     # (Altbestand/Freitext-Projekt) → Verhalten wie Schritt A.
     assigned_planning_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
+    # Telekompass: kumulierte Anzahl erfasster Telekompass-Buchungen dieses
+    # Geräts. Fachlich nur für LTE-Router relevant, das Feld existiert aber an
+    # jedem Asset (Default 0 = abwärtskompatibel, kein Datenmigrationsbedarf).
+    # WICHTIG: Der Zähler wird AUSSCHLIESSLICH über den dedizierten Telekompass-
+    # Endpunkt (telecom_pass_repository) gepflegt — der generische Asset-Upsert
+    # rührt ihn nie an, damit ein Bearbeiten/Checkout den Zähler nicht
+    # versehentlich überschreibt oder zurücksetzt.
+    telecom_pass_booking_count_total: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+
 
 class ActivityRecord(TimestampMixin, Base):
     __tablename__ = "activities"
@@ -499,3 +510,55 @@ class HandoverExecutionRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="active", index=True)
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     undone_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class SystemSettingRecord(TimestampMixin, Base):
+    """Globale, admin-pflegbare Key/Value-Systemeinstellungen.
+
+    Generischer Key/Value-Store für einzelne globale Konfigurationswerte (z. B.
+    den Telekompass-Preis pro Buchung unter dem Key ``telecom_pass_unit_price``).
+    Werte werden als String gespeichert und beim Lesen typisiert interpretiert.
+    Fehlt ein Key, gilt der jeweilige Default im Service — Altinstallationen und
+    Backups ohne diesen Wert funktionieren damit unverändert weiter.
+    """
+
+    __tablename__ = "system_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class TelecomPassBookingRecord(Base):
+    """Verlaufseintrag der Telekompass-Erfassung bei einer LTE-Router-Rückgabe.
+
+    Eine Zeile je erfasster Telekompass-Menge zu einer Rückgabe (kind=``booking``)
+    bzw. je Admin-Korrektur des Zählers (kind=``correction``). Hält die Menge
+    sowie den Preis-Snapshot fest, damit nachvollziehbar bleibt, zu welchem Preis
+    und bei welcher Rückgabe gezählt wurde. Verweist nur über
+    ``asset_external_id`` (kein harter FK — konsistent mit anderen Referenzen).
+
+    Idempotenz: ``idempotency_key`` ist — sofern gesetzt — eindeutig. Ein erneut
+    gesendeter Rückgabe-Request mit demselben Key erhöht den Zähler NICHT erneut
+    (Schutz vor Doppel-Submits/Retries). Admin-Korrekturen lassen den Key leer.
+    """
+
+    __tablename__ = "telecom_pass_bookings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    asset_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # Optionaler Planungsbezug (PlanningRecord.external_id) der Rückgabe.
+    planning_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Preis-Snapshots als String (dezimalgenau, unabhängig von Float-Rundung).
+    unit_price_snapshot: Mapped[str] = mapped_column(String(32), nullable=False, default="0")
+    total_price_snapshot: Mapped[str] = mapped_column(String(32), nullable=False, default="0")
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, default="booking", index=True)
+    idempotency_key: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
