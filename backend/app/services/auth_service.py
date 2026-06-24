@@ -26,6 +26,13 @@ logger = logging.getLogger("cloud_web.auth")
 # Kürzere Gültigkeit begrenzt das Zeitfenster eines abgegriffenen Tokens,
 # ohne dass dafür eine Refresh-Token-Architektur nötig wäre.
 AUTH_TOKEN_EXPIRY_SECONDS = 60 * 60 * 2
+# Lebensdauer des Mobile-Refresh-Tokens (Mobile-API für die iPhone-App).
+# Der kurzlebige Access-Token (oben) wird über diesen Refresh-Token still
+# erneuert; der Refresh-Token ist serverseitig über die token_version des
+# Benutzers widerrufbar (Logout/Passwort-/Rollenwechsel) und wird bei jedem
+# Refresh rotiert. Nur für den separaten Mobile-Flow — der Web-Login bleibt
+# unverändert (reiner Access-Token im Cookie/Body).
+AUTH_REFRESH_TOKEN_EXPIRY_SECONDS = 60 * 60 * 24 * 30  # 30 Tage
 pwd_context = CryptContext(schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
 
 ROLE_ADMIN = "admin"
@@ -190,6 +197,19 @@ def _auth_secret() -> str:
     return settings.auth_token_secret
 
 
+def _sign_token_payload(payload: dict) -> str:
+    """Serialisiert + signiert eine Token-Payload (HMAC-SHA256, base64url).
+
+    Gemeinsame Low-Level-Routine für Access- und Refresh-Token, damit beide
+    exakt dasselbe Signaturverfahren und Format ``<payload>.<signature>`` nutzen.
+    """
+    payload_raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    payload_part = _urlsafe_b64encode(payload_raw)
+    signature = hmac.new(_auth_secret().encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256).digest()
+    signature_part = _urlsafe_b64encode(signature)
+    return f"{payload_part}.{signature_part}"
+
+
 def issue_access_token(
     user: AuthUserInfo,
     *,
@@ -206,14 +226,40 @@ def issue_access_token(
         # Invalidierung. Der Token gilt nur, solange "tv" zur token_version
         # des Benutzers in der DB passt.
         "tv": int(token_version),
+        # Token-Art. Rückwärtskompatibel: bestehende Tokens ohne "typ" gelten
+        # weiterhin als Access-Token (siehe _is_refresh_payload). Dadurch bleibt
+        # der unveränderte Web-Login-Flow gültig.
+        "typ": "access",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
     }
-    payload_raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
-    payload_part = _urlsafe_b64encode(payload_raw)
-    signature = hmac.new(_auth_secret().encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256).digest()
-    signature_part = _urlsafe_b64encode(signature)
-    return f"{payload_part}.{signature_part}"
+    return _sign_token_payload(payload)
+
+
+def issue_refresh_token(
+    user: AuthUserInfo,
+    *,
+    token_version: int = 0,
+    expires_in: int = AUTH_REFRESH_TOKEN_EXPIRY_SECONDS,
+) -> str:
+    """Stellt einen langlebigen Refresh-Token für den Mobile-Flow aus.
+
+    Gleiches Signaturverfahren wie der Access-Token, aber ``typ == "refresh"``.
+    Trägt dieselbe ``token_version`` — damit widerruft jeder token_version-Bump
+    (Logout/Passwort-/Rollenwechsel/Deaktivierung) auch den Refresh-Token sofort.
+    """
+    now = datetime.now(UTC)
+    payload = {
+        "sub": user.userId,
+        "role": normalize_role_for_db(user.role),
+        "name": user.name,
+        "email": user.email,
+        "tv": int(token_version),
+        "typ": "refresh",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
+    }
+    return _sign_token_payload(payload)
 
 
 def _decode_token_payload(token: str) -> dict:
@@ -272,16 +318,16 @@ def _coerce_token_version(value: object) -> int:
         return 0
 
 
-def authenticate_token(db: Session, token: str) -> AuthUserInfo:
-    """Vollstaendige Token-Pruefung inkl. serverseitiger token_version.
+def _is_refresh_payload(payload: dict) -> bool:
+    """True, wenn die Payload ein Refresh-Token ist.
 
-    Zusaetzlich zu Signatur/Ablauf wird geprueft, ob der Benutzer noch
-    existiert, aktiv ist und ob die im Token eingebettete token_version noch
-    zur DB passt. Bei Logout, Passwortwechsel, Rollenwechsel oder
-    Deaktivierung wird die token_version erhoeht — alte Tokens werden damit
-    sofort ungueltig.
+    Rückwärtskompatibel: fehlendes ``typ`` (Alt-/Web-Tokens) gilt als Access.
     """
-    payload = _decode_token_payload(token)
+    return str(payload.get("typ", "access")).strip().lower() == "refresh"
+
+
+def _authenticated_user_from_payload(db: Session, payload: dict) -> UserRecord:
+    """Prüft Benutzer-Existenz/Aktivität + token_version anhand einer Payload."""
     external_id = str(payload.get("sub", "")).strip()
     user = (
         db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
@@ -298,12 +344,53 @@ def authenticate_token(db: Session, token: str) -> AuthUserInfo:
             status_code=401,
             detail="Sitzung ist nicht mehr gültig. Bitte erneut anmelden.",
         )
+    return user
+
+
+def authenticate_token(db: Session, token: str) -> AuthUserInfo:
+    """Vollstaendige Token-Pruefung inkl. serverseitiger token_version.
+
+    Zusaetzlich zu Signatur/Ablauf wird geprueft, ob der Benutzer noch
+    existiert, aktiv ist und ob die im Token eingebettete token_version noch
+    zur DB passt. Bei Logout, Passwortwechsel, Rollenwechsel oder
+    Deaktivierung wird die token_version erhoeht — alte Tokens werden damit
+    sofort ungueltig.
+
+    Ein Refresh-Token (``typ == "refresh"``) wird hier bewusst abgelehnt — er
+    darf ausschließlich über ``/auth/refresh`` (``authenticate_refresh_token``)
+    eingelöst, nie als Bearer-Access-Token verwendet werden.
+    """
+    payload = _decode_token_payload(token)
+    if _is_refresh_payload(payload):
+        raise HTTPException(status_code=401, detail="Ungültiger Auth-Token.")
+    user = _authenticated_user_from_payload(db, payload)
     return AuthUserInfo(
         userId=user.external_id,
         name=user.name,
         email=user.email,
         role=normalize_user_role(user.role),
     )
+
+
+def authenticate_refresh_token(db: Session, token: str) -> tuple[AuthUserInfo, int]:
+    """Vollprüfung eines Mobile-Refresh-Tokens (Signatur, Ablauf, token_version).
+
+    Verlangt ``typ == "refresh"``; ein als Refresh missbrauchter Access-Token
+    wird mit 401 abgelehnt. Liefert ``(AuthUserInfo, token_version)`` analog zu
+    ``authenticate_user`` — auf dieser Basis stellt der Aufrufer einen frischen
+    Access- und (rotierten) Refresh-Token aus.
+    """
+    payload = _decode_token_payload(token)
+    if not _is_refresh_payload(payload):
+        raise HTTPException(status_code=401, detail="Ungültiger Refresh-Token.")
+    user = _authenticated_user_from_payload(db, payload)
+    info = AuthUserInfo(
+        userId=user.external_id,
+        name=user.name,
+        email=user.email,
+        role=normalize_user_role(user.role),
+    )
+    return info, int(user.token_version or 0)
 
 
 def invalidate_sessions(db: Session, external_id: str) -> None:
