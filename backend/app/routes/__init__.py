@@ -9,6 +9,7 @@ from . import (
     defaults,
     health,
     label_audit,
+    mobile,
     planning,
     qr_groups,
     roles,
@@ -40,3 +41,4 @@ api_router.include_router(label_audit.router)
 api_router.include_router(qr_groups.router)
 api_router.include_router(roles.router)
 api_router.include_router(telecom_pass.router)
+api_router.include_router(mobile.router)
