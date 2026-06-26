@@ -74,11 +74,8 @@ export function AssetMatchPickerDialog({ title, query, matches, onSelect, onClos
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {asset.tagNumber || asset.name}
+                    {asset.name || asset.tagNumber}
                   </p>
-                  {asset.name && asset.name !== asset.tagNumber ? (
-                    <p className="truncate text-xs text-slate-600 dark:text-slate-300">{asset.name}</p>
-                  ) : null}
                   {subtitle ? (
                     <p className="truncate text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
                   ) : null}
