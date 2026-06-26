@@ -9,7 +9,8 @@ import {
   type PlanningListItem,
   type QrGroup,
 } from '../../services/wmsApi';
-import { parseGroupScan, resolveAssetByScan } from '../qr';
+import { parseGroupScan, resolveAssetByScan, searchAssets } from '../qr';
+import { AssetMatchPickerDialog } from '../components/AssetMatchPickerDialog';
 import { BulkGroupDialog } from '../components/BulkGroupDialog';
 import { QrScannerDialog } from '../components/QrScannerDialog';
 import { StatusBadge } from '../components/StatusBadge';
@@ -140,6 +141,9 @@ export function CheckinCheckoutPage({
   const [lastProject, setLastProject] = useState('');
 
   const [scannerTarget, setScannerTarget] = useState<Mode | null>(null);
+  // Mehrfachtreffer der toleranten manuellen Suche: Auswahl-Dialog statt
+  // automatischer (potenziell falscher) Buchung.
+  const [assetPicker, setAssetPicker] = useState<{ mode: Mode; query: string; assets: Asset[] } | null>(null);
   // Sammel-QR: erkannte Gruppe + Modus für den Mengen-Dialog.
   const [bulkGroup, setBulkGroup] = useState<QrGroup | null>(null);
   const [showCheckoutOptions, setShowCheckoutOptions] = useState(false);
@@ -370,6 +374,65 @@ export function CheckinCheckoutPage({
     }
   };
 
+  // Übernimmt ein konkret bestimmtes Asset in die Ausgabe-Liste (inkl.
+  // Statusprüfung). Wird sowohl vom Scan-Flow (exakter / eindeutiger Treffer)
+  // als auch nach Auswahl im Mehrfachtreffer-Dialog genutzt.
+  const enqueueCheckoutAsset = (asset: Asset): boolean => {
+    // Bereits in der Zwischenablage?
+    if (checkoutQueue.some((entry) => entry.assetId === asset.id)) {
+      setMessage({
+        kind: 'info',
+        text: `${getDisplayAssetName(asset)} ist bereits in der Scan-Liste.`,
+      });
+      setCheckoutScan('');
+      focusElement(checkoutScanRef.current);
+      return true;
+    }
+
+    if (asset.status === 'Verliehen') {
+      setMessage({
+        kind: 'error',
+        text: `Gerät ist bereits verliehen an ${asset.assignedTo}.`,
+      });
+      focusElement(checkoutScanRef.current);
+      return true;
+    }
+
+    if (asset.status !== 'Verfügbar') {
+      setMessage({
+        kind: 'error',
+        text: `Gerät kann derzeit nicht ausgegeben werden (Status: ${asset.status}).`,
+      });
+      focusElement(checkoutScanRef.current);
+      return true;
+    }
+
+    // Validiert → in die Scan-Liste übernehmen.
+    const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
+    if (parsedProject && !checkoutProject.trim()) {
+      setCheckoutProject(parsedProject);
+    }
+    const displayName = getDisplayAssetName(asset);
+    setCheckoutQueue((prev) => [
+      ...prev,
+      {
+        assetId: asset.id,
+        name: displayName,
+        category: asset.category,
+        status: asset.status,
+        contextProject: parsedProject,
+        assignedTo: asset.assignedTo,
+      },
+    ]);
+    setCheckoutAssetId(asset.id);
+    setCurrentCheckoutAssetId(asset.id);
+    setCheckoutScan('');
+    setLastBatchFailures([]);
+    setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
+    focusElement(checkoutScanRef.current);
+    return true;
+  };
+
   const applyCheckoutScan = async (rawScan?: string): Promise<boolean> => {
     setScanBusyMode('checkout');
     const scanValue = (rawScan ?? checkoutScan).trim();
@@ -387,72 +450,86 @@ export function CheckinCheckoutPage({
         return true;
       }
 
-      const asset = resolveAssetByScan(scanValue, assets);
-      if (!asset) {
+      // 1) Exakter Treffer (Kamera-Scan / exakte QR/Inventarnummer) → sofort übernehmen.
+      const exact = resolveAssetByScan(scanValue, assets);
+      if (exact) {
+        return enqueueCheckoutAsset(exact);
+      }
+
+      // 2) Tolerante Suche (Teiltreffer, Groß-/Kleinschreibung, Leerzeichen/Bindestriche).
+      const matches = searchAssets(scanValue, assets, 10);
+      if (matches.length === 0) {
         setMessage({
           kind: 'error',
-          text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
+          text: 'Kein passendes Gerät gefunden. Bitte Inventarnummer prüfen oder QR-Code scannen.',
         });
         focusElement(checkoutScanRef.current);
         return false;
       }
-
-      // Bereits in der Zwischenablage?
-      if (checkoutQueue.some((entry) => entry.assetId === asset.id)) {
-        setMessage({
-          kind: 'info',
-          text: `${getDisplayAssetName(asset)} ist bereits in der Scan-Liste.`,
-        });
-        setCheckoutScan('');
-        focusElement(checkoutScanRef.current);
-        return true;
+      if (matches.length === 1) {
+        return enqueueCheckoutAsset(matches[0]);
       }
 
-      if (asset.status === 'Verliehen') {
-        setMessage({
-          kind: 'error',
-          text: `Gerät ist bereits verliehen an ${asset.assignedTo}.`,
-        });
-        focusElement(checkoutScanRef.current);
-        return true;
-      }
-
-      if (asset.status !== 'Verfügbar') {
-        setMessage({
-          kind: 'error',
-          text: `Gerät kann derzeit nicht ausgegeben werden (Status: ${asset.status}).`,
-        });
-        focusElement(checkoutScanRef.current);
-        return true;
-      }
-
-      // Validiert → in die Scan-Liste übernehmen.
-      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
-      if (parsedProject && !checkoutProject.trim()) {
-        setCheckoutProject(parsedProject);
-      }
-      const displayName = getDisplayAssetName(asset);
-      setCheckoutQueue((prev) => [
-        ...prev,
-        {
-          assetId: asset.id,
-          name: displayName,
-          category: asset.category,
-          status: asset.status,
-          contextProject: parsedProject,
-          assignedTo: asset.assignedTo,
-        },
-      ]);
-      setCheckoutAssetId(asset.id);
-      setCurrentCheckoutAssetId(asset.id);
-      setCheckoutScan('');
-      setLastBatchFailures([]);
-      setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
-      focusElement(checkoutScanRef.current);
-      return true;
+      // 3) Mehrere Treffer → Auswahl-Dialog (keine automatische Buchung).
+      setAssetPicker({ mode: 'checkout', query: scanValue, assets: matches });
+      return false;
     } finally {
       setScanBusyMode((current) => (current === 'checkout' ? null : current));
     }
+  };
+
+  // Übernimmt ein konkret bestimmtes Asset in die Rücknahme-Liste (inkl.
+  // Statusprüfung). Genutzt vom Scan-Flow und nach Auswahl im Mehrfachtreffer-Dialog.
+  const enqueueCheckinAsset = (asset: Asset): boolean => {
+    // Bereits in der Rücknahme-Liste?
+    if (checkinQueue.some((entry) => entry.assetId === asset.id)) {
+      setMessage({
+        kind: 'info',
+        text: `${getDisplayAssetName(asset)} ist bereits in der Rücknahme-Liste.`,
+      });
+      setCheckinScan('');
+      focusElement(checkinScanRef.current);
+      return true;
+    }
+
+    if (asset.status === 'Verfügbar') {
+      setMessage({
+        kind: 'error',
+        text: 'Dieses Gerät ist bereits verfügbar und wurde schon zurückgenommen.',
+      });
+      focusElement(checkinScanRef.current);
+      return true;
+    }
+
+    if (asset.status !== 'Verliehen') {
+      setMessage({
+        kind: 'error',
+        text: `Rücknahme nicht möglich. Gerät ist aktuell im Status "${asset.status}".`,
+      });
+      focusElement(checkinScanRef.current);
+      return true;
+    }
+
+    const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
+    const displayName = getDisplayAssetName(asset);
+    setCheckinQueue((prev) => [
+      ...prev,
+      {
+        assetId: asset.id,
+        name: displayName,
+        category: asset.category,
+        status: asset.status,
+        contextProject: parsedProject,
+        assignedTo: asset.assignedTo,
+      },
+    ]);
+    setCheckinAssetId(asset.id);
+    setCurrentCheckinAssetId(asset.id);
+    setCheckinScan('');
+    setLastBatchFailures([]);
+    setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
+    focusElement(checkinScanRef.current);
+    return true;
   };
 
   const applyCheckinScan = async (rawScan?: string): Promise<boolean> => {
@@ -472,65 +549,29 @@ export function CheckinCheckoutPage({
         return true;
       }
 
-      const asset = resolveAssetByScan(scanValue, assets);
-      if (!asset) {
+      // 1) Exakter Treffer (Kamera-Scan / exakte QR/Inventarnummer) → sofort übernehmen.
+      const exact = resolveAssetByScan(scanValue, assets);
+      if (exact) {
+        return enqueueCheckinAsset(exact);
+      }
+
+      // 2) Tolerante Suche (Teiltreffer, Groß-/Kleinschreibung, Leerzeichen/Bindestriche).
+      const matches = searchAssets(scanValue, assets, 10);
+      if (matches.length === 0) {
         setMessage({
           kind: 'error',
-          text: 'Unbekannter QR-Code. Bitte erneut scannen oder Inventarnummer prüfen.',
+          text: 'Kein passendes Gerät gefunden. Bitte Inventarnummer prüfen oder QR-Code scannen.',
         });
         focusElement(checkinScanRef.current);
         return false;
       }
-
-      // Bereits in der Rücknahme-Liste?
-      if (checkinQueue.some((entry) => entry.assetId === asset.id)) {
-        setMessage({
-          kind: 'info',
-          text: `${getDisplayAssetName(asset)} ist bereits in der Rücknahme-Liste.`,
-        });
-        setCheckinScan('');
-        focusElement(checkinScanRef.current);
-        return true;
+      if (matches.length === 1) {
+        return enqueueCheckinAsset(matches[0]);
       }
 
-      if (asset.status === 'Verfügbar') {
-        setMessage({
-          kind: 'error',
-          text: 'Dieses Gerät ist bereits verfügbar und wurde schon zurückgenommen.',
-        });
-        focusElement(checkinScanRef.current);
-        return true;
-      }
-
-      if (asset.status !== 'Verliehen') {
-        setMessage({
-          kind: 'error',
-          text: `Rücknahme nicht möglich. Gerät ist aktuell im Status "${asset.status}".`,
-        });
-        focusElement(checkinScanRef.current);
-        return true;
-      }
-
-      const parsedProject = parseProjectFromAsset(asset) || parseProjectFromAssignedTo(asset);
-      const displayName = getDisplayAssetName(asset);
-      setCheckinQueue((prev) => [
-        ...prev,
-        {
-          assetId: asset.id,
-          name: displayName,
-          category: asset.category,
-          status: asset.status,
-          contextProject: parsedProject,
-          assignedTo: asset.assignedTo,
-        },
-      ]);
-      setCheckinAssetId(asset.id);
-      setCurrentCheckinAssetId(asset.id);
-      setCheckinScan('');
-      setLastBatchFailures([]);
-      setMessage({ kind: 'success', text: `${displayName} hinzugefügt.` });
-      focusElement(checkinScanRef.current);
-      return true;
+      // 3) Mehrere Treffer → Auswahl-Dialog (keine automatische Buchung).
+      setAssetPicker({ mode: 'checkin', query: scanValue, assets: matches });
+      return false;
     } finally {
       setScanBusyMode((current) => (current === 'checkin' ? null : current));
     }
@@ -928,6 +969,7 @@ export function CheckinCheckoutPage({
               setMode('checkout');
               resetCheckoutState();
               resetCheckinState();
+              setAssetPicker(null);
               setMessage(null);
             }}
           >
@@ -945,6 +987,7 @@ export function CheckinCheckoutPage({
               setMode('checkin');
               resetCheckoutState();
               resetCheckinState();
+              setAssetPicker(null);
               setMessage(null);
             }}
           >
@@ -1013,7 +1056,7 @@ export function CheckinCheckoutPage({
                   ref={checkoutScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkout'}
                   className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
-                  placeholder="QR-Code oder Inventarnummer"
+                  placeholder="QR-Code, Inventarnummer oder Teil davon"
                   value={checkoutScan}
                   disabled={isAnyBusy}
                   onChange={(event) => setCheckoutScan(event.target.value)}
@@ -1229,7 +1272,7 @@ export function CheckinCheckoutPage({
                   ref={checkinScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkin'}
                   className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
-                  placeholder="QR-Code oder Inventarnummer"
+                  placeholder="QR-Code, Inventarnummer oder Teil davon"
                   value={checkinScan}
                   disabled={isAnyBusy}
                   onChange={(event) => setCheckinScan(event.target.value)}
@@ -1454,6 +1497,24 @@ export function CheckinCheckoutPage({
           title={scannerTarget === 'checkout' ? 'Ausgabe: QR scannen' : 'Rücknahme: QR scannen'}
           onDetected={onDetectedByCamera}
           onClose={() => setScannerTarget(null)}
+        />
+      ) : null}
+
+      {assetPicker ? (
+        <AssetMatchPickerDialog
+          title={assetPicker.mode === 'checkout' ? 'Gerät für Ausgabe wählen' : 'Gerät für Rücknahme wählen'}
+          query={assetPicker.query}
+          matches={assetPicker.assets}
+          onClose={() => setAssetPicker(null)}
+          onSelect={(asset) => {
+            const targetMode = assetPicker.mode;
+            setAssetPicker(null);
+            if (targetMode === 'checkout') {
+              enqueueCheckoutAsset(asset);
+            } else {
+              enqueueCheckinAsset(asset);
+            }
+          }}
         />
       ) : null}
 
