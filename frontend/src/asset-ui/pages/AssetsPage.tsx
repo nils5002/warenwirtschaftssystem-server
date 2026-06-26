@@ -1,9 +1,11 @@
 import { Eye, Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetQrCard } from '../components/AssetQrCard';
+import { AssetQrCodePreview } from '../components/AssetQrCodePreview';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
 import type { AppPage, Asset, CategoryItem } from '../types';
@@ -154,6 +156,10 @@ export function AssetsPage({
   const [onlyBroken, setOnlyBroken] = useState(false);
   const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
+  // Verzögerte QR-Vorschau per Hover (nur Desktop/Maus). Wird nach 3 s gefüllt.
+  const [hoverPreview, setHoverPreview] = useState<{ asset: Asset; left: number; top: number } | null>(null);
+  const hoverOpenTimerRef = useRef<number | null>(null);
+  const hoverCloseTimerRef = useRef<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
@@ -270,6 +276,67 @@ export function AssetsPage({
   useEffect(() => {
     setSelectedIds((current) => current.filter((id) => assets.some((asset) => asset.id === id)));
   }, [assets]);
+
+  // --- Verzögerte QR-Vorschau per Hover (Desktop/Maus) ---------------------
+  const POPOVER_WIDTH = 224; // px, muss zur Popover-Breite (w-56) passen
+  const POPOVER_HEIGHT = 240; // px, grobe Höhe fürs vertikale Clamping
+
+  const clearHoverTimers = () => {
+    if (hoverOpenTimerRef.current !== null) {
+      window.clearTimeout(hoverOpenTimerRef.current);
+      hoverOpenTimerRef.current = null;
+    }
+    if (hoverCloseTimerRef.current !== null) {
+      window.clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+  };
+
+  const handleNameHoverEnter = (asset: Asset, event: React.MouseEvent<HTMLElement>) => {
+    clearHoverTimers();
+    const el = event.currentTarget;
+    hoverOpenTimerRef.current = window.setTimeout(() => {
+      const rect = el.getBoundingClientRect();
+      const gap = 8;
+      let left = rect.right + gap;
+      if (left + POPOVER_WIDTH > window.innerWidth - 8) {
+        left = rect.left - POPOVER_WIDTH - gap; // klappt nach links, wenn rechts kein Platz
+      }
+      left = Math.max(8, left);
+      let top = rect.top;
+      if (top + POPOVER_HEIGHT > window.innerHeight - 8) {
+        top = window.innerHeight - POPOVER_HEIGHT - 8;
+      }
+      top = Math.max(8, top);
+      setHoverPreview({ asset, left, top });
+    }, 3000);
+  };
+
+  const handleNameHoverLeave = () => {
+    if (hoverOpenTimerRef.current !== null) {
+      window.clearTimeout(hoverOpenTimerRef.current);
+      hoverOpenTimerRef.current = null;
+    }
+    // Kurze Gnadenfrist, damit die Maus ins Popover wandern kann.
+    hoverCloseTimerRef.current = window.setTimeout(() => {
+      setHoverPreview(null);
+    }, 120);
+  };
+
+  // Escape schließt die Vorschau; Timer-Cleanup verhindert setState-after-unmount.
+  useEffect(() => {
+    if (!hoverPreview) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        clearHoverTimers();
+        setHoverPreview(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [hoverPreview]);
+
+  useEffect(() => () => clearHoverTimers(), []);
 
   const resetFilters = () => {
     setSearch('');
@@ -934,10 +1001,14 @@ export function AssetsPage({
                       />
                     </td>
                   ) : null}
-                  <td className="px-3 py-3">
+                  <td
+                    className="px-3 py-3"
+                    onMouseEnter={(event) => handleNameHoverEnter(asset, event)}
+                    onMouseLeave={handleNameHoverLeave}
+                  >
                     <div className="flex flex-wrap items-center gap-1.5">
                       <p
-                        className="max-w-[220px] truncate font-semibold text-slate-900 dark:text-slate-100"
+                        className="max-w-[220px] cursor-default truncate font-semibold text-slate-900 dark:text-slate-100"
                         title={asset.name}
                       >
                         {asset.name}
@@ -1146,6 +1217,47 @@ export function AssetsPage({
         onReserve={onReserveAsset}
         onCheckout={onCheckoutAsset}
       />
+
+      {/* Verzögerte QR-Vorschau: per Portal über der Tabelle, damit der
+          scroll-/overflow-Container sie nicht abschneidet. Kein Modal/Backdrop. */}
+      {hoverPreview
+        ? createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[80] w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+              style={{ left: hoverPreview.left, top: hoverPreview.top }}
+              onMouseEnter={() => {
+                if (hoverCloseTimerRef.current !== null) {
+                  window.clearTimeout(hoverCloseTimerRef.current);
+                  hoverCloseTimerRef.current = null;
+                }
+              }}
+              onMouseLeave={() => setHoverPreview(null)}
+            >
+              <div className="flex flex-col items-center gap-2">
+                <AssetQrCodePreview
+                  qrValue={getAssetQrCode(hoverPreview.asset)}
+                  assetName={hoverPreview.asset.name}
+                />
+                <div className="w-full min-w-0 text-center">
+                  <p
+                    className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100"
+                    title={hoverPreview.asset.name}
+                  >
+                    {hoverPreview.asset.name}
+                  </p>
+                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                    {hoverPreview.asset.category}
+                  </p>
+                  <div className="mt-1.5 flex justify-center">
+                    <StatusBadge value={hoverPreview.asset.status} />
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {canManageAssets && adminActionAsset && adminActionForm ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-3 sm:items-center">
