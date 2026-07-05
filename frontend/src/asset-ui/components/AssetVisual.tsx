@@ -16,13 +16,14 @@ import {
 type AssetVisualProps = {
   category?: string;
   name?: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 };
 
 const sizeMap: Record<NonNullable<AssetVisualProps['size']>, string> = {
-  sm: 'h-10 w-10 rounded-xl',
-  md: 'h-12 w-12 rounded-2xl',
-  lg: 'h-16 w-16 rounded-2xl',
+  sm: 'h-14 w-14 rounded-2xl',
+  md: 'h-16 w-16 rounded-[20px]',
+  lg: 'h-48 w-48 rounded-[28px]',
+  xl: 'h-56 w-56 rounded-[32px]',
 };
 
 function getCategoryIcon(category?: string): LucideIcon {
@@ -42,25 +43,47 @@ function getCategoryIcon(category?: string): LucideIcon {
 
 function getAccentClass(category?: string): string {
   const value = (category ?? '').trim().toLowerCase();
-  if (value.includes('laptop') || value.includes('notebook')) return 'bg-sky-500/12 text-sky-300 ring-sky-500/20';
-  if (value.includes('ipad') || value.includes('tablet')) return 'bg-cyan-500/12 text-cyan-300 ring-cyan-500/20';
-  if (value.includes('smartphone') || value.includes('handheld')) return 'bg-violet-500/12 text-violet-300 ring-violet-500/20';
-  if (value.includes('scanner')) return 'bg-emerald-500/12 text-emerald-300 ring-emerald-500/20';
-  if (value.includes('drucker')) return 'bg-amber-500/12 text-amber-300 ring-amber-500/20';
-  if (value.includes('router') || value.includes('switch')) return 'bg-rose-500/12 text-rose-300 ring-rose-500/20';
-  return 'bg-slate-500/12 text-slate-200 ring-white/10';
+  if (value.includes('laptop') || value.includes('notebook')) return 'bg-sky-500/18 ring-sky-400/25';
+  if (value.includes('ipad') || value.includes('tablet')) return 'bg-cyan-500/18 ring-cyan-400/25';
+  if (value.includes('smartphone') || value.includes('handheld')) return 'bg-violet-500/18 ring-violet-400/25';
+  if (value.includes('scanner')) return 'bg-emerald-500/18 ring-emerald-400/25';
+  if (value.includes('drucker')) return 'bg-amber-500/18 ring-amber-400/25';
+  if (value.includes('router') || value.includes('switch')) return 'bg-rose-500/18 ring-rose-400/25';
+  return 'bg-slate-500/18 ring-white/10';
+}
+
+function getIconToneClass(category?: string): string {
+  const value = (category ?? '').trim().toLowerCase();
+  if (value.includes('laptop') || value.includes('notebook')) return 'text-sky-200';
+  if (value.includes('ipad') || value.includes('tablet')) return 'text-cyan-200';
+  if (value.includes('smartphone') || value.includes('handheld')) return 'text-violet-200';
+  if (value.includes('scanner')) return 'text-emerald-200';
+  if (value.includes('drucker')) return 'text-amber-200';
+  if (value.includes('router') || value.includes('switch')) return 'text-rose-200';
+  return 'text-slate-100';
 }
 
 export function AssetVisual({ category, name, size = 'md' }: AssetVisualProps) {
   const Icon = getCategoryIcon(category);
+  const iconClass =
+    size === 'xl'
+      ? 'h-16 w-16'
+      : size === 'lg'
+        ? 'h-12 w-12'
+        : size === 'md'
+          ? 'h-7 w-7'
+          : 'h-6 w-6';
 
   return (
     <div
       aria-hidden
       title={name || category || 'Asset'}
-      className={`flex shrink-0 items-center justify-center border ${sizeMap[size]} ${getAccentClass(category)}`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${sizeMap[size]}`}
     >
-      <Icon className={size === 'lg' ? 'h-7 w-7' : size === 'sm' ? 'h-[18px] w-[18px]' : 'h-5 w-5'} strokeWidth={1.8} />
+      <div
+        className={`absolute inset-[14%] rounded-[inherit] ring-1 ${getAccentClass(category)}`}
+      />
+      <Icon className={`relative z-[1] ${iconClass} ${getIconToneClass(category)}`} strokeWidth={1.8} />
     </div>
   );
 }

@@ -21,7 +21,6 @@ import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetImage } from '../components/AssetImage';
 import { AssetQrCard } from '../components/AssetQrCard';
-import { AssetQrCodePreview } from '../components/AssetQrCodePreview';
 import { resolveCategoryDefaultImageUrl } from '../categories';
 import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
@@ -199,7 +198,7 @@ export function AssetsPage({
   const [onlyBroken, setOnlyBroken] = useState(false);
   const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
-  // Verzögerte QR-Vorschau per Hover (nur Desktop/Maus). Wird nach 3 s gefüllt.
+  // Verzögerte Produktbild-Vorschau per Hover (nur Desktop/Maus).
   const [hoverPreview, setHoverPreview] = useState<{ asset: Asset; left: number; top: number } | null>(null);
   const hoverOpenTimerRef = useRef<number | null>(null);
   const hoverCloseTimerRef = useRef<number | null>(null);
@@ -299,6 +298,9 @@ export function AssetsPage({
   const quickViewCategoryImageUrl = quickViewAsset
     ? resolveCategoryDefaultImageUrl(quickViewAsset.category, backendCategories)
     : null;
+  const hoverPreviewCategoryImageUrl = hoverPreview
+    ? resolveCategoryDefaultImageUrl(hoverPreview.asset.category, backendCategories)
+    : null;
   const adminActionAsset = assets.find((asset) => asset.id === adminActionAssetId) ?? null;
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
@@ -324,9 +326,16 @@ export function AssetsPage({
     setSelectedIds((current) => current.filter((id) => assets.some((asset) => asset.id === id)));
   }, [assets]);
 
-  // --- Verzögerte QR-Vorschau per Hover (Desktop/Maus) ---------------------
-  const POPOVER_WIDTH = 224; // px, muss zur Popover-Breite (w-56) passen
-  const POPOVER_HEIGHT = 240; // px, grobe Höhe fürs vertikale Clamping
+  // --- Verzögerte Produktbild-Vorschau per Hover (Desktop/Maus) -------------
+  const POPOVER_WIDTH = 252;
+  const POPOVER_HEIGHT = 324;
+
+  const supportsHoverPreview = () => {
+    if (isMobile || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  };
 
   const clearHoverTimers = () => {
     if (hoverOpenTimerRef.current !== null) {
@@ -339,12 +348,13 @@ export function AssetsPage({
     }
   };
 
-  const handleNameHoverEnter = (asset: Asset, event: React.MouseEvent<HTMLElement>) => {
+  const handleThumbnailHoverEnter = (asset: Asset, event: React.MouseEvent<HTMLElement>) => {
+    if (!supportsHoverPreview()) return;
     clearHoverTimers();
     const el = event.currentTarget;
     hoverOpenTimerRef.current = window.setTimeout(() => {
       const rect = el.getBoundingClientRect();
-      const gap = 8;
+      const gap = 12;
       let left = rect.right + gap;
       if (left + POPOVER_WIDTH > window.innerWidth - 8) {
         left = rect.left - POPOVER_WIDTH - gap; // klappt nach links, wenn rechts kein Platz
@@ -356,10 +366,10 @@ export function AssetsPage({
       }
       top = Math.max(8, top);
       setHoverPreview({ asset, left, top });
-    }, 3000);
+    }, 160);
   };
 
-  const handleNameHoverLeave = () => {
+  const handleThumbnailHoverLeave = () => {
     if (hoverOpenTimerRef.current !== null) {
       window.clearTimeout(hoverOpenTimerRef.current);
       hoverOpenTimerRef.current = null;
@@ -1079,7 +1089,7 @@ export function AssetsPage({
                   } ${showTechnicalColumns ? '' : 'last:border-0'}`}
                 >
                   {canManageAssets ? (
-                    <td className="px-3 py-3">
+                    <td className="px-3 py-3 align-middle">
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(asset.id)}
@@ -1090,16 +1100,23 @@ export function AssetsPage({
                       />
                     </td>
                   ) : null}
-                  <td className="px-3 py-3" onMouseEnter={(event) => handleNameHoverEnter(asset, event)} onMouseLeave={handleNameHoverLeave}>
-                    <div className="flex items-center gap-3">
-                      <AssetImage
-                        asset={asset}
-                        categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
-                        size="sm"
-                      />
-                      <div className="min-w-0">
+                  <td className="px-3 py-3 align-middle">
+                    <div className="flex min-h-16 items-center gap-4">
+                      <div
+                        className="shrink-0"
+                        onMouseEnter={(event) => handleThumbnailHoverEnter(asset, event)}
+                        onMouseLeave={handleThumbnailHoverLeave}
+                      >
+                        <AssetImage
+                          asset={asset}
+                          categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
+                          size="md"
+                          className="cursor-zoom-in"
+                        />
+                      </div>
+                      <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <p className="max-w-[220px] cursor-default truncate font-semibold text-ink" title={asset.name}>
+                          <p className="max-w-[280px] cursor-default truncate font-semibold text-ink" title={asset.name}>
                             {asset.name}
                           </p>
                           {getOwnershipLabel(asset.ownershipType) ? (
@@ -1118,12 +1135,12 @@ export function AssetsPage({
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 text-xs text-ink-faint">{asset.tagNumber}</p>
+                        <p className="text-xs text-ink-faint">{asset.tagNumber}</p>
                         <p className="text-xs text-ink-muted">{asset.serialNumber}</p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-ink-muted">
+                  <td className="px-3 py-3 align-middle text-ink-muted">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
@@ -1141,24 +1158,24 @@ export function AssetsPage({
                       <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 pr-6">
+                  <td className="whitespace-nowrap px-3 py-3 pr-6 align-middle">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 align-middle">
                     <div className="max-w-[220px]">
                       <p className="truncate text-sm font-medium text-ink" title={asset.assignedTo}>{asset.assignedTo}</p>
                       <p className="truncate text-xs text-ink-faint">{asset.nextReservation !== '-' ? asset.nextReservation : 'Kein Projekt aktiv'}</p>
                     </div>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 align-middle">
                     <div className="text-sm text-ink">{asset.location}</div>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 align-middle">
                     <div className="flex items-center gap-2 text-sm text-ink">
                       <span>{asset.lastCheckout}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-3 py-3 align-middle text-right">
                     <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
                       <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => setQuickViewId(asset.id)}>
                         <Eye className="h-3.5 w-3.5" />
@@ -1352,13 +1369,13 @@ export function AssetsPage({
         />
       )}
 
-      {/* Verzögerte QR-Vorschau: per Portal über der Tabelle, damit der
+      {/* Verzögerte Produktbild-Vorschau: per Portal über der Tabelle, damit der
           scroll-/overflow-Container sie nicht abschneidet. Kein Modal/Backdrop. */}
       {hoverPreview
         ? createPortal(
             <div
               role="tooltip"
-              className="fixed z-[80] w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+              className="fixed z-[80] w-[252px] rounded-[26px] border border-white/10 bg-canvas/96 p-4 shadow-2xl"
               style={{ left: hoverPreview.left, top: hoverPreview.top }}
               onMouseEnter={() => {
                 if (hoverCloseTimerRef.current !== null) {
@@ -1368,20 +1385,21 @@ export function AssetsPage({
               }}
               onMouseLeave={() => setHoverPreview(null)}
             >
-              <div className="flex flex-col items-center gap-2">
-                <AssetQrCodePreview
-                  qrValue={getAssetQrCode(hoverPreview.asset)}
-                  assetName={hoverPreview.asset.name}
+              <div className="flex flex-col items-center gap-3">
+                <AssetImage
+                  asset={hoverPreview.asset}
+                  categoryImageUrl={hoverPreviewCategoryImageUrl}
+                  size="xl"
                 />
                 <div className="w-full min-w-0 text-center">
                   <p
-                    className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100"
+                    className="truncate text-sm font-semibold text-ink"
                     title={hoverPreview.asset.name}
                   >
                     {hoverPreview.asset.name}
                   </p>
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                    {hoverPreview.asset.category}
+                  <p className="truncate text-xs text-ink-muted">
+                    {hoverPreview.asset.category} · {hoverPreview.asset.tagNumber}
                   </p>
                   <div className="mt-1.5 flex justify-center">
                     <StatusBadge value={hoverPreview.asset.status} />
