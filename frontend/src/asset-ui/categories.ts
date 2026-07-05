@@ -145,3 +145,27 @@ export function categoryOptionsFromRecords(
     return left === right ? a.localeCompare(b, 'de') : left - right;
   });
 }
+
+export function resolveCategoryDefaultImageUrl(
+  value: string | null | undefined,
+  records: Array<{ name: string; isActive?: boolean; defaultImageUrl?: string | null }> | null | undefined,
+): string | null {
+  const activeRecords = (records ?? []).filter((item) => item.isActive !== false && item.name?.trim());
+  if (!activeRecords.length) return null;
+
+  const byName = new Map<string, string | null>();
+  for (const item of activeRecords) {
+    byName.set(item.name.trim(), item.defaultImageUrl?.trim() || null);
+  }
+
+  const raw = (value ?? '').trim();
+  if (raw && byName.has(raw)) {
+    return byName.get(raw) || null;
+  }
+
+  const normalized = normalizeKnownCategory(raw, new Set(byName.keys()));
+  if (normalized !== UNASSIGNED_CATEGORY) {
+    return byName.get(normalized) || null;
+  }
+  return null;
+}

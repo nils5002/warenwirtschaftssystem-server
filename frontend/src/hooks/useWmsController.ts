@@ -33,6 +33,7 @@ import {
   upsertMaintenance,
   upsertReservation,
   upsertUser,
+  updateCategory as updateCategoryRequest,
   type BulkUserDeleteResponse,
   type WmsOverview,
 } from '../services/wmsApi';
@@ -585,6 +586,31 @@ export function useWmsController(options: UseWmsControllerOptions) {
       // Optimistisch lokal entfernen + Backend-Records frisch nachladen.
       setCategoryRecords((prev) => prev.filter((item) => item.id !== categoryId));
       void refreshCategoryRecords();
+    },
+    [refreshCategoryRecords],
+  );
+
+  const updateCategoryAction = useCallback(
+    async (
+      categoryId: number,
+      payload: { defaultImageSourceUrl?: string | null },
+    ): Promise<CategoryItem> => {
+      try {
+        const updated = await updateCategoryRequest(categoryId, payload);
+        setCategoryRecords((prev) => {
+          const next = prev.filter((item) => item.id !== updated.id && item.name !== updated.name);
+          return [...next, updated];
+        });
+        void refreshCategoryRecords();
+        return updated;
+      } catch (error) {
+        if (isWmsApiError(error) && error.detail) {
+          throw new Error(error.detail);
+        }
+        throw error instanceof Error
+          ? error
+          : new Error('Kategorie konnte nicht aktualisiert werden.');
+      }
     },
     [refreshCategoryRecords],
   );
@@ -1389,6 +1415,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     planningSummary,
     categories,
     createCategory,
+    updateCategory: updateCategoryAction,
     deleteCategory: deleteCategoryAction,
     openAssetDetail,
     createAsset,

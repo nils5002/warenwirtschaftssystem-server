@@ -126,6 +126,14 @@ class WmsService:
         return category_repository.create_category(db, name)
 
     @staticmethod
+    def update_category_default_image(
+        db: Session,
+        category_id: int,
+        source_url: str | None,
+    ) -> CategoryItem:
+        return category_repository.update_category_default_image(db, category_id, source_url)
+
+    @staticmethod
     def delete_category(db: Session, category_id: int) -> dict[str, object]:
         return category_repository.delete_category(db, category_id)
 

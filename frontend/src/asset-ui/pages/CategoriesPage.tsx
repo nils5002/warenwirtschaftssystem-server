@@ -1,9 +1,10 @@
 import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { PageHeader } from '../../ui';
 
+import { AssetVisual } from '../components/AssetVisual';
 import { CANONICAL_CATEGORIES, categoryHint, categoryOptionsFromRecords, normalizeCategory } from '../categories';
 import type { Asset, CategoryItem } from '../types';
 
@@ -16,6 +17,7 @@ type CategoriesPageProps = {
   // canManageCategories.
   canDeleteCategories?: boolean;
   onCreateCategory: (name: string) => Promise<CategoryItem>;
+  onUpdateCategory?: (categoryId: number, payload: { defaultImageSourceUrl?: string | null }) => Promise<CategoryItem>;
   onDeleteCategory?: (categoryId: number) => Promise<void>;
 };
 
@@ -25,11 +27,13 @@ export function CategoriesPage({
   canManageCategories = false,
   canDeleteCategories = false,
   onCreateCategory,
+  onUpdateCategory,
   onDeleteCategory,
 }: CategoriesPageProps) {
   const { confirm, alert } = useAppDialog();
   const [candidate, setCandidate] = useState('');
   const [busy, setBusy] = useState(false);
+  const [savingImageId, setSavingImageId] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const categoryOptions = useMemo(() => categoryOptionsFromRecords(categories), [categories]);
@@ -62,8 +66,25 @@ export function CategoriesPage({
       count: counts.get(category) ?? 0,
       isStandard: CANONICAL_CATEGORIES.includes(category as (typeof CANONICAL_CATEGORIES)[number]),
       id: record?.id,
+      defaultImageUrl: record?.defaultImageUrl ?? null,
+      defaultImageSourceUrl: record?.defaultImageSourceUrl ?? '',
+      defaultImageStatus: record?.defaultImageStatus ?? 'none',
     };
   });
+
+  const [imageDrafts, setImageDrafts] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setImageDrafts((current) => {
+      const next: Record<string, string> = {};
+      for (const item of rows) {
+        next[item.category] = Object.prototype.hasOwnProperty.call(current, item.category)
+          ? current[item.category]
+          : item.defaultImageSourceUrl;
+      }
+      return next;
+    });
+  }, [categories, categoryOptions]);
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
@@ -117,6 +138,32 @@ export function CategoriesPage({
     }
   };
 
+  const saveCategoryImage = async (
+    item: (typeof rows)[number],
+    sourceUrlOverride?: string | null,
+  ) => {
+    if (!canManageCategories || !onUpdateCategory || item.id == null) return;
+    const nextUrl = (sourceUrlOverride ?? imageDrafts[item.category] ?? '').trim();
+    setSavingImageId(item.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await onUpdateCategory(item.id, {
+        defaultImageSourceUrl: nextUrl || null,
+      });
+      setImageDrafts((current) => ({ ...current, [item.category]: updated.defaultImageSourceUrl ?? '' }));
+      setMessage(
+        nextUrl
+          ? `${item.category}: Standardbild wurde gespeichert.`
+          : `${item.category}: Standardbild wurde entfernt.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Standardbild konnte nicht gespeichert werden.');
+    } finally {
+      setSavingImageId(null);
+    }
+  };
+
   const candidateTrimmed = candidate.trim();
   const normalizedCandidate = candidateTrimmed ? normalizeCategory(candidateTrimmed) : null;
   const duplicateHint = candidateTrimmed ? categoryHint(candidateTrimmed) : null;
@@ -148,7 +195,7 @@ export function CategoriesPage({
       />
 
       <article className="surface-card animate-fade-up">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
           {rows.map((item) => {
             const canDeleteThisOne =
               canDeleteCategories && item.id != null && item.count === 0;
@@ -165,13 +212,76 @@ export function CategoriesPage({
                 key={item.category}
                 className="relative rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/60"
               >
-                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300">
-                  {item.category}
-                </p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{item.count}</p>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {item.isStandard ? 'Standard' : 'Stammdatum'}
-                </p>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
+                    {item.defaultImageUrl ? (
+                      <img
+                        src={item.defaultImageUrl}
+                        alt={item.category}
+                        loading="lazy"
+                        className="h-full w-full object-contain p-1"
+                      />
+                    ) : (
+                      <AssetVisual category={item.category} name={item.category} size="md" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                      {item.category}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{item.count}</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {item.isStandard ? 'Standard' : 'Stammdatum'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {item.defaultImageUrl ? `Standardbild aktiv (${item.defaultImageStatus})` : 'Kein Standardbild'}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <label className="field text-left">
+                    Standardbild-URL
+                    <input
+                      className="field-input"
+                      disabled={!canManageCategories || item.id == null}
+                      placeholder="https://example.com/produktbild.jpg"
+                      value={imageDrafts[item.category] ?? ''}
+                      onChange={(event) =>
+                        setImageDrafts((current) => ({ ...current, [item.category]: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Greift automatisch im Inventar, wenn ein Asset kein eigenes Produktbild hat.
+                  </p>
+                  {canManageCategories ? (
+                    <div className="flex flex-wrap gap-2">
+                      <LoadingButton
+                        type="button"
+                        className="btn-secondary px-3 py-2 text-xs"
+                        disabled={item.id == null}
+                        isLoading={savingImageId === item.id}
+                        loadingText="Speichert ..."
+                        onClick={() => void saveCategoryImage(item)}
+                      >
+                        Speichern
+                      </LoadingButton>
+                      <LoadingButton
+                        type="button"
+                        className="btn-secondary px-3 py-2 text-xs"
+                        disabled={item.id == null || !(imageDrafts[item.category] ?? '').trim()}
+                        isLoading={savingImageId === item.id}
+                        loadingText="Entfernt ..."
+                        onClick={() => {
+                          setImageDrafts((current) => ({ ...current, [item.category]: '' }));
+                          void saveCategoryImage(item, '');
+                        }}
+                      >
+                        Bild entfernen
+                      </LoadingButton>
+                    </div>
+                  ) : null}
+                </div>
                 {canDeleteCategories ? (
                   <button
                     type="button"

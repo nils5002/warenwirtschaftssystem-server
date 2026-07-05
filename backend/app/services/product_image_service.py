@@ -25,12 +25,30 @@ _MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024
 _CONNECT_TIMEOUT = 3
 _READ_TIMEOUT = 10
 _MAX_IMAGE_SIZE = (640, 640)
-_MEDIA_ROUTE_PREFIX = "/media/product-images/assets"
+_DEFAULT_OWNER_KIND = "assets"
+_VALID_OWNER_KINDS = {"assets", "categories"}
 
 
-def _cache_dir() -> Path:
+def _asset_cache_dir() -> Path:
     base_dir = Path(__file__).resolve().parents[1]
     target = get_settings().resolve_product_image_cache_path(base_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _normalize_owner_kind(owner_kind: str) -> str:
+    normalized = (owner_kind or "").strip().lower()
+    if normalized not in _VALID_OWNER_KINDS:
+        raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
+    return normalized
+
+
+def _cache_dir(owner_kind: str = _DEFAULT_OWNER_KIND) -> Path:
+    normalized = _normalize_owner_kind(owner_kind)
+    asset_dir = _asset_cache_dir()
+    if normalized == _DEFAULT_OWNER_KIND:
+        return asset_dir
+    target = asset_dir.parent / normalized
     target.mkdir(parents=True, exist_ok=True)
     return target
 
@@ -156,32 +174,34 @@ def _cache_key(source_url: str) -> str:
     return hashlib.sha256(source_url.encode("utf-8")).hexdigest()
 
 
-def build_public_image_url(cached_path: str | None) -> str | None:
+def build_public_image_url(cached_path: str | None, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> str | None:
     value = (cached_path or "").strip()
     if not value:
         return None
-    return f"{_MEDIA_ROUTE_PREFIX}/{value}"
+    normalized = _normalize_owner_kind(owner_kind)
+    return f"/media/product-images/{normalized}/{value}"
 
 
-def cached_file_exists(file_name: str | None) -> bool:
+def cached_file_exists(file_name: str | None, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> bool:
     value = (file_name or "").strip()
     if not value:
         return False
     try:
-        return resolve_cached_file_path(value).is_file()
+        return resolve_cached_file_path(value, owner_kind=owner_kind).is_file()
     except HTTPException:
         return False
 
 
-def resolve_cached_file_path(file_name: str) -> Path:
+def resolve_cached_file_path(file_name: str, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> Path:
+    normalized = _normalize_owner_kind(owner_kind)
     if "/" in file_name or "\\" in file_name:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
     if not file_name.endswith(".webp"):
         raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
     if len(file_name) != 69:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
-    target = (_cache_dir() / file_name).resolve()
-    base = _cache_dir().resolve()
+    base = _cache_dir(normalized).resolve()
+    target = (base / file_name).resolve()
     if base not in target.parents:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden.")
     if not target.is_file():
@@ -189,10 +209,11 @@ def resolve_cached_file_path(file_name: str) -> Path:
     return target
 
 
-def sync_product_image(source_url: str) -> dict[str, str | None]:
+def sync_product_image(source_url: str, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> dict[str, str | None]:
+    normalized_owner_kind = _normalize_owner_kind(owner_kind)
     normalized_url = _validate_url(source_url)
     file_name = f"{_cache_key(normalized_url)}.webp"
-    target_path = _cache_dir() / file_name
+    target_path = _cache_dir(normalized_owner_kind) / file_name
     if target_path.exists():
         return {
             "source_url": normalized_url,

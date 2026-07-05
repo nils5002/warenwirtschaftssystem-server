@@ -78,6 +78,12 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "normalizedName": item.normalized_name,
                     "isStandard": item.is_standard,
                     "isActive": item.is_active,
+                    "defaultImageSourceUrl": item.default_image_source_url,
+                    "defaultImageCachedPath": item.default_image_cached_path,
+                    "defaultImageMimeType": item.default_image_mime_type,
+                    "defaultImageLastFetchedAt": item.default_image_last_fetched_at,
+                    "defaultImageStatus": item.default_image_fetch_status,
+                    "defaultImageFetchError": item.default_image_fetch_error,
                 }
                 for item in categories
             ],
@@ -345,6 +351,12 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     normalized_name=item.normalizedName,
                     is_standard=item.isStandard,
                     is_active=item.isActive,
+                    default_image_source_url=item.defaultImageSourceUrl,
+                    default_image_cached_path=item.defaultImageCachedPath,
+                    default_image_mime_type=item.defaultImageMimeType,
+                    default_image_last_fetched_at=item.defaultImageLastFetchedAt,
+                    default_image_fetch_status=item.defaultImageStatus or "none",
+                    default_image_fetch_error=item.defaultImageFetchError,
                 )
             )
 

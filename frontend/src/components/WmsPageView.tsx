@@ -124,6 +124,10 @@ type WmsPageViewProps = {
     skippedLocations: string[];
   }>;
   onCreateCategory: (name: string) => Promise<CategoryItem>;
+  onUpdateCategory?: (
+    categoryId: number,
+    payload: { defaultImageSourceUrl?: string | null },
+  ) => Promise<CategoryItem>;
   onDeleteCategory?: (categoryId: number) => Promise<void>;
   onReloadData: () => Promise<void>;
   onCheckoutFromForm: (payload: {
@@ -201,6 +205,7 @@ export function WmsPageView({
   onEditLocation,
   onCleanupUnusedLocations,
   onCreateCategory,
+  onUpdateCategory,
   onDeleteCategory,
   onReloadData,
   onCheckoutFromForm,
@@ -368,6 +373,7 @@ export function WmsPageView({
           canManageCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           canDeleteCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           onCreateCategory={onCreateCategory}
+          onUpdateCategory={onUpdateCategory}
           onDeleteCategory={onDeleteCategory}
         />
       );

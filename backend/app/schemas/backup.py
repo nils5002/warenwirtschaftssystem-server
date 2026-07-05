@@ -11,6 +11,12 @@ class BackupCategory(BaseModel):
     normalizedName: str
     isStandard: bool
     isActive: bool
+    defaultImageSourceUrl: str | None = None
+    defaultImageCachedPath: str | None = None
+    defaultImageMimeType: str | None = None
+    defaultImageLastFetchedAt: datetime | None = None
+    defaultImageStatus: str | None = None
+    defaultImageFetchError: str | None = None
 
 
 class BackupUser(BaseModel):

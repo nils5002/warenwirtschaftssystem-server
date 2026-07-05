@@ -1,8 +1,9 @@
 import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { resolveCategoryDefaultImageUrl } from '../categories';
 import { AssetEditModal } from '../components/AssetEditModal';
+import { AssetImage } from '../components/AssetImage';
 import { AssetQrCard } from '../components/AssetQrCard';
-import { AssetVisual } from '../components/AssetVisual';
 import { KpiCard } from '../components/KpiCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
@@ -101,6 +102,7 @@ export function AssetDetailPage({
   const latestMaintenance = relatedMaintenance[0] ?? null;
   const openMaintenanceCount = relatedMaintenance.filter((item) => item.status !== 'Erledigt').length;
   const qrValue = getAssetQrCode(asset);
+  const categoryImageUrl = resolveCategoryDefaultImageUrl(asset.category, categories);
 
   return (
     <section className="space-y-5">
@@ -179,7 +181,7 @@ export function AssetDetailPage({
         <div className="grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <div className="flex h-full flex-col rounded-2xl border border-line bg-surface-2 p-5">
-              <AssetVisual category={asset.category} name={asset.name} size="lg" />
+              <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
               <h3 className="mt-4 text-xl font-semibold text-ink">{asset.tagNumber}</h3>
               <p className="mt-1 text-sm text-ink-muted">{asset.name}</p>
               <p className="text-sm text-ink-faint">{asset.category}</p>

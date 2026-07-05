@@ -224,10 +224,17 @@ class CategoryItem(BaseModel):
     name: str
     isStandard: bool = False
     isActive: bool = True
+    defaultImageUrl: str | None = None
+    defaultImageSourceUrl: str | None = None
+    defaultImageStatus: str | None = None
 
 
 class CategoryCreatePayload(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+
+
+class CategoryUpdatePayload(BaseModel):
+    defaultImageSourceUrl: str | None = Field(default=None, max_length=1024)
 
 
 class UserItem(BaseModel):

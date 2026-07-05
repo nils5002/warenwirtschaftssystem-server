@@ -22,6 +22,7 @@ import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetImage } from '../components/AssetImage';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { AssetQrCodePreview } from '../components/AssetQrCodePreview';
+import { resolveCategoryDefaultImageUrl } from '../categories';
 import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
@@ -295,6 +296,9 @@ export function AssetsPage({
   );
 
   const quickViewAsset = assets.find((asset) => asset.id === quickViewId) ?? null;
+  const quickViewCategoryImageUrl = quickViewAsset
+    ? resolveCategoryDefaultImageUrl(quickViewAsset.category, backendCategories)
+    : null;
   const adminActionAsset = assets.find((asset) => asset.id === adminActionAssetId) ?? null;
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
@@ -1088,7 +1092,11 @@ export function AssetsPage({
                   ) : null}
                   <td className="px-3 py-3" onMouseEnter={(event) => handleNameHoverEnter(asset, event)} onMouseLeave={handleNameHoverLeave}>
                     <div className="flex items-center gap-3">
-                      <AssetImage asset={asset} size="sm" />
+                      <AssetImage
+                        asset={asset}
+                        categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
+                        size="sm"
+                      />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="max-w-[220px] cursor-default truncate font-semibold text-ink" title={asset.name}>
@@ -1212,7 +1220,11 @@ export function AssetsPage({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-start gap-3">
-                    <AssetImage asset={asset} size="sm" />
+                    <AssetImage
+                      asset={asset}
+                      categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
+                      size="sm"
+                    />
                     <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <h4 className="truncate text-sm font-semibold text-ink">{asset.name}</h4>
@@ -1295,6 +1307,7 @@ export function AssetsPage({
             {quickViewAsset ? (
               <AssetQuickView
                 asset={quickViewAsset}
+                categoryImageUrl={quickViewCategoryImageUrl}
                 variant="panel"
                 onOpenDetail={onOpenDetail}
                 onReserve={onReserveAsset}
@@ -1322,6 +1335,7 @@ export function AssetsPage({
       {!isMobile ? <div className="xl:hidden">{quickViewAsset ? (
         <AssetQuickView
           asset={quickViewAsset}
+          categoryImageUrl={quickViewCategoryImageUrl}
           onClose={() => setQuickViewId(null)}
           onOpenDetail={onOpenDetail}
           onReserve={onReserveAsset}
@@ -1330,6 +1344,7 @@ export function AssetsPage({
       ) : null}</div> : (
         <AssetQuickView
           asset={quickViewAsset}
+          categoryImageUrl={quickViewCategoryImageUrl}
           onClose={() => setQuickViewId(null)}
           onOpenDetail={onOpenDetail}
           onReserve={onReserveAsset}

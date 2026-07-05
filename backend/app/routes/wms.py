@@ -22,6 +22,7 @@ from ..schemas.wms import (
     BulkUserDeleteResponse,
     CategoryCreatePayload,
     CategoryItem,
+    CategoryUpdatePayload,
     ExternalPoolCreatePayload,
     ExternalPoolCreateResponse,
     LocationCleanupResponse,
@@ -340,6 +341,17 @@ def create_category(
     """
     require_permission(context, db, "categories.manage")
     return WmsService.create_category(db, payload.name)
+
+
+@router.patch("/categories/{category_id}", response_model=CategoryItem)
+def update_category(
+    category_id: int,
+    payload: CategoryUpdatePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> CategoryItem:
+    require_permission(context, db, "categories.manage")
+    return WmsService.update_category_default_image(db, category_id, payload.defaultImageSourceUrl)
 
 
 @router.delete("/categories/{category_id}")
