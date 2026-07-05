@@ -142,6 +142,12 @@ type WmsPageViewProps = {
   // über onConsumeInventoryStatusFilter wieder leert.
   inventoryStatusFilter?: Asset['status'] | 'Alle Status' | null;
   onConsumeInventoryStatusFilter: () => void;
+  // Transienter Start-Modus für die Ein-/Auslagerung (Mobile-Kachel
+  // „Gerät zurücknehmen“). CheckinCheckoutPage übernimmt ihn beim Mount und
+  // leert ihn über onConsumeCheckinCheckoutMode.
+  checkinCheckoutMode?: 'checkout' | 'checkin' | null;
+  onOpenCheckinCheckout?: (mode: 'checkout' | 'checkin') => void;
+  onConsumeCheckinCheckoutMode?: () => void;
   isMobile?: boolean;
   // True solange der erste /api/wms/overview-Call noch läuft. Pages
   // verwenden das, um keine 0-Werte als Bestand anzuzeigen.
@@ -200,6 +206,9 @@ export function WmsPageView({
   onOpenInventoryWithStatus,
   inventoryStatusFilter,
   onConsumeInventoryStatusFilter,
+  checkinCheckoutMode,
+  onOpenCheckinCheckout,
+  onConsumeCheckinCheckoutMode,
   isMobile = false,
   isInitialLoading = false,
 }: WmsPageViewProps) {
@@ -233,7 +242,7 @@ export function WmsPageView({
   switch (activePage) {
     case 'dashboard':
       if (isMobile) {
-        return <MobileDashboardPage onNavigate={onNavigate} />;
+        return <MobileDashboardPage onNavigate={onNavigate} onOpenCheckinCheckout={onOpenCheckinCheckout} />;
       }
       return (
         <DashboardPage
@@ -377,6 +386,8 @@ export function WmsPageView({
           assets={assets}
           users={users}
           isMobile={isMobile}
+          initialMode={checkinCheckoutMode ?? undefined}
+          onInitialModeConsumed={onConsumeCheckinCheckoutMode}
           activeRole={activeRole}
           operatorName={currentUserName}
           projectContext={projectContext}

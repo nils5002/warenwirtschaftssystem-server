@@ -479,10 +479,15 @@ export function AssetDetailPage({
             </div>
           )}
         </div>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700">
-          <Wrench className="h-4 w-4" />
-          Wartungsfreigabe erforderlich vor nächster Ausgabe
-        </div>
+        {/* Hinweis nur, wenn wirklich noch ein aktiver Defekt-/Wartungsfall
+            offen ist — vorher stand er statisch unter jedem Asset. */}
+        {openMaintenanceCount > 0 ? (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700">
+            <Wrench className="h-4 w-4" />
+            Wartungsfreigabe erforderlich vor nächster Ausgabe ({openMaintenanceCount}{' '}
+            {openMaintenanceCount === 1 ? 'offener Fall' : 'offene Fälle'})
+          </div>
+        ) : null}
       </article>
     </section>
   );

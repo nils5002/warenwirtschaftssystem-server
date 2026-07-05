@@ -1,4 +1,4 @@
-import { AlertCircle, ChevronDown, GripVertical, Wrench } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronDown, GripVertical, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { StatusBadge } from '../components/StatusBadge';
@@ -258,25 +258,40 @@ export function MaintenancePage({
           </h3>
           <p className="mt-1 text-xs text-slate-500">
             {canManageRepairBoard
-              ? 'Karte ziehen und in die nächste Spalte fallen lassen.'
+              ? touchLike
+                ? 'Mit „Weiter“ schiebst du eine Karte in den nächsten Schritt.'
+                : 'Karte ziehen und in die nächste Spalte fallen lassen.'
               : 'Statusübersicht der gemeldeten Defekte.'}
           </p>
           {boardHint ? <p className="mt-1 text-xs text-emerald-700">{boardHint}</p> : null}
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-3">
-            {grouped.map((column) => (
+          {/* Auf Touch-Geräten gibt es kein Drag & Drop — der Abschluss läuft
+              über den „Weiter“-Button. Die Erledigt-Ablagezone wäre dort eine
+              tote, dauerhaft leere Spalte und wird deshalb ausgeblendet. */}
+          <div className={`mt-4 grid gap-3 ${touchLike ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
+            {grouped
+              .filter((column) => column.title !== 'Erledigt' || !touchLike)
+              .map((column) => (
               <section
                 key={column.title}
-                className={`rounded-2xl border p-3 transition ${column.tone} ${dragOverStatus === column.title ? 'ring-2 ring-brand-300' : ''}`}
+                className={`rounded-2xl border p-3 transition ${column.tone} ${column.title === 'Erledigt' ? 'border-dashed' : ''} ${dragOverStatus === column.title ? 'ring-2 ring-brand-300' : ''}`}
                 onDragOver={(event) => onDragOverColumn(event, column.title)}
                 onDrop={(event) => onDropColumn(event, column.title)}
               >
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  {column.title} ({column.title === 'Erledigt' ? 'Abschluss' : column.items.length})
+                  {column.title === 'Erledigt' ? 'Erledigt' : `${column.title} (${column.items.length})`}
                 </p>
 
                 <div className="mt-2 space-y-2 min-h-[120px]">
-                  {column.items.length ? (
+                  {column.title === 'Erledigt' ? (
+                    <div className="flex min-h-[140px] flex-col items-center justify-center gap-1.5 px-3 py-6 text-center">
+                      <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                      <p className="text-xs font-semibold text-slate-700">Karte hierher ziehen zum Abschließen</p>
+                      <p className="text-[11px] text-slate-500">
+                        Erledigte Fälle verlassen das Board und erscheinen in der Historie unten.
+                      </p>
+                    </div>
+                  ) : column.items.length ? (
                     column.items.map((item) => {
                       const linkedAsset = assets.find((asset) => asset.name === item.assetName);
                       const nextStatus = nextStatusMap[item.status as BoardStatus];
@@ -330,7 +345,7 @@ export function MaintenancePage({
                     })
                   ) : (
                     <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-6 text-center text-xs text-slate-500">
-                      {column.title === 'Erledigt' ? 'Hier ablegen zum Abschließen' : 'Leer'}
+                      Leer
                     </div>
                   )}
                 </div>

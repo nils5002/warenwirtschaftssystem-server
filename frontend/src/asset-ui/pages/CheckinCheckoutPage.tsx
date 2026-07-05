@@ -52,6 +52,11 @@ type CheckinCheckoutPageProps = {
   }) => Promise<void>;
   onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => Promise<void>;
   onReloadData?: () => Promise<void>;
+  // Start-Modus für einen Deep-Link (z. B. Mobile-Kachel „Gerät zurücknehmen“).
+  // Wird einmalig als Startwert übernommen und über onInitialModeConsumed
+  // wieder geleert — analog zu initialStatus in AssetsPage.
+  initialMode?: 'checkout' | 'checkin';
+  onInitialModeConsumed?: () => void;
 };
 
 type Mode = 'checkout' | 'checkin';
@@ -116,11 +121,13 @@ export function CheckinCheckoutPage({
   onCheckout,
   onCheckin,
   onReloadData,
+  initialMode,
+  onInitialModeConsumed,
 }: CheckinCheckoutPageProps) {
   const today = useMemo(() => toIsoDate(new Date()), []);
   const plusTwoDays = useMemo(() => toIsoDate(new Date(Date.now() + 2 * 86400000)), []);
 
-  const [mode, setMode] = useState<Mode>('checkout');
+  const [mode, setMode] = useState<Mode>(initialMode ?? 'checkout');
   const [message, setMessage] = useState<FlowMessage | null>(null);
 
   const [checkoutAssetId, setCheckoutAssetId] = useState<string>('');
@@ -197,6 +204,14 @@ export function CheckinCheckoutPage({
       }
     });
   };
+
+  // Deep-Link-Modus nur als Startwert nutzen und sofort im Controller leeren,
+  // damit ein späterer regulärer Aufruf wieder in der Ausgabe startet.
+  // Manuelle Moduswechsel des Nutzers bleiben davon unberührt.
+  useEffect(() => {
+    if (initialMode) onInitialModeConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     void (async () => {
