@@ -17,8 +17,9 @@ from ..schemas.wms import (
     BulkUserDeleteResponse,
     BulkUserDeleteResultItem,
     ExternalPoolCreatePayload,
-    LocationItem,
     CategoryItem,
+    LocationCleanupResponse,
+    LocationItem,
     MaintenanceItem,
     ReservationItem,
     UserPasswordResetResponse,
@@ -135,6 +136,18 @@ class WmsService:
     @staticmethod
     def delete_location(db: Session, name: str) -> bool:
         return wms_repository.delete_location(db, name)
+
+    @staticmethod
+    def cleanup_unused_locations(db: Session, *, keep_name: str = "Hauptlager") -> LocationCleanupResponse:
+        kept_location, deleted_locations, skipped_locations = wms_repository.cleanup_unused_locations(
+            db,
+            keep_name=keep_name,
+        )
+        return LocationCleanupResponse(
+            keptLocation=kept_location,
+            deletedLocations=deleted_locations,
+            skippedLocations=skipped_locations,
+        )
 
     @staticmethod
     def list_users(db: Session) -> list[UserItem]:

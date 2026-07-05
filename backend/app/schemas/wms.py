@@ -210,6 +210,12 @@ class LocationItem(BaseModel):
     manager: str
 
 
+class LocationCleanupResponse(BaseModel):
+    keptLocation: str
+    deletedLocations: list[str] = Field(default_factory=list)
+    skippedLocations: list[str] = Field(default_factory=list)
+
+
 class CategoryItem(BaseModel):
     id: int | None = None
     name: str
