@@ -46,7 +46,9 @@ type AssetsPageProps = {
   }) => Promise<Asset>;
   onReserveAsset: (assetId: string) => void;
   onCheckoutAsset: (assetId: string) => void;
-  onCheckinAsset: (assetId: string) => void;
+  // Wird von WmsPageView weiterhin übergeben, aktuell aber nicht genutzt:
+  // Rücknahmen laufen bewusst nur über die Ein-/Auslagerung (Scan-Flow).
+  onCheckinAsset?: (assetId: string) => void;
   onAdminUpdateAsset: (assetId: string, patch: Partial<Asset>) => void;
   onAdminDeleteAsset: (assetId: string) => Promise<void>;
   onCreateMaintenance: (payload: { assetName: string; issue: string; comment: string }) => void;
@@ -137,7 +139,6 @@ export function AssetsPage({
   onCreateAssetFromInput,
   onReserveAsset,
   onCheckoutAsset,
-  onCheckinAsset,
   onAdminUpdateAsset,
   onAdminDeleteAsset,
   onCreateMaintenance,
@@ -367,28 +368,6 @@ export function AssetsPage({
       return;
     }
     setQuickViewId(match.id);
-  };
-
-  const runQuickCheckout = async () => {
-    if (filteredAssets[0]) {
-      onCheckoutAsset(filteredAssets[0].id);
-      return;
-    }
-    await alert({
-      title: 'Kein Asset verfügbar',
-      message: 'Es gibt aktuell kein passendes Asset für die Ausgabe. Bitte Filter anpassen.',
-    });
-  };
-
-  const runQuickCheckin = async () => {
-    if (filteredAssets[0]) {
-      onCheckinAsset(filteredAssets[0].id);
-      return;
-    }
-    await alert({
-      title: 'Kein Asset verfügbar',
-      message: 'Es gibt aktuell kein passendes Asset für die Rücknahme. Bitte Filter anpassen.',
-    });
   };
 
   const toggleSelected = (assetId: string, rowIndex: number, withRange = false) => {
@@ -798,21 +777,9 @@ export function AssetsPage({
                 Neues Gerät erfassen
               </button>
             ) : null}
-            <button
-              className="btn-secondary w-full sm:w-auto"
-              onClick={() => {
-                void runQuickCheckout();
-              }}
-            >
-              Ausgeben
-            </button>
-            <button
-              className="btn-secondary w-full sm:w-auto"
-              onClick={() => {
-                void runQuickCheckin();
-              }}
-            >
-              Zurücknehmen
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => onNavigate('checkinCheckout')}>
+              <ScanLine className="h-4 w-4" />
+              Ein-/Auslagerung
             </button>
             <button className="btn-secondary w-full sm:w-auto" onClick={() => onNavigate('tickets')}>
               <TriangleAlert className="h-4 w-4" />

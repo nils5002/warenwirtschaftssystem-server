@@ -268,6 +268,9 @@ function App() {
               onOpenInventoryWithStatus={controller.openInventoryWithStatus}
               inventoryStatusFilter={controller.inventoryStatusFilter}
               onConsumeInventoryStatusFilter={controller.consumeInventoryStatusFilter}
+              checkinCheckoutMode={controller.checkinCheckoutMode}
+              onOpenCheckinCheckout={controller.openCheckinCheckout}
+              onConsumeCheckinCheckoutMode={controller.consumeCheckinCheckoutMode}
               activeRole={activeRole}
               isMobile={isMobile}
             />

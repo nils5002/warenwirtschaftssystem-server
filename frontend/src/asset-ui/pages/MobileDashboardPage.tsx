@@ -3,17 +3,26 @@ import type { AppPage } from '../types';
 
 type MobileDashboardPageProps = {
   onNavigate: (page: AppPage) => void;
+  // Öffnet die Ein-/Auslagerung direkt im passenden Modus — die Kachel
+  // „Gerät zurücknehmen“ soll in der Rücknahme landen, nicht in der Ausgabe.
+  onOpenCheckinCheckout?: (mode: 'checkout' | 'checkin') => void;
 };
 
-const actions: Array<{ label: string; hint: string; page: AppPage; icon: typeof Handshake }> = [
-  { label: 'Gerät ausgeben', hint: 'Check-out starten', page: 'checkinCheckout', icon: Handshake },
-  { label: 'Gerät zurücknehmen', hint: 'Check-in starten', page: 'checkinCheckout', icon: Undo2 },
+const actions: Array<{
+  label: string;
+  hint: string;
+  page: AppPage;
+  icon: typeof Handshake;
+  checkinCheckoutMode?: 'checkout' | 'checkin';
+}> = [
+  { label: 'Gerät ausgeben', hint: 'Check-out starten', page: 'checkinCheckout', icon: Handshake, checkinCheckoutMode: 'checkout' },
+  { label: 'Gerät zurücknehmen', hint: 'Check-in starten', page: 'checkinCheckout', icon: Undo2, checkinCheckoutMode: 'checkin' },
   { label: 'Gerät suchen', hint: 'Inventar öffnen', page: 'inventory', icon: Boxes },
   { label: 'Defekt melden', hint: 'Ticket anlegen', page: 'tickets', icon: TriangleAlert },
   { label: 'Neues Gerät anlegen', hint: 'Inventar-Erfassung', page: 'inventory', icon: Plus },
 ];
 
-export function MobileDashboardPage({ onNavigate }: MobileDashboardPageProps) {
+export function MobileDashboardPage({ onNavigate, onOpenCheckinCheckout }: MobileDashboardPageProps) {
   return (
     <section className="space-y-4">
       <div className="surface-card p-4">
@@ -30,7 +39,13 @@ export function MobileDashboardPage({ onNavigate }: MobileDashboardPageProps) {
             className={`surface-card flex min-h-[68px] items-center gap-3 text-left ${
               action.page === 'checkinCheckout' || action.page === 'inventory' ? 'border-brand-200/80' : ''
             }`}
-            onClick={() => onNavigate(action.page)}
+            onClick={() => {
+              if (action.checkinCheckoutMode && onOpenCheckinCheckout) {
+                onOpenCheckinCheckout(action.checkinCheckoutMode);
+                return;
+              }
+              onNavigate(action.page);
+            }}
           >
             <span className="rounded-xl bg-brand-50 p-2 text-brand-700 dark:bg-sky-900/40 dark:text-sky-200">
               <action.icon className="h-5 w-5" />

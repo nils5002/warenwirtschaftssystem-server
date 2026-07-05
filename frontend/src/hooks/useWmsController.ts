@@ -196,6 +196,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // wieder geleert (consumeInventoryStatusFilter), damit ein späterer normaler
   // Inventar-Aufruf den alten Filter nicht erbt.
   const [inventoryStatusFilter, setInventoryStatusFilter] = useState<Asset['status'] | 'Alle Status' | null>(null);
+  // Transienter Start-Modus für die Ein-/Auslagerung (z. B. Mobile-Kachel
+  // „Gerät zurücknehmen“ → Rücknahme statt Standard-Ausgabe). Wird von
+  // CheckinCheckoutPage beim Mount übernommen und sofort wieder geleert
+  // (consumeCheckinCheckoutMode), damit ein späterer normaler Aufruf der
+  // Seite wieder im Ausgabe-Modus startet.
+  const [checkinCheckoutMode, setCheckinCheckoutMode] = useState<'checkout' | 'checkin' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -1279,6 +1285,19 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setInventoryStatusFilter(null);
   };
 
+  // Ein-/Auslagerung direkt im gewünschten Modus öffnen (Ausgabe/Rücknahme),
+  // z. B. von der Mobile-Startseite aus.
+  const openCheckinCheckout = (mode: 'checkout' | 'checkin') => {
+    setCheckinCheckoutMode(mode);
+    setActivePage('checkinCheckout');
+  };
+
+  // Einmaliges Abräumen nach dem CheckinCheckoutPage-Mount — analog zu
+  // consumeInventoryStatusFilter.
+  const consumeCheckinCheckoutMode = () => {
+    setCheckinCheckoutMode(null);
+  };
+
   const editLocation = async (name: string) => {
     const location = locations.find((item) => item.name === name);
     if (!location) return;
@@ -1370,6 +1389,9 @@ export function useWmsController(options: UseWmsControllerOptions) {
     inventoryStatusFilter,
     openInventoryWithStatus,
     consumeInventoryStatusFilter,
+    checkinCheckoutMode,
+    openCheckinCheckout,
+    consumeCheckinCheckoutMode,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     selectedAsset,
