@@ -68,6 +68,10 @@ type AssetsPageProps = {
   // Rücknahmen laufen bewusst nur über die Ein-/Auslagerung (Scan-Flow).
   onCheckinAsset?: (assetId: string) => void;
   onAdminUpdateAsset: (assetId: string, patch: Partial<Asset>) => void;
+  onUpdateCategory?: (
+    categoryId: number,
+    payload: { defaultImageSourceUrl?: string | null },
+  ) => Promise<CategoryItem>;
   onAdminDeleteAsset: (assetId: string) => Promise<void>;
   onCreateMaintenance: (payload: { assetName: string; issue: string; comment: string }) => void;
   onCleanupUnusedLocations: () => Promise<{
@@ -180,6 +184,7 @@ export function AssetsPage({
   onReserveAsset,
   onCheckoutAsset,
   onAdminUpdateAsset,
+  onUpdateCategory,
   onAdminDeleteAsset,
   onCreateMaintenance,
   onCleanupUnusedLocations,
@@ -301,6 +306,18 @@ export function AssetsPage({
   const hoverPreviewCategoryImageUrl = hoverPreview
     ? resolveCategoryDefaultImageUrl(hoverPreview.asset.category, backendCategories)
     : null;
+  const bulkCategoryTarget = useMemo(() => {
+    const explicitCategory = bulkForm.category.trim();
+    const selectionCategories = [...new Set(selectedAssets.map((asset) => asset.category.trim()).filter(Boolean))];
+    const targetName = explicitCategory || (selectionCategories.length === 1 ? selectionCategories[0] : '');
+    if (!targetName) return null;
+    const normalizedTarget = targetName.toLocaleLowerCase('de-DE');
+    return (
+      backendCategories.find(
+        (item) => item.id != null && item.name.trim().toLocaleLowerCase('de-DE') === normalizedTarget,
+      ) ?? null
+    );
+  }, [backendCategories, bulkForm.category, selectedAssets]);
   const adminActionAsset = assets.find((asset) => asset.id === adminActionAssetId) ?? null;
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
@@ -462,8 +479,8 @@ export function AssetsPage({
 
   const applyBulkUpdate = async () => {
     if (!selectedIds.length) return;
-    if (!bulkForm.status && !bulkForm.category.trim() && !bulkForm.location.trim() && !bulkForm.productImageSourceUrl.trim()) {
-      setBulkActionError('Bitte Status, Kategorie, Standort oder Produktbild setzen.');
+    if (!bulkForm.status && !bulkForm.category.trim() && !bulkForm.location.trim()) {
+      setBulkActionError('Bitte Status, Kategorie oder Standort setzen.');
       return;
     }
     setBulkActionBusy(true);
@@ -475,7 +492,6 @@ export function AssetsPage({
           ...(bulkForm.status ? { status: bulkForm.status } : {}),
           ...(bulkForm.category.trim() ? { category: bulkForm.category.trim() } : {}),
           ...(bulkForm.location.trim() ? { location: bulkForm.location.trim() } : {}),
-          ...(bulkForm.productImageSourceUrl.trim() ? { productImageSourceUrl: bulkForm.productImageSourceUrl.trim() } : {}),
         });
       }
       closeBulkModal();
@@ -488,11 +504,38 @@ export function AssetsPage({
     }
   };
 
+  const applyBulkAssetProductImage = async () => {
+    if (!selectedIds.length) return;
+    const imageUrl = bulkForm.productImageSourceUrl.trim();
+    if (!imageUrl) {
+      setBulkActionError('Bitte zuerst eine Produktbild-URL eingeben.');
+      return;
+    }
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      for (const assetId of selectedIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await onAdminUpdateAsset(assetId, { productImageSourceUrl: imageUrl });
+      }
+      closeBulkModal();
+      setSelectedIds([]);
+      await alert({
+        title: 'Asset-Produktbilder gespeichert',
+        message: 'Die Produktbild-URL wurde auf die markierten Assets angewendet.',
+      });
+    } catch {
+      setBulkActionError('Produktbild konnte nicht auf die ausgewählten Assets angewendet werden.');
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
   const removeBulkProductImage = async () => {
     if (!selectedIds.length) return;
     const accepted = await confirm({
-      title: 'Produktbild entfernen',
-      message: `Produktbild für ${selectedIds.length} ausgewählte Geräte entfernen?`,
+      title: 'Asset-Produktbild entfernen',
+      message: `Eigenes Produktbild für ${selectedIds.length} ausgewählte Geräte entfernen?`,
       confirmLabel: 'Entfernen',
       cancelLabel: 'Abbrechen',
       tone: 'danger',
@@ -507,9 +550,89 @@ export function AssetsPage({
       }
       closeBulkModal();
       setSelectedIds([]);
-      await alert({ title: 'Produktbild entfernt', message: 'Die Produktbilder der markierten Assets wurden entfernt.' });
+      await alert({
+        title: 'Asset-Produktbild entfernt',
+        message: 'Die eigenen Produktbilder der markierten Assets wurden entfernt.',
+      });
     } catch {
       setBulkActionError('Produktbild konnte nicht entfernt werden.');
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
+  const applyBulkCategoryProductImage = async () => {
+    if (!onUpdateCategory) {
+      setBulkActionError('Kategorie-Bilder können in dieser Ansicht aktuell nicht gespeichert werden.');
+      return;
+    }
+    const imageUrl = bulkForm.productImageSourceUrl.trim();
+    if (!imageUrl) {
+      setBulkActionError('Bitte zuerst eine Produktbild-URL eingeben.');
+      return;
+    }
+    if (!bulkCategoryTarget?.id) {
+      const hasMixedSelection = new Set(selectedAssets.map((asset) => asset.category.trim()).filter(Boolean)).size > 1;
+      setBulkActionError(
+        hasMixedSelection
+          ? 'Bitte im Feld "Kategorie" zuerst die Zielkategorie auswählen.'
+          : 'Für diese Kategorie wurde kein Stammdatensatz gefunden.',
+      );
+      return;
+    }
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      await onUpdateCategory(bulkCategoryTarget.id, { defaultImageSourceUrl: imageUrl });
+      closeBulkModal();
+      await alert({
+        title: 'Kategorie-Standardbild gespeichert',
+        message: `Das Produktbild wurde für die Kategorie "${bulkCategoryTarget.name}" als Standardbild gespeichert.`,
+      });
+    } catch (error) {
+      setBulkActionError(
+        error instanceof Error ? error.message : 'Kategorie-Standardbild konnte nicht gespeichert werden.',
+      );
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
+  const removeBulkCategoryProductImage = async () => {
+    if (!onUpdateCategory) {
+      setBulkActionError('Kategorie-Bilder können in dieser Ansicht aktuell nicht gespeichert werden.');
+      return;
+    }
+    if (!bulkCategoryTarget?.id) {
+      const hasMixedSelection = new Set(selectedAssets.map((asset) => asset.category.trim()).filter(Boolean)).size > 1;
+      setBulkActionError(
+        hasMixedSelection
+          ? 'Bitte im Feld "Kategorie" zuerst die Zielkategorie auswählen.'
+          : 'Für diese Kategorie wurde kein Stammdatensatz gefunden.',
+      );
+      return;
+    }
+    const accepted = await confirm({
+      title: 'Kategorie-Standardbild entfernen',
+      message: `Standardbild für die Kategorie "${bulkCategoryTarget.name}" entfernen?`,
+      confirmLabel: 'Entfernen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!accepted) return;
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      await onUpdateCategory(bulkCategoryTarget.id, { defaultImageSourceUrl: null });
+      closeBulkModal();
+      await alert({
+        title: 'Kategorie-Standardbild entfernt',
+        message: `Die Kategorie "${bulkCategoryTarget.name}" verwendet jetzt wieder nur den normalen Fallback.`,
+      });
+    } catch (error) {
+      setBulkActionError(
+        error instanceof Error ? error.message : 'Kategorie-Standardbild konnte nicht entfernt werden.',
+      );
     } finally {
       setBulkActionBusy(false);
     }
@@ -1721,6 +1844,9 @@ export function AssetsPage({
                       }
                     />
                   </label>
+                  <p className="text-xs text-ink-faint">
+                    Kategorie-Standardbild: {bulkCategoryTarget?.name || 'Bitte genau eine Kategorie wählen oder auswählen.'}
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
                       Stammdaten anwenden
@@ -1729,10 +1855,37 @@ export function AssetsPage({
                       type="button"
                       className="btn-secondary text-xs"
                       isLoading={bulkActionBusy}
+                      loadingText="Speichert ..."
+                      onClick={() => void applyBulkAssetProductImage()}
+                    >
+                      Bild auf Assets setzen
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary text-xs"
+                      isLoading={bulkActionBusy}
+                      loadingText="Speichert ..."
+                      onClick={() => void applyBulkCategoryProductImage()}
+                    >
+                      Als Kategorie-Bild speichern
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary text-xs"
+                      isLoading={bulkActionBusy}
                       loadingText="Entfernt ..."
                       onClick={() => void removeBulkProductImage()}
                     >
-                      Produktbild entfernen
+                      Asset-Bilder entfernen
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary text-xs"
+                      isLoading={bulkActionBusy}
+                      loadingText="Entfernt ..."
+                      onClick={() => void removeBulkCategoryProductImage()}
+                    >
+                      Kategorie-Bild entfernen
                     </LoadingButton>
                     <LoadingButton
                       type="button"

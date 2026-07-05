@@ -317,6 +317,7 @@ export function WmsPageView({
           onAdminUpdateAsset={(id, patch) => {
             void onAdminUpdateAsset(id, patch);
           }}
+          onUpdateCategory={onUpdateCategory}
           onAdminDeleteAsset={async (id) => {
             await onAdminDeleteAsset(id);
           }}
