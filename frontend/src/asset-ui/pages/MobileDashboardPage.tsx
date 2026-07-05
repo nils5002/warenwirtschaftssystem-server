@@ -1,4 +1,5 @@
 import { Boxes, Handshake, Plus, TriangleAlert, Undo2 } from 'lucide-react';
+import { ActionCard, PageHeader } from '../../ui';
 import type { AppPage } from '../types';
 
 type MobileDashboardPageProps = {
@@ -13,32 +14,29 @@ const actions: Array<{
   hint: string;
   page: AppPage;
   icon: typeof Handshake;
+  tone: 'primary' | 'neutral' | 'warning' | 'success';
   checkinCheckoutMode?: 'checkout' | 'checkin';
 }> = [
-  { label: 'Gerät ausgeben', hint: 'Check-out starten', page: 'checkinCheckout', icon: Handshake, checkinCheckoutMode: 'checkout' },
-  { label: 'Gerät zurücknehmen', hint: 'Check-in starten', page: 'checkinCheckout', icon: Undo2, checkinCheckoutMode: 'checkin' },
-  { label: 'Gerät suchen', hint: 'Inventar öffnen', page: 'inventory', icon: Boxes },
-  { label: 'Defekt melden', hint: 'Ticket anlegen', page: 'tickets', icon: TriangleAlert },
-  { label: 'Neues Gerät anlegen', hint: 'Inventar-Erfassung', page: 'inventory', icon: Plus },
+  { label: 'Gerät ausgeben', hint: 'Check-out starten', page: 'checkinCheckout', icon: Handshake, tone: 'success', checkinCheckoutMode: 'checkout' },
+  { label: 'Gerät zurücknehmen', hint: 'Check-in starten', page: 'checkinCheckout', icon: Undo2, tone: 'neutral', checkinCheckoutMode: 'checkin' },
+  { label: 'Gerät suchen', hint: 'Inventar öffnen', page: 'inventory', icon: Boxes, tone: 'neutral' },
+  { label: 'Defekt melden', hint: 'Ticket anlegen', page: 'tickets', icon: TriangleAlert, tone: 'warning' },
+  { label: 'Neues Gerät anlegen', hint: 'Inventar-Erfassung', page: 'inventory', icon: Plus, tone: 'primary' },
 ];
 
 export function MobileDashboardPage({ onNavigate, onOpenCheckinCheckout }: MobileDashboardPageProps) {
   return (
     <section className="space-y-4">
-      <div className="surface-card p-4">
-        <p className="page-kicker">Mobile Start</p>
-        <h2 className="page-title text-2xl">Schnellaktionen</h2>
-        <p className="page-subtitle">Tippe auf eine Aktion für den Lagerprozess.</p>
-      </div>
+      <PageHeader kicker="Mobile Start" title="Schnellaktionen" subtitle="Tippe auf eine Aktion für den Lagerprozess." />
 
-      <div className="grid gap-3">
+      <div className="space-y-2.5">
         {actions.map((action) => (
-          <button
+          <ActionCard
             key={action.label}
-            type="button"
-            className={`surface-card flex min-h-[68px] items-center gap-3 text-left ${
-              action.page === 'checkinCheckout' || action.page === 'inventory' ? 'border-brand-200/80' : ''
-            }`}
+            icon={action.icon}
+            title={action.label}
+            subtitle={action.hint}
+            tone={action.tone}
             onClick={() => {
               if (action.checkinCheckoutMode && onOpenCheckinCheckout) {
                 onOpenCheckinCheckout(action.checkinCheckoutMode);
@@ -46,15 +44,7 @@ export function MobileDashboardPage({ onNavigate, onOpenCheckinCheckout }: Mobil
               }
               onNavigate(action.page);
             }}
-          >
-            <span className="rounded-xl bg-brand-50 p-2 text-brand-700 dark:bg-sky-900/40 dark:text-sky-200">
-              <action.icon className="h-5 w-5" />
-            </span>
-            <span>
-              <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{action.label}</span>
-              <span className="block text-xs text-slate-500 dark:text-slate-400">{action.hint}</span>
-            </span>
-          </button>
+          />
         ))}
       </div>
     </section>

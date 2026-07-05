@@ -252,6 +252,7 @@ export function WmsPageView({
           maintenanceItems={maintenanceItems}
           planningSummary={planningSummary}
           theme={theme}
+          userName={currentUserName}
           permissions={permissions}
           activeRole={activeRole}
           onNavigate={onNavigate}
