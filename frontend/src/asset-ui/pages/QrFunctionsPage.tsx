@@ -4,6 +4,7 @@ import { QrScannerDialog } from '../components/QrScannerDialog';
 import { StatusBadge } from '../components/StatusBadge';
 import { resolveAssetByScan } from '../qr';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { PageHeader } from '../../ui';
 import type { Asset } from '../types';
 
 type QrFunctionsPageProps = {
@@ -42,13 +43,11 @@ export function QrFunctionsPage({
 
   return (
     <section className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">QR-Code-Funktionen</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Scan & Schnellaktionen</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          QR-Code scannen und direkt ausleihen, zurückgeben oder Defekt melden.
-        </p>
-      </div>
+      <PageHeader
+        kicker="QR-Code-Funktionen"
+        title="Scan & Schnellaktionen"
+        subtitle="QR-Code scannen und direkt ausleihen, zurückgeben oder Defekt melden."
+      />
 
       <article className="surface-card animate-fade-up">
         <label className="field">

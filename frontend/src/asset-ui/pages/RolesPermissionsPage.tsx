@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, KeyRound, ShieldCheck } from 'lucide-react
 import { useEffect, useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader as UiPageHeader } from '../../ui';
 import {
   fetchPermissionCatalog,
   fetchRoles,
@@ -110,7 +111,7 @@ export function RolesPermissionsPage() {
   if (loading) {
     return (
       <section className="space-y-4 sm:space-y-5">
-        <PageHeader />
+        <RolesPageHeader />
         <InlineLoadingState message="Rollen & Rechte werden geladen ..." />
       </section>
     );
@@ -119,7 +120,7 @@ export function RolesPermissionsPage() {
   if (loadError) {
     return (
       <section className="space-y-4 sm:space-y-5">
-        <PageHeader />
+        <RolesPageHeader />
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           Rollen & Rechte konnten nicht geladen werden: {loadError}
         </div>
@@ -129,7 +130,7 @@ export function RolesPermissionsPage() {
 
   return (
     <section className="space-y-4 sm:space-y-5">
-      <PageHeader />
+      <RolesPageHeader />
 
       {message ? (
         <div
@@ -198,19 +199,14 @@ export function RolesPermissionsPage() {
   );
 }
 
-function PageHeader() {
+function RolesPageHeader() {
   return (
-    <div>
-      <p className="page-kicker">Admin</p>
-      <h2 className="page-title flex items-center gap-2">
-        <KeyRound className="h-5 w-5 text-slate-500" />
-        Rollen &amp; Rechte
-      </h2>
-      <p className="page-subtitle">
-        Lege pro Rolle fest, welche Aktionen erlaubt sind. Die drei Rollen bleiben bestehen — du bestimmst nur
-        ihre Berechtigungen.
-      </p>
-    </div>
+    <UiPageHeader
+      kicker="Admin"
+      title="Rollen & Rechte"
+      subtitle="Lege pro Rolle fest, welche Aktionen erlaubt sind. Die drei Rollen bleiben bestehen — du bestimmst nur ihre Berechtigungen."
+      actions={<KeyRound className="h-5 w-5 text-ink-faint" />}
+    />
   );
 }
 

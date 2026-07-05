@@ -2,6 +2,7 @@ import { Download, FileArchive, RotateCcw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton, LoadingOverlay } from '../../components/loading';
+import { PageHeader } from '../../ui';
 import {
   clearWarehouseDataForImport,
   downloadAdminLogs,
@@ -167,13 +168,11 @@ export function BackupPage({ onRestored }: BackupPageProps) {
   return (
     <LoadingOverlay show={showCriticalOverlay} message={criticalMessage} fullScreen>
       <section className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Backup</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Sicherung & Restore</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Hier können Sie den aktuellen Datenstand sichern oder aus einer Sicherung wiederherstellen.
-        </p>
-      </div>
+      <PageHeader
+        kicker="Backup"
+        title="Sicherung & Restore"
+        subtitle="Hier können Sie den aktuellen Datenstand sichern oder aus einer Sicherung wiederherstellen."
+      />
 
       <article className="surface-card animate-fade-up space-y-4">
         <div className="flex flex-wrap items-center gap-2">

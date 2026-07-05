@@ -3,6 +3,8 @@ import { useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { StatusBadge } from '../components/StatusBadge';
+import { KpiCard } from '../components/KpiCard';
+import { PageHeader } from '../../ui';
 import type { ActivityItem, Asset, UserItem } from '../types';
 
 type BulkDeleteResult = {
@@ -384,33 +386,23 @@ export function UsersPage({
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="page-kicker">Benutzerverwaltung</p>
-          <h2 className="page-title">Teamzugriff</h2>
-          <p className="page-subtitle">
-            Klare Rollen für Admin, Projektmanager und Mitarbeiter mit nachvollziehbarem Aktivitätsstatus.
-          </p>
-        </div>
-        <button className="btn-primary w-full sm:w-auto" onClick={openCreate}>
-          <UserPlus className="h-4 w-4" />
-          Benutzer anlegen
-        </button>
-      </div>
+      <PageHeader
+        kicker="Benutzerverwaltung"
+        title="Teamzugriff"
+        subtitle="Klare Rollen für Admin, Projektmanager und Mitarbeiter mit nachvollziehbarem Aktivitätsstatus."
+        actions={
+          <button className="btn-primary w-full sm:w-auto" onClick={openCreate}>
+            <UserPlus className="h-4 w-4" />
+            Benutzer anlegen
+          </button>
+        }
+      />
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="surface-card p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{users.length}</p>
-        </div>
-        <div className="surface-card p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Aktive Nutzer</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{activeCount}</p>
-        </div>
-        <div className="surface-card p-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Admins</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{adminCount}</p>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard title="Gesamt" value={String(users.length)} trend="Alle registrierten Benutzer" tone="neutral" icon={Users2} />
+        <KpiCard title="Aktive Nutzer" value={String(activeCount)} trend="Aktuell freigeschaltet" tone="positive" icon={Shield} />
+        <KpiCard title="Admins" value={String(adminCount)} trend={`${activeAdminCount} aktiv`} tone="neutral" icon={KeyRound} />
+        <KpiCard title="Ausgeliehene Geräte" value={String(loanedAssets.length)} trend="Geräte mit Benutzerzuordnung" tone="warning" icon={Trash2} />
       </div>
 
       <article className="surface-card animate-fade-up">

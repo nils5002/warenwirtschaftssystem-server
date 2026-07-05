@@ -1,6 +1,7 @@
 import { AlertCircle, CheckCircle2, ChevronDown, GripVertical, Wrench } from 'lucide-react';
 import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { PageHeader } from '../../ui';
 import { StatusBadge } from '../components/StatusBadge';
 import type { AppRole, Asset, MaintenanceItem } from '../types';
 
@@ -183,13 +184,7 @@ export function MaintenancePage({
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="page-kicker">Defekte & Wartung</p>
-          <h2 className="page-title">Reparatur-Board</h2>
-          <p className="page-subtitle">Offen → In Bearbeitung → Erledigt</p>
-        </div>
-      </div>
+      <PageHeader kicker="Defekte & Wartung" title="Reparatur-Board" subtitle="Offen → In Bearbeitung → Erledigt" />
 
       <div className="grid gap-4 xl:grid-cols-12">
         <article className={`surface-card animate-fade-up ${canManageRepairBoard ? 'xl:col-span-4' : 'xl:col-span-12'}`}>
