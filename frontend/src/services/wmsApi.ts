@@ -1034,6 +1034,16 @@ export function upsertLocation(location: LocationItem): Promise<LocationItem> {
   return postJson<LocationItem>('/api/wms/locations', location);
 }
 
+export type LocationCleanupResponse = {
+  keptLocation: string;
+  deletedLocations: string[];
+  skippedLocations: string[];
+};
+
+export function cleanupUnusedLocations(): Promise<LocationCleanupResponse> {
+  return postJson<LocationCleanupResponse>('/api/wms/locations/cleanup-unused', {});
+}
+
 export function upsertUser(user: UserItem): Promise<UserItem> {
   return postJson<UserItem>('/api/wms/users', user);
 }

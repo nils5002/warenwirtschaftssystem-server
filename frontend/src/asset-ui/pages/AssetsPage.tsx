@@ -70,6 +70,11 @@ type AssetsPageProps = {
   onAdminUpdateAsset: (assetId: string, patch: Partial<Asset>) => void;
   onAdminDeleteAsset: (assetId: string) => Promise<void>;
   onCreateMaintenance: (payload: { assetName: string; issue: string; comment: string }) => void;
+  onCleanupUnusedLocations: () => Promise<{
+    keptLocation: string;
+    deletedLocations: string[];
+    skippedLocations: string[];
+  }>;
   onNavigate: (page: AppPage) => void;
 };
 
@@ -88,6 +93,7 @@ const DEFAULT_CATEGORIES = [
   'Sonstiges',
 ];
 const TECH_COLUMNS_STORAGE_KEY = 'inventory-show-tech-columns';
+const MAIN_WAREHOUSE_NAME = 'Hauptlager';
 
 function defaultNameForCategory(category: string): string {
   const normalized = category.toLowerCase();
@@ -174,6 +180,7 @@ export function AssetsPage({
   onAdminUpdateAsset,
   onAdminDeleteAsset,
   onCreateMaintenance,
+  onCleanupUnusedLocations,
   onNavigate,
 }: AssetsPageProps) {
   const { prompt, alert, confirm } = useAppDialog();
@@ -459,6 +466,57 @@ export function AssetsPage({
       await alert({ title: 'Bulk-Update', message: 'Die markierten Assets wurden aktualisiert.' });
     } catch {
       setBulkActionError('Bulk-Update fehlgeschlagen.');
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
+  const moveSelectionToMainWarehouse = async (cleanupAfter = false) => {
+    if (!selectedIds.length) return;
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      for (const assetId of selectedIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await onAdminUpdateAsset(assetId, { location: MAIN_WAREHOUSE_NAME });
+      }
+      let cleanupSummary = '';
+      if (cleanupAfter) {
+        const cleanup = await onCleanupUnusedLocations();
+        cleanupSummary = cleanup.deletedLocations.length
+          ? ` ${cleanup.deletedLocations.length} ungenutzte Standorte wurden entfernt.`
+          : ' Es wurden keine weiteren ungenutzten Standorte gefunden.';
+      }
+      closeBulkModal();
+      setSelectedIds([]);
+      await alert({
+        title: 'Hauptlager gesetzt',
+        message: `Die markierten Assets liegen jetzt im ${MAIN_WAREHOUSE_NAME}.${cleanupSummary}`,
+      });
+    } catch {
+      setBulkActionError(`Standortwechsel nach ${MAIN_WAREHOUSE_NAME} fehlgeschlagen.`);
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
+  const cleanupLocationsOnly = async () => {
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      const cleanup = await onCleanupUnusedLocations();
+      const deletedLabel = cleanup.deletedLocations.length
+        ? `${cleanup.deletedLocations.length} Standorte gelöscht`
+        : 'Keine ungenutzten Standorte gefunden';
+      const skippedLabel = cleanup.skippedLocations.length
+        ? ` ${cleanup.skippedLocations.length} aktive Standorte blieben erhalten.`
+        : '';
+      await alert({
+        title: 'Standorte bereinigt',
+        message: `${deletedLabel}.${skippedLabel}`,
+      });
+    } catch {
+      setBulkActionError('Standortbereinigung fehlgeschlagen.');
     } finally {
       setBulkActionBusy(false);
     }
@@ -931,6 +989,15 @@ export function AssetsPage({
               <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={openBulkModal}>
                 Bulk-Aktionen
               </button>
+              <LoadingButton
+                type="button"
+                className="btn-secondary px-3 py-1.5 text-xs"
+                isLoading={bulkActionBusy}
+                loadingText="Verschiebt ..."
+                onClick={() => void moveSelectionToMainWarehouse(false)}
+              >
+                Alles ins Hauptlager
+              </LoadingButton>
               <button
                 type="button"
                 className="btn-danger px-3 py-1.5 text-xs"
@@ -1552,6 +1619,9 @@ export function AssetsPage({
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <h4 className="text-sm font-semibold text-slate-900">Stammdaten</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  Wenn ihr real nur ein Lager habt, kannst du hier alle markierten Geräte gesammelt ins {MAIN_WAREHOUSE_NAME} setzen.
+                </p>
                 <div className="mt-2 grid gap-2">
                   <label className="field">
                     Kategorie
@@ -1572,15 +1642,51 @@ export function AssetsPage({
                     Standort
                     <input
                       className="field-input"
-                      placeholder="unverändert"
+                      placeholder={MAIN_WAREHOUSE_NAME}
                       value={bulkForm.location}
                       onChange={(event) => setBulkForm((current) => ({ ...current, location: event.target.value }))}
                     />
                   </label>
-                  <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
-                    Stammdaten anwenden
-                  </LoadingButton>
+                  <div className="flex flex-wrap gap-2">
+                    <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
+                      Stammdaten anwenden
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary text-xs"
+                      isLoading={bulkActionBusy}
+                      loadingText="Verschiebt ..."
+                      onClick={() => void moveSelectionToMainWarehouse(false)}
+                    >
+                      Alles ins Hauptlager
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-primary text-xs"
+                      isLoading={bulkActionBusy}
+                      loadingText="Bereinigt ..."
+                      onClick={() => void moveSelectionToMainWarehouse(true)}
+                    >
+                      Ins Hauptlager + Standorte bereinigen
+                    </LoadingButton>
+                  </div>
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 md:col-span-2">
+                <h4 className="text-sm font-semibold text-amber-900">Standorte bereinigen</h4>
+                <p className="mt-1 text-xs text-amber-800">
+                  Entfernt nur ungenutzte Standort-Stammdaten. Standorte mit vorhandenen Assets bleiben bestehen.
+                </p>
+                <LoadingButton
+                  type="button"
+                  className="btn-secondary mt-2 text-xs"
+                  isLoading={bulkActionBusy}
+                  loadingText="Bereinigt ..."
+                  onClick={() => void cleanupLocationsOnly()}
+                >
+                  Ungenutzte Standorte löschen
+                </LoadingButton>
               </div>
 
               <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 md:col-span-2">

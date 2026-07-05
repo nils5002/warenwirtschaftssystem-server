@@ -718,6 +718,39 @@ def list_locations(db: Session) -> list[LocationItem]:
     return [_location_to_schema(item) for item in db.scalars(stmt).all()]
 
 
+def _normalize_location_name(name: str | None, *, fallback: str = "Hauptlager") -> str:
+    normalized = (name or "").strip()
+    return normalized or fallback
+
+
+def _upsert_location_record(
+    db: Session,
+    *,
+    name: str,
+    assigned_assets: int,
+    available_assets: int,
+) -> LocationRecord:
+    record = db.scalar(select(LocationRecord).where(LocationRecord.name == name))
+    if record is None:
+        record = LocationRecord(
+            name=name,
+            capacity=str(assigned_assets),
+            assigned_assets=assigned_assets,
+            available_assets=available_assets,
+            manager="System",
+        )
+        db.add(record)
+        db.flush()
+        return record
+    record.assigned_assets = assigned_assets
+    record.available_assets = available_assets
+    if not (record.capacity or "").strip():
+        record.capacity = str(assigned_assets)
+    if not (record.manager or "").strip():
+        record.manager = "System"
+    return record
+
+
 def upsert_location(db: Session, item: LocationItem) -> LocationItem:
     stmt = select(LocationRecord).where(LocationRecord.name == item.name)
     record = db.scalar(stmt)
@@ -739,13 +772,61 @@ def upsert_location(db: Session, item: LocationItem) -> LocationItem:
 
 
 def delete_location(db: Session, name: str) -> bool:
-    stmt = select(LocationRecord).where(LocationRecord.name == name)
+    normalized_name = _normalize_location_name(name)
+    if normalized_name == "Hauptlager":
+        raise HTTPException(status_code=409, detail="Hauptlager kann nicht gelöscht werden.")
+    referenced_assets = db.scalar(
+        select(func.count()).select_from(AssetRecord).where(AssetRecord.location == normalized_name)
+    )
+    if int(referenced_assets or 0) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Standort wird noch von Assets verwendet. Bitte Geräte zuerst umziehen.",
+        )
+    stmt = select(LocationRecord).where(LocationRecord.name == normalized_name)
     record = db.scalar(stmt)
     if not record:
         return False
     db.delete(record)
     db.commit()
     return True
+
+
+def cleanup_unused_locations(db: Session, *, keep_name: str = "Hauptlager") -> tuple[str, list[str], list[str]]:
+    kept_location = _normalize_location_name(keep_name)
+    asset_rows = db.execute(select(AssetRecord.location, AssetRecord.status)).all()
+    assigned_counts: dict[str, int] = {}
+    available_counts: dict[str, int] = {}
+    active_locations: set[str] = set()
+    for location, status in asset_rows:
+        normalized_location = _normalize_location_name(location)
+        active_locations.add(normalized_location)
+        assigned_counts[normalized_location] = assigned_counts.get(normalized_location, 0) + 1
+        if _normalize_asset_status(status) == "Verfuegbar":
+            available_counts[normalized_location] = available_counts.get(normalized_location, 0) + 1
+
+    _upsert_location_record(
+        db,
+        name=kept_location,
+        assigned_assets=assigned_counts.get(kept_location, 0),
+        available_assets=available_counts.get(kept_location, 0),
+    )
+
+    deleted_locations: list[str] = []
+    skipped_locations: list[str] = []
+    for record in db.scalars(select(LocationRecord).order_by(LocationRecord.name.asc())).all():
+        if record.name == kept_location:
+            continue
+        if record.name in active_locations:
+            record.assigned_assets = assigned_counts.get(record.name, 0)
+            record.available_assets = available_counts.get(record.name, 0)
+            skipped_locations.append(record.name)
+            continue
+        deleted_locations.append(record.name)
+        db.delete(record)
+
+    db.commit()
+    return kept_location, deleted_locations, skipped_locations
 
 
 def list_users(db: Session) -> list[UserItem]:

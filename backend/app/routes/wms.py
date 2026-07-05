@@ -24,6 +24,7 @@ from ..schemas.wms import (
     CategoryItem,
     ExternalPoolCreatePayload,
     ExternalPoolCreateResponse,
+    LocationCleanupResponse,
     LocationItem,
     MaintenanceItem,
     ReservationItem,
@@ -380,6 +381,15 @@ def delete_location(
 ) -> dict[str, bool]:
     require_roles(context, "admin")
     return {"deleted": WmsService.delete_location(db, name)}
+
+
+@router.post("/locations/cleanup-unused", response_model=LocationCleanupResponse)
+def cleanup_unused_locations(
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> LocationCleanupResponse:
+    require_roles(context, "admin")
+    return WmsService.cleanup_unused_locations(db)
 
 
 @router.get("/users", response_model=list[UserItem])

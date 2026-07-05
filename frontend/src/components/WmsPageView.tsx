@@ -119,6 +119,11 @@ type WmsPageViewProps = {
   }>;
   onOpenLocationInventory: (name: string) => void;
   onEditLocation: (name: string) => Promise<void>;
+  onCleanupUnusedLocations: () => Promise<{
+    keptLocation: string;
+    deletedLocations: string[];
+    skippedLocations: string[];
+  }>;
   onCreateCategory: (name: string) => Promise<CategoryItem>;
   onDeleteCategory?: (categoryId: number) => Promise<void>;
   onReloadData: () => Promise<void>;
@@ -196,6 +201,7 @@ export function WmsPageView({
   onBulkDeleteUsers,
   onOpenLocationInventory,
   onEditLocation,
+  onCleanupUnusedLocations,
   onCreateCategory,
   onDeleteCategory,
   onReloadData,
@@ -314,6 +320,7 @@ export function WmsPageView({
           onCreateMaintenance={(payload) => {
             void onCreateMaintenance(payload);
           }}
+          onCleanupUnusedLocations={onCleanupUnusedLocations}
           canManageAssets={canUpdateAssets}
         />
       );

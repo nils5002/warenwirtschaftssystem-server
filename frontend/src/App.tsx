@@ -253,6 +253,7 @@ function App() {
               onBulkDeleteUsers={controller.adminBulkDeleteUsers}
               onOpenLocationInventory={controller.openLocationInventory}
               onEditLocation={controller.editLocation}
+              onCleanupUnusedLocations={controller.cleanupUnusedLocations}
               onCreateCategory={controller.createCategory}
               onDeleteCategory={controller.deleteCategory}
               onReloadData={controller.loadWms}

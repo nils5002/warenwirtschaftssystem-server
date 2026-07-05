@@ -14,6 +14,7 @@ import type {
 } from '../asset-ui/types';
 import {
   createCategory as createCategoryRequest,
+  cleanupUnusedLocations as cleanupUnusedLocationsRequest,
   deleteAsset,
   deleteCategory as deleteCategoryRequest,
   deleteUser as deleteUserRequest,
@@ -1324,6 +1325,12 @@ export function useWmsController(options: UseWmsControllerOptions) {
     }
   };
 
+  const cleanupUnusedLocations = async () => {
+    const result = await cleanupUnusedLocationsRequest();
+    await loadWms({ silent: true });
+    return result;
+  };
+
   const openHelp = () => {
     window.open('/api/docs', '_blank', 'noopener,noreferrer');
   };
@@ -1429,6 +1436,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     openLocationInventory,
     openInventoryWithQuery,
     editLocation,
+    cleanupUnusedLocations,
     openHelp,
     openNotifications,
     openProfile,
