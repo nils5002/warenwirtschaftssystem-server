@@ -19,9 +19,9 @@ import { createPortal } from 'react-dom';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
+import { AssetImage } from '../components/AssetImage';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { AssetQrCodePreview } from '../components/AssetQrCodePreview';
-import { AssetVisual } from '../components/AssetVisual';
 import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
@@ -138,6 +138,7 @@ type BulkActionForm = {
   status: Asset['status'] | '';
   category: string;
   location: string;
+  productImageSourceUrl: string;
   deleteConfirm: string;
 };
 
@@ -159,6 +160,7 @@ function createBulkActionForm(): BulkActionForm {
     status: '',
     category: '',
     location: '',
+    productImageSourceUrl: '',
     deleteConfirm: '',
   };
 }
@@ -446,8 +448,8 @@ export function AssetsPage({
 
   const applyBulkUpdate = async () => {
     if (!selectedIds.length) return;
-    if (!bulkForm.status && !bulkForm.category.trim() && !bulkForm.location.trim()) {
-      setBulkActionError('Bitte Status, Kategorie oder Standort setzen.');
+    if (!bulkForm.status && !bulkForm.category.trim() && !bulkForm.location.trim() && !bulkForm.productImageSourceUrl.trim()) {
+      setBulkActionError('Bitte Status, Kategorie, Standort oder Produktbild setzen.');
       return;
     }
     setBulkActionBusy(true);
@@ -459,6 +461,7 @@ export function AssetsPage({
           ...(bulkForm.status ? { status: bulkForm.status } : {}),
           ...(bulkForm.category.trim() ? { category: bulkForm.category.trim() } : {}),
           ...(bulkForm.location.trim() ? { location: bulkForm.location.trim() } : {}),
+          ...(bulkForm.productImageSourceUrl.trim() ? { productImageSourceUrl: bulkForm.productImageSourceUrl.trim() } : {}),
         });
       }
       closeBulkModal();
@@ -466,6 +469,33 @@ export function AssetsPage({
       await alert({ title: 'Bulk-Update', message: 'Die markierten Assets wurden aktualisiert.' });
     } catch {
       setBulkActionError('Bulk-Update fehlgeschlagen.');
+    } finally {
+      setBulkActionBusy(false);
+    }
+  };
+
+  const removeBulkProductImage = async () => {
+    if (!selectedIds.length) return;
+    const accepted = await confirm({
+      title: 'Produktbild entfernen',
+      message: `Produktbild für ${selectedIds.length} ausgewählte Geräte entfernen?`,
+      confirmLabel: 'Entfernen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!accepted) return;
+    setBulkActionBusy(true);
+    setBulkActionError(null);
+    try {
+      for (const assetId of selectedIds) {
+        // eslint-disable-next-line no-await-in-loop
+        await onAdminUpdateAsset(assetId, { productImageSourceUrl: null });
+      }
+      closeBulkModal();
+      setSelectedIds([]);
+      await alert({ title: 'Produktbild entfernt', message: 'Die Produktbilder der markierten Assets wurden entfernt.' });
+    } catch {
+      setBulkActionError('Produktbild konnte nicht entfernt werden.');
     } finally {
       setBulkActionBusy(false);
     }
@@ -1058,7 +1088,7 @@ export function AssetsPage({
                   ) : null}
                   <td className="px-3 py-3" onMouseEnter={(event) => handleNameHoverEnter(asset, event)} onMouseLeave={handleNameHoverLeave}>
                     <div className="flex items-center gap-3">
-                      <AssetVisual category={asset.category} name={asset.name} size="sm" />
+                      <AssetImage asset={asset} size="sm" />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="max-w-[220px] cursor-default truncate font-semibold text-ink" title={asset.name}>
@@ -1182,7 +1212,7 @@ export function AssetsPage({
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-start gap-3">
-                    <AssetVisual category={asset.category} name={asset.name} size="sm" />
+                    <AssetImage asset={asset} size="sm" />
                     <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <h4 className="truncate text-sm font-semibold text-ink">{asset.name}</h4>
@@ -1647,9 +1677,29 @@ export function AssetsPage({
                       onChange={(event) => setBulkForm((current) => ({ ...current, location: event.target.value }))}
                     />
                   </label>
+                  <label className="field">
+                    Produktbild-URL
+                    <input
+                      className="field-input"
+                      placeholder="https://example.com/produktbild.jpg"
+                      value={bulkForm.productImageSourceUrl}
+                      onChange={(event) =>
+                        setBulkForm((current) => ({ ...current, productImageSourceUrl: event.target.value }))
+                      }
+                    />
+                  </label>
                   <div className="flex flex-wrap gap-2">
                     <LoadingButton type="button" className="btn-secondary text-xs" isLoading={bulkActionBusy} loadingText="Wendet an ..." onClick={() => void applyBulkUpdate()}>
                       Stammdaten anwenden
+                    </LoadingButton>
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary text-xs"
+                      isLoading={bulkActionBusy}
+                      loadingText="Entfernt ..."
+                      onClick={() => void removeBulkProductImage()}
+                    >
+                      Produktbild entfernen
                     </LoadingButton>
                     <LoadingButton
                       type="button"

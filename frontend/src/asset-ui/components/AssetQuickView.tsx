@@ -2,7 +2,7 @@ import { CalendarClock, ClipboardCheck, MapPin, UserRound, Wrench, X } from 'luc
 import { getAssetQrCode } from '../qr';
 import { AssetQrCard } from './AssetQrCard';
 import { StatusBadge } from './StatusBadge';
-import { AssetVisual } from './AssetVisual';
+import { AssetImage } from './AssetImage';
 import type { Asset } from '../types';
 
 type AssetQuickViewProps = {
@@ -30,7 +30,7 @@ export function AssetQuickView({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-start gap-3">
-            <AssetVisual category={asset.category} name={asset.name} size="lg" />
+            <AssetImage asset={asset} size="lg" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-xl font-semibold text-ink">{asset.tagNumber}</h3>

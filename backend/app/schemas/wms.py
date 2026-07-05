@@ -57,6 +57,9 @@ class AssetItem(BaseModel):
     lastCheckout: str
     nextReservation: str
     sourceFile: Optional[str] = None
+    productImageUrl: Optional[str] = None
+    productImageSourceUrl: Optional[str] = None
+    productImageStatus: Optional[str] = None
     # --- Fremdbestand-Felder (alle optional, Default = Eigenbestand) ---
     ownershipType: OwnershipType = "owned"
     sourceName: Optional[str] = None

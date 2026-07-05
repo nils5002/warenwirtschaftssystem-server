@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     wms_seed_legacy_on_startup: bool = True
     wms_legacy_json_path: str = "app/data/wms_db.json"
     hardware_import_path: str = "/app/data/hardware_imports"
+    product_image_cache_path: str = "app/data/product_images/assets"
 
     # Automatische Projektübergabe (Asset-Handover A→B). Der Hintergrund-Job führt
     # fällige Übergaben selbstständig aus. In Tests/Dev per ENV abschaltbar
@@ -58,6 +59,12 @@ class Settings(BaseSettings):
 
     def resolve_hardware_import_path(self, base_dir: Path) -> Path:
         path = Path(self.hardware_import_path)
+        if path.is_absolute():
+            return path
+        return (base_dir / path).resolve()
+
+    def resolve_product_image_cache_path(self, base_dir: Path) -> Path:
+        path = Path(self.product_image_cache_path)
         if path.is_absolute():
             return path
         return (base_dir / path).resolve()

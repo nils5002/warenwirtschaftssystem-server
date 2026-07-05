@@ -1,6 +1,7 @@
 import { QrCode, ShieldCheck, Wrench, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { LoadingButton } from '../../components/loading';
+import { AssetImage } from './AssetImage';
 import { AssetQrCodePreview } from './AssetQrCodePreview';
 import { getAssetQrCode } from '../qr';
 import type { Asset, CategoryItem } from '../types';
@@ -22,6 +23,7 @@ type AssetEditFormState = {
   macLan: string;
   macWlan: string;
   notes: string;
+  productImageSourceUrl: string;
   cardPrinterCompatible: boolean;
   availableForPlanning: boolean;
 };
@@ -39,6 +41,7 @@ function createInitialState(asset: Asset): AssetEditFormState {
     macLan: asset.macLan ?? '',
     macWlan: asset.macWlan ?? '',
     notes: asset.notes,
+    productImageSourceUrl: asset.productImageSourceUrl ?? '',
     cardPrinterCompatible: asset.cardPrinterCompatible ?? true,
     availableForPlanning: asset.availableForPlanning ?? true,
   };
@@ -87,6 +90,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
 
   const qrValue = useMemo(() => getAssetQrCode(asset), [asset]);
   const assignment = useMemo(() => parseAssignment(asset.assignedTo), [asset.assignedTo]);
+  const imageUrlChanged = form.productImageSourceUrl.trim() !== (asset.productImageSourceUrl ?? '').trim();
 
   const validate = (): boolean => {
     const nextErrors: FieldErrors = {};
@@ -98,6 +102,10 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
     }
     if (!form.location.trim()) nextErrors.location = 'Bitte einen Standort eingeben.';
     if (!form.serialNumber.trim()) nextErrors.serialNumber = 'Bitte eine Seriennummer eingeben.';
+    const imageUrl = form.productImageSourceUrl.trim();
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) {
+      nextErrors.productImageSourceUrl = 'Produktbild-URL muss mit http:// oder https:// beginnen.';
+    }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -114,6 +122,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
     const normalizedMacLan = normalizeOptional(form.macLan);
     const normalizedMacWlan = normalizeOptional(form.macWlan);
     const normalizedNotes = form.notes.trim();
+    const normalizedProductImageSourceUrl = form.productImageSourceUrl.trim() || null;
 
     if (normalizedName !== asset.name) patch.name = normalizedName;
     if (normalizedCategory !== asset.category) patch.category = normalizedCategory;
@@ -124,6 +133,9 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
     if ((asset.macLan ?? undefined) !== normalizedMacLan) patch.macLan = normalizedMacLan;
     if ((asset.macWlan ?? undefined) !== normalizedMacWlan) patch.macWlan = normalizedMacWlan;
     if (normalizedNotes !== asset.notes.trim()) patch.notes = normalizedNotes;
+    if ((asset.productImageSourceUrl ?? null) !== normalizedProductImageSourceUrl) {
+      patch.productImageSourceUrl = normalizedProductImageSourceUrl;
+    }
     if ((asset.cardPrinterCompatible ?? true) !== form.cardPrinterCompatible) {
       patch.cardPrinterCompatible = form.cardPrinterCompatible;
     }
@@ -382,11 +394,52 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
                       onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))}
                     />
                   </label>
+
+                  <label className="field md:col-span-2">
+                    Produktbild-URL
+                    <input
+                      className="field-input"
+                      placeholder="https://example.com/produktbild.jpg"
+                      value={form.productImageSourceUrl}
+                      onChange={(event) => {
+                        setForm((current) => ({ ...current, productImageSourceUrl: event.target.value }));
+                        setErrors((current) => ({ ...current, productImageSourceUrl: undefined }));
+                      }}
+                    />
+                    <span className="text-xs text-ink-faint">
+                      Bild wird beim Speichern einmal serverseitig geladen und lokal zwischengespeichert.
+                    </span>
+                    {errors.productImageSourceUrl ? (
+                      <span className="text-xs text-rose-300">{errors.productImageSourceUrl}</span>
+                    ) : null}
+                  </label>
                 </div>
               </section>
             </div>
 
             <aside className="space-y-5">
+              <section className="rounded-2xl border border-line bg-surface p-4">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                  <QrCode className="h-3.5 w-3.5" />
+                  Produktbild
+                </p>
+                <div className="mt-4 flex items-center gap-4">
+                  <AssetImage asset={asset} size="lg" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">
+                      {asset.productImageUrl && !imageUrlChanged ? 'Lokale Bildvorschau aktiv' : 'Noch keine lokale Bildvorschau'}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-muted">
+                      {form.productImageSourceUrl.trim()
+                        ? imageUrlChanged
+                          ? 'Neue URL erkannt. Vorschau erscheint nach dem Speichern aus dem lokalen Cache.'
+                          : `Status: ${asset.productImageStatus || 'none'}`
+                        : 'Kein Produktbild hinterlegt. Es wird automatisch auf das Kategorie-Icon zurückgefallen.'}
+                    </p>
+                  </div>
+                </div>
+              </section>
+
               <section className="rounded-2xl border border-line bg-surface p-4">
                 <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                   <QrCode className="h-3.5 w-3.5" />

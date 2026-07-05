@@ -43,6 +43,7 @@ from ..services.auth_service import (
     normalize_role_for_db,
     role_to_app_role,
 )
+from ..services import product_image_service
 
 logger = logging.getLogger("cloud_web.wms")
 
@@ -162,6 +163,11 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         lastCheckout=record.last_checkout,
         nextReservation=record.next_reservation,
         sourceFile=record.source_file,
+        productImageUrl=product_image_service.build_public_image_url(
+            getattr(record, "product_image_cached_path", None)
+        ),
+        productImageSourceUrl=getattr(record, "product_image_source_url", None),
+        productImageStatus=getattr(record, "product_image_fetch_status", "none"),
         ownershipType=_normalize_ownership_type(record.ownership_type),
         sourceName=record.source_name,
         availableFrom=record.available_from,
@@ -392,6 +398,30 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
         # Telekompass-Zähler wird ausschließlich über telecom_pass_repository
         # gepflegt — so kann ein Bearbeiten/Checkout den Wert nie überschreiben.
     }
+    normalized_image_source_url = (item.productImageSourceUrl or "").strip()
+    image_payload: dict[str, str | None] | None = None
+    if normalized_image_source_url:
+        previous_source_url = (getattr(record, "product_image_source_url", None) or "").strip() if record else ""
+        previous_cached_path = (getattr(record, "product_image_cached_path", None) or "").strip() if record else ""
+        if (
+            normalized_image_source_url == previous_source_url
+            and previous_cached_path
+            and product_image_service.cached_file_exists(previous_cached_path)
+        ):
+            image_payload = {
+                "source_url": previous_source_url,
+                "cached_path": previous_cached_path,
+                "mime_type": getattr(record, "product_image_mime_type", None),
+                "fetch_status": getattr(record, "product_image_fetch_status", "ready"),
+                "fetch_error": getattr(record, "product_image_fetch_error", None),
+            }
+        else:
+            image_payload = product_image_service.sync_product_image(normalized_image_source_url)
+    elif record and (
+        getattr(record, "product_image_source_url", None)
+        or getattr(record, "product_image_cached_path", None)
+    ):
+        image_payload = product_image_service.clear_product_image()
     # Schritt A: erwartetes Rückgabedatum eines Eigengeräts strukturiert pflegen.
     # Beim Checkout (-> Verliehen) wird, falls die UI noch kein strukturiertes
     # Datum liefert, defensiv das eingegebene next_return interpretiert. Beim
@@ -413,6 +443,13 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
     else:
         record = AssetRecord(external_id=item.id, **payload)
         db.add(record)
+    if image_payload is not None:
+        record.product_image_source_url = image_payload["source_url"]
+        record.product_image_cached_path = image_payload["cached_path"]
+        record.product_image_mime_type = image_payload["mime_type"]
+        record.product_image_fetch_status = image_payload["fetch_status"] or "none"
+        record.product_image_fetch_error = image_payload["fetch_error"]
+        record.product_image_last_fetched_at = datetime.now(UTC) if image_payload["cached_path"] else None
     next_status = _normalize_asset_status(payload["status"])
     if record and previous_status != next_status and previous_status in {"Verfuegbar", "Verliehen"} and next_status in {"Verfuegbar", "Verliehen"}:
         operator_user_id = None

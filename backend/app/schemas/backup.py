@@ -45,6 +45,12 @@ class BackupAsset(BaseModel):
     lastCheckout: str = "-"
     nextReservation: str = "-"
     sourceFile: str | None = None
+    productImageSourceUrl: str | None = None
+    productImageCachedPath: str | None = None
+    productImageMimeType: str | None = None
+    productImageLastFetchedAt: datetime | None = None
+    productImageStatus: str | None = None
+    productImageFetchError: str | None = None
     # Fremdbestand-Felder. Alle optional mit sicheren Defaults, damit
     # ältere Backups OHNE diese Felder weiterhin importierbar bleiben
     # (jedes fehlende Asset wird dann als Eigenbestand interpretiert).
