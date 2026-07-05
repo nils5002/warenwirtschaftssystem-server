@@ -10,11 +10,11 @@ import {
   PackagePlus,
   Printer,
   ScanLine,
+  Sparkles,
   TriangleAlert,
   Users,
   Wrench,
 } from 'lucide-react';
-import { KpiCard } from '../components/KpiCard';
 import { ActionCard, EmptyState } from '../../ui';
 import { normalizeCategory } from '../categories';
 import { canAccessPage } from '../../config/pageAccess';
@@ -154,6 +154,112 @@ function greetingFor(name?: string): string {
 const WEEKDAYS = ['MO', 'DI', 'MI', 'DO', 'FR', 'SA', 'SO'];
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
+function getMetricTone(
+  tone: 'positive' | 'neutral' | 'warning' | 'critical' | 'info',
+  theme: Theme,
+): {
+  background: string;
+  borderColor: string;
+  iconClass: string;
+  labelClass: string;
+} {
+  const isDark = theme === 'dark';
+  switch (tone) {
+    case 'positive':
+      return {
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(18, 66, 55, 0.96) 0%, rgba(14, 29, 43, 0.98) 100%)'
+          : 'linear-gradient(135deg, rgba(220, 252, 231, 0.96) 0%, rgba(240, 253, 244, 0.98) 100%)',
+        borderColor: isDark ? 'rgba(52, 211, 153, 0.18)' : 'rgba(22, 163, 74, 0.18)',
+        iconClass: 'bg-emerald-400/14 text-emerald-200 dark:bg-emerald-400/16 dark:text-emerald-200',
+        labelClass: 'text-emerald-700 dark:text-emerald-200/85',
+      };
+    case 'warning':
+      return {
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(86, 64, 16, 0.95) 0%, rgba(37, 28, 14, 0.98) 100%)'
+          : 'linear-gradient(135deg, rgba(254, 243, 199, 0.96) 0%, rgba(255, 251, 235, 0.98) 100%)',
+        borderColor: isDark ? 'rgba(251, 191, 36, 0.18)' : 'rgba(217, 119, 6, 0.18)',
+        iconClass: 'bg-amber-400/14 text-amber-200 dark:bg-amber-400/16 dark:text-amber-200',
+        labelClass: 'text-amber-700 dark:text-amber-200/85',
+      };
+    case 'critical':
+      return {
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(84, 27, 49, 0.95) 0%, rgba(37, 16, 26, 0.98) 100%)'
+          : 'linear-gradient(135deg, rgba(255, 228, 230, 0.97) 0%, rgba(255, 241, 242, 0.98) 100%)',
+        borderColor: isDark ? 'rgba(251, 113, 133, 0.18)' : 'rgba(225, 29, 72, 0.16)',
+        iconClass: 'bg-rose-400/14 text-rose-200 dark:bg-rose-400/16 dark:text-rose-200',
+        labelClass: 'text-rose-700 dark:text-rose-200/85',
+      };
+    case 'info':
+      return {
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(19, 74, 92, 0.95) 0%, rgba(14, 32, 43, 0.98) 100%)'
+          : 'linear-gradient(135deg, rgba(207, 250, 254, 0.97) 0%, rgba(240, 253, 250, 0.98) 100%)',
+        borderColor: isDark ? 'rgba(103, 232, 249, 0.18)' : 'rgba(8, 145, 178, 0.16)',
+        iconClass: 'bg-cyan-400/14 text-cyan-200 dark:bg-cyan-400/16 dark:text-cyan-200',
+        labelClass: 'text-cyan-700 dark:text-cyan-100/85',
+      };
+    case 'neutral':
+    default:
+      return {
+        background: isDark
+          ? 'linear-gradient(135deg, rgba(20, 53, 83, 0.96) 0%, rgba(12, 24, 42, 0.98) 100%)'
+          : 'linear-gradient(135deg, rgba(219, 234, 254, 0.97) 0%, rgba(239, 246, 255, 0.98) 100%)',
+        borderColor: isDark ? 'rgba(96, 165, 250, 0.18)' : 'rgba(37, 99, 235, 0.16)',
+        iconClass: 'bg-sky-400/14 text-sky-200 dark:bg-sky-400/16 dark:text-sky-200',
+        labelClass: 'text-sky-700 dark:text-sky-100/85',
+      };
+  }
+}
+
+function getTimelineAccent(index: number, theme: Theme): {
+  background: string;
+  borderColor: string;
+  textClass: string;
+} {
+  const isDark = theme === 'dark';
+  const palette = [
+    {
+      background: isDark
+        ? 'linear-gradient(135deg, rgba(92, 204, 138, 0.95) 0%, rgba(74, 180, 118, 0.92) 100%)'
+        : 'linear-gradient(135deg, rgba(74, 222, 128, 0.92) 0%, rgba(34, 197, 94, 0.92) 100%)',
+      borderColor: isDark ? 'rgba(187, 247, 208, 0.28)' : 'rgba(21, 128, 61, 0.18)',
+      textClass: 'text-slate-950',
+    },
+    {
+      background: isDark
+        ? 'linear-gradient(135deg, rgba(87, 149, 255, 0.95) 0%, rgba(71, 119, 246, 0.92) 100%)'
+        : 'linear-gradient(135deg, rgba(96, 165, 250, 0.92) 0%, rgba(59, 130, 246, 0.92) 100%)',
+      borderColor: isDark ? 'rgba(191, 219, 254, 0.28)' : 'rgba(37, 99, 235, 0.18)',
+      textClass: 'text-white',
+    },
+    {
+      background: isDark
+        ? 'linear-gradient(135deg, rgba(123, 182, 206, 0.95) 0%, rgba(94, 148, 186, 0.92) 100%)'
+        : 'linear-gradient(135deg, rgba(103, 232, 249, 0.92) 0%, rgba(14, 165, 233, 0.92) 100%)',
+      borderColor: isDark ? 'rgba(186, 230, 253, 0.26)' : 'rgba(8, 145, 178, 0.18)',
+      textClass: 'text-slate-950',
+    },
+    {
+      background: isDark
+        ? 'linear-gradient(135deg, rgba(248, 210, 91, 0.95) 0%, rgba(240, 176, 58, 0.92) 100%)'
+        : 'linear-gradient(135deg, rgba(253, 224, 71, 0.92) 0%, rgba(245, 158, 11, 0.92) 100%)',
+      borderColor: isDark ? 'rgba(254, 240, 138, 0.28)' : 'rgba(180, 83, 9, 0.18)',
+      textClass: 'text-slate-950',
+    },
+    {
+      background: isDark
+        ? 'linear-gradient(135deg, rgba(236, 86, 119, 0.95) 0%, rgba(215, 69, 100, 0.92) 100%)'
+        : 'linear-gradient(135deg, rgba(251, 113, 133, 0.92) 0%, rgba(244, 63, 94, 0.92) 100%)',
+      borderColor: isDark ? 'rgba(254, 205, 211, 0.28)' : 'rgba(225, 29, 72, 0.18)',
+      textClass: 'text-white',
+    },
+  ];
+  return palette[index % palette.length];
+}
+
 // Kompakter Monats-Mini-Kalender für den aktuellen Monat, heutiger Tag
 // hervorgehoben. Rein aus dem aktuellen Datum abgeleitet (keine Fake-Bars).
 function MiniCalendar() {
@@ -172,23 +278,25 @@ function MiniCalendar() {
 
   return (
     <div>
-      <p className="mb-2 text-sm font-semibold text-ink">
+      <p className="mb-3 text-sm font-semibold text-ink">
         {MONTHS[month]} {year}
       </p>
-      <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-ink-faint">
+      <div className="grid grid-cols-7 gap-y-1 text-center text-[10px] font-semibold tracking-[0.14em] text-ink-faint">
         {WEEKDAYS.map((day) => (
           <span key={day}>{day}</span>
         ))}
       </div>
-      <div className="mt-1 grid grid-cols-7 gap-1">
+      <div className="mt-2 grid grid-cols-7 gap-1.5">
         {cells.map((day, index) => (
           <div key={index} className="flex items-center justify-center">
             {day === null ? (
-              <span className="h-7 w-7" />
+              <span className="h-8 w-8" />
             ) : (
               <span
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
-                  day === today ? 'bg-primary font-bold text-white' : 'text-ink-muted'
+                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
+                  day === today
+                    ? 'bg-primary text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_10px_30px_rgba(47,125,246,0.35)]'
+                    : 'text-ink-muted'
                 }`}
               >
                 {day}
@@ -276,334 +384,529 @@ export function DashboardPage({
   const recentActivities = activities.slice(0, 6);
   const hasActivities = recentActivities.length > 0;
 
+  const cardShellStyle = {
+    background:
+      theme === 'dark'
+        ? 'linear-gradient(180deg, rgba(12, 20, 34, 0.98) 0%, rgba(7, 13, 24, 0.98) 100%)'
+        : 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(243, 246, 251, 0.98) 100%)',
+  };
+  const insetShellStyle = {
+    background:
+      theme === 'dark'
+        ? 'linear-gradient(180deg, rgba(15, 27, 46, 0.94) 0%, rgba(10, 20, 35, 0.98) 100%)'
+        : 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
+  };
+  const heroStyle = {
+    background:
+      theme === 'dark'
+        ? 'radial-gradient(circle at 22% 0%, rgba(47, 125, 246, 0.18) 0%, transparent 34%), linear-gradient(135deg, rgba(13, 21, 37, 0.98) 0%, rgba(9, 18, 33, 0.98) 60%, rgba(9, 20, 36, 0.98) 100%)'
+        : 'radial-gradient(circle at 22% 0%, rgba(37, 99, 235, 0.16) 0%, transparent 34%), linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 246, 255, 0.98) 100%)',
+  };
+
+  const metricCards: Array<{
+    title: string;
+    value: string;
+    trend: string;
+    tone: 'positive' | 'neutral' | 'warning' | 'critical' | 'info';
+    icon: typeof CheckCircle2;
+    onClick?: () => void;
+    disabled?: boolean;
+  }> = [
+    {
+      title: 'Verfügbar',
+      value: formatCount(available),
+      trend: 'Geräte sofort verfügbar',
+      tone: 'positive',
+      icon: CheckCircle2,
+      onClick: () => onOpenInventoryWithStatus('Verfügbar'),
+      disabled: !canInventory,
+    },
+    {
+      title: 'Verliehen',
+      value: formatCount(loaned),
+      trend: 'Aktuell im Einsatz',
+      tone: 'neutral',
+      icon: Handshake,
+      onClick: () => onOpenInventoryWithStatus('Verliehen'),
+      disabled: !canInventory,
+    },
+    {
+      title: 'Defekt / Wartung',
+      value: formatCount(defectiveOrMaintenance),
+      trend: 'Nicht einsatzbereit',
+      tone: 'warning',
+      icon: Wrench,
+      onClick: () => onOpenInventoryWithStatus('Defekt'),
+      disabled: !canInventory,
+    },
+    {
+      title: 'Offene Tickets',
+      value: showPlaceholders ? '—' : String(maintenanceOpen),
+      trend: 'Benötigen Bearbeitung',
+      tone: 'critical',
+      icon: TriangleAlert,
+      onClick: () => onNavigate('tickets'),
+      disabled: !canTickets,
+    },
+    {
+      title: 'Aktive Planungen',
+      value: showPlaceholders ? '—' : String(activeReservations),
+      trend: 'Laufende Einsätze',
+      tone: 'info',
+      icon: CalendarRange,
+      onClick: () => onNavigate('planning'),
+      disabled: !canPlanning,
+    },
+  ];
+
+  const timelineReservations = upcomingReservations.slice(0, 5).map((reservation, index) => {
+    const seed = hashText(`${reservation.id}-${reservation.team}-${reservation.period}`);
+    const left = Math.min(48, 4 + index * 8 + (seed % 7));
+    const rawWidth = 42 + Math.min(28, reservation.assets.length * 6) + (seed % 8);
+    const width = Math.max(24, Math.min(rawWidth, 92 - left));
+    return {
+      reservation,
+      left,
+      width,
+      accent: getTimelineAccent(index, theme),
+    };
+  });
+
   return (
-    <section className="space-y-6">
-      {/* HERO: zeitabhängige Begrüßung + dezente Geräte-Silhouetten rechts. */}
-      <div className="relative overflow-hidden rounded-2xl border border-line bg-surface p-6 md:p-7">
+    <section className="space-y-5 pb-2">
+      <article
+        className="animate-fade-up relative overflow-hidden rounded-[30px] border border-line shadow-soft"
+        style={heroStyle}
+      >
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-70"
-          style={{ background: 'radial-gradient(circle at 88% -10%, var(--ui-primary-soft) 0%, transparent 55%)' }}
+          className="pointer-events-none absolute inset-0 opacity-95"
+          style={{
+            background:
+              theme === 'dark'
+                ? 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(79, 172, 255, 0.08) 60%, transparent 100%)'
+                : 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(37, 99, 235, 0.07) 60%, transparent 100%)',
+          }}
         />
-        <div
+        <svg
           aria-hidden
-          className="pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 items-center gap-3 text-ink-faint/40 lg:flex"
+          viewBox="0 0 1200 260"
+          className="pointer-events-none absolute inset-0 hidden h-full w-full lg:block"
+          preserveAspectRatio="none"
         >
-          <Printer className="h-14 w-14" strokeWidth={1} />
-          <MonitorSmartphone className="h-20 w-20" strokeWidth={1} />
-          <Laptop className="h-16 w-16" strokeWidth={1} />
-        </div>
-        <div className="relative">
-          <h2 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{greetingFor(userName)}</h2>
-          <p className="mt-2 max-w-xl text-sm text-ink-muted">
-            Hier ist der aktuelle Überblick über Hardware, Planungen und Vorgänge.
-          </p>
-        </div>
-      </div>
-
-      {/* KPI-ZEILE */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-        <KpiCard
-          title="Verfügbar"
-          value={formatCount(available)}
-          trend="Geräte sofort verfügbar"
-          tone="positive"
-          icon={CheckCircle2}
-          onClick={() => onOpenInventoryWithStatus('Verfügbar')}
-          disabled={!canInventory}
-        />
-        <KpiCard
-          title="Verliehen"
-          value={formatCount(loaned)}
-          trend="Aktuell im Einsatz"
-          tone="neutral"
-          icon={Handshake}
-          onClick={() => onOpenInventoryWithStatus('Verliehen')}
-          disabled={!canInventory}
-        />
-        <KpiCard
-          title="Defekt / Wartung"
-          value={formatCount(defectiveOrMaintenance)}
-          trend="Nicht einsatzbereit"
-          tone="warning"
-          icon={Wrench}
-          onClick={() => onOpenInventoryWithStatus('Defekt')}
-          disabled={!canInventory}
-        />
-        <KpiCard
-          title="Offene Tickets"
-          value={showPlaceholders ? '—' : String(maintenanceOpen)}
-          trend="Benötigen Bearbeitung"
-          tone="critical"
-          icon={TriangleAlert}
-          onClick={() => onNavigate('tickets')}
-          disabled={!canTickets}
-        />
-        <KpiCard
-          title="Aktive Planungen"
-          value={showPlaceholders ? '—' : String(activeReservations)}
-          trend="Laufende Einsätze"
-          tone="neutral"
-          icon={CalendarRange}
-          onClick={() => onNavigate('planning')}
-          disabled={!canPlanning}
-        />
-      </div>
-
-      {/* PLANUNGSÜBERBLICK (3 Spalten) + SCHNELLAKTIONEN */}
-      <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card animate-fade-up xl:col-span-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-ink">Planungsüberblick</h3>
+          <path d="M760 210L990 72" stroke="rgba(125, 211, 252, 0.38)" strokeWidth="1.4" />
+          <path d="M860 214L1090 48" stroke="rgba(191, 219, 254, 0.28)" strokeWidth="1.2" />
+          <path d="M930 216L1155 92" stroke="rgba(103, 232, 249, 0.20)" strokeWidth="1.1" />
+        </svg>
+        <span className="pointer-events-none absolute left-[62%] top-7 h-1.5 w-1.5 rounded-full bg-sky-200 shadow-[0_0_18px_rgba(186,230,253,0.85)]" />
+        <span className="pointer-events-none absolute left-[70%] top-16 h-1 w-1 rounded-full bg-sky-100 shadow-[0_0_14px_rgba(191,219,254,0.8)]" />
+        <span className="pointer-events-none absolute left-[76%] top-9 h-1 w-1 rounded-full bg-cyan-100 shadow-[0_0_14px_rgba(165,243,252,0.75)]" />
+        <span className="pointer-events-none absolute left-[84%] top-16 h-1.5 w-1.5 rounded-full bg-slate-100 shadow-[0_0_18px_rgba(226,232,240,0.75)]" />
+        <span className="pointer-events-none absolute left-[90%] top-11 h-1 w-1 rounded-full bg-sky-200 shadow-[0_0_14px_rgba(186,230,253,0.75)]" />
+        <div className="relative flex flex-col justify-between gap-6 px-5 py-6 md:px-7 md:py-7 lg:flex-row lg:items-start">
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary/80 dark:text-sky-200/75">Dashboard</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink lg:text-[2.15rem]">{greetingFor(userName)}</h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-ink-muted">
+              Hier ist die aktuelle Übersicht über Hardware, Einsätze, Tickets und die laufende Betriebslage.
+            </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {/* Nächste Einsätze */}
-            <div className="rounded-xl border border-line bg-surface-2 p-3.5">
-              <p className="mb-3 text-sm font-semibold text-ink">Nächste Einsätze</p>
-              {upcomingReservations.length ? (
-                <ul className="space-y-2.5">
-                  {upcomingReservations.map((reservation) => (
-                    <li key={reservation.id} className="flex items-start gap-2.5">
-                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface text-ink-muted">
-                        <CalendarRange className="h-4 w-4" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-semibold text-ink">{reservation.team || reservation.requestedBy}</p>
-                        <p className="truncate text-[11px] text-ink-muted">
-                          {reservation.assets.length} Geräte · {reservation.location || '—'}
-                        </p>
-                        <p className="truncate text-[11px] text-ink-faint">{reservation.period}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="py-6 text-center text-xs text-ink-muted">Keine geplanten Einsätze</p>
-              )}
-              {canPlanning ? (
-                <button
-                  type="button"
-                  onClick={() => onNavigate('planning')}
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                >
-                  Alle Planungen anzeigen <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
+          <div className="hidden items-center gap-4 text-white/80 lg:flex">
+            <Printer className="h-14 w-14 text-slate-100/80" strokeWidth={1.5} />
+            <MonitorSmartphone className="h-16 w-16 text-sky-100/80" strokeWidth={1.35} />
+            <Laptop className="h-14 w-14 text-slate-100/80" strokeWidth={1.35} />
+          </div>
+        </div>
+      </article>
 
-            {/* Engpässe & Risiken */}
-            <div className="rounded-xl border border-line bg-surface-2 p-3.5">
-              <p className="mb-3 text-sm font-semibold text-ink">Engpässe &amp; Risiken</p>
-              {risks.length ? (
-                <ul className="space-y-2.5">
-                  {risks.map((risk) => (
-                    <li key={risk.label} className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-ink">{risk.label}</p>
-                        <p className="truncate text-[11px] text-ink-muted">{risk.sub}</p>
-                      </div>
-                      <span className="flex h-6 min-w-[24px] shrink-0 items-center justify-center rounded-full bg-rose-500/15 px-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-300">
-                        {risk.badge}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="py-6 text-center text-xs text-ink-muted">Keine Engpässe erkannt</p>
-              )}
-              {canPlanning ? (
-                <button
-                  type="button"
-                  onClick={() => onNavigate('planning')}
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-                >
-                  Alle Engpässe anzeigen <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              ) : null}
-            </div>
-
-            {/* Kalenderübersicht */}
-            <div className="rounded-xl border border-line bg-surface-2 p-3.5">
-              <MiniCalendar />
-              <div className="mt-3 space-y-1.5 border-t border-line pt-3 text-[11px]">
-                <div className="flex items-center justify-between">
-                  <span className="text-ink-muted">Heute geplant</span>
-                  <span className="font-semibold text-ink">{todayPlannedQty} Geräte</span>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        {metricCards.map((metric) => {
+          const tone = getMetricTone(metric.tone, theme);
+          const cardInner = (
+            <div className="relative h-full overflow-hidden rounded-[24px] px-5 py-4 md:px-5 md:py-5">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-90"
+                style={{ background: tone.background, borderColor: tone.borderColor }}
+              />
+              <div className="relative flex items-start gap-3.5">
+                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tone.iconClass}`}>
+                  <metric.icon className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${tone.labelClass}`}>{metric.title}</p>
+                  <p className="mt-1 text-4xl font-semibold leading-none tracking-tight text-ink">{metric.value}</p>
+                  <p className="mt-2 text-xs font-medium text-ink-muted">{metric.trend}</p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-ink-muted">Offene Konflikte</span>
-                  <span className={`font-semibold ${openConflictCount > 0 ? 'text-rose-600 dark:text-rose-300' : 'text-ink'}`}>
-                    {openConflictCount}
-                  </span>
+              </div>
+            </div>
+          );
+
+          if (metric.onClick) {
+            if (metric.disabled) {
+              return (
+                <div
+                  key={metric.title}
+                  aria-disabled="true"
+                  title="Keine Berechtigung"
+                  className="overflow-hidden rounded-[24px] border border-line opacity-60 shadow-soft"
+                >
+                  {cardInner}
+                </div>
+              );
+            }
+            return (
+              <button
+                key={metric.title}
+                type="button"
+                onClick={metric.onClick}
+                className="group overflow-hidden rounded-[24px] border border-line text-left shadow-soft transition duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {cardInner}
+              </button>
+            );
+          }
+
+          return (
+            <div key={metric.title} className="overflow-hidden rounded-[24px] border border-line shadow-soft">
+              {cardInner}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.82fr)]">
+        <article
+          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          style={cardShellStyle}
+        >
+          <div className="relative p-4 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[1.35rem] font-semibold tracking-tight text-ink">Planungsüberblick</h3>
+                <p className="mt-1 text-sm text-ink-muted">Aktive Einsätze, Kalender und erkannte Engpässe auf einen Blick.</p>
+              </div>
+              {canPlanning ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('planning')}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
+                >
+                  Planung öffnen <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_240px]">
+              <div
+                className="relative overflow-hidden rounded-[24px] border border-line px-4 py-4"
+                style={insetShellStyle}
+              >
+                <div className="absolute inset-y-4 left-[11%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[24%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[37%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[50%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[63%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[76%] w-px bg-white/6" />
+                <div className="absolute inset-y-4 left-[89%] w-px bg-white/6" />
+                {timelineReservations.length ? (
+                  <div className="relative">
+                    <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-ink-faint">
+                      <span>Aktive Projektbahnen</span>
+                      <span>{timelineReservations.length} Einträge</span>
+                    </div>
+                    <div className="space-y-3">
+                      {timelineReservations.map(({ reservation, left, width, accent }, index) => (
+                        <div key={reservation.id} className="relative h-12">
+                          <div
+                            className="absolute inset-y-0 rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(2,8,23,0.14)]"
+                            style={{
+                              left: `${left}%`,
+                              width: `${width}%`,
+                              background: accent.background,
+                              borderColor: accent.borderColor,
+                            }}
+                          >
+                            <p className={`truncate text-xs font-semibold ${accent.textClass}`}>
+                              {reservation.team || reservation.requestedBy}
+                            </p>
+                            <p className={`truncate text-[11px] ${accent.textClass} ${accent.textClass === 'text-white' ? 'opacity-90' : 'opacity-75'}`}>
+                              {reservation.assets.length} Geräte · {reservation.location || reservation.period}
+                            </p>
+                          </div>
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-ink-faint">
+                            {index + 1}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid gap-2 border-t border-line/70 pt-3 text-xs text-ink-muted sm:grid-cols-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Heute geplant</p>
+                        <p className="mt-1 font-semibold text-ink">{todayPlannedQty} Geräte</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Offene Konflikte</p>
+                        <p className={`mt-1 font-semibold ${openConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
+                          {openConflictCount}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Engpass-Kategorien</p>
+                        <p className="mt-1 font-semibold text-ink">{bottleneckCount}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={CalendarRange}
+                    title="Noch keine geplanten Einsätze"
+                    message="Sobald Reservierungen oder Planungen aktiv sind, erscheint hier das Einsatzboard."
+                    className="min-h-[280px]"
+                  />
+                )}
+              </div>
+
+              <div
+                className="rounded-[24px] border border-line px-4 py-4"
+                style={insetShellStyle}
+              >
+                <MiniCalendar />
+                <div className="mt-4 space-y-2 border-t border-line pt-4 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Heute geplant</span>
+                    <span className="font-semibold text-ink">{todayPlannedQty} Geräte</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Offene Konflikte</span>
+                    <span className={`font-semibold ${openConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
+                      {openConflictCount}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Tickets offen</span>
+                    <span className="font-semibold text-ink">{maintenanceOpen}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-line/70 bg-surface/70 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-faint">Engpässe &amp; Risiken</p>
+                  {risks.length ? (
+                    <ul className="mt-3 space-y-2.5">
+                      {risks.slice(0, 3).map((risk) => (
+                        <li key={risk.label} className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-ink">{risk.label}</p>
+                            <p className="truncate text-[11px] text-ink-muted">{risk.sub}</p>
+                          </div>
+                          <span className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-rose-500/15 px-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-300">
+                            {risk.badge}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-xs text-ink-muted">Keine Engpässe erkannt.</p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </article>
 
-        {/* Schnellaktionen */}
-        <article className="surface-card animate-fade-up xl:col-span-4">
-          <h3 className="mb-4 text-lg font-semibold text-ink">Schnellaktionen</h3>
-          <div className="space-y-2.5">
-            <ActionCard
-              icon={PackagePlus}
-              title="Neues Gerät"
-              subtitle="Gerät erfassen und inventarisieren"
-              tone="primary"
-              onClick={() => onNavigate('inventory')}
-              disabled={!canInventory}
-            />
-            <ActionCard
-              icon={CalendarPlus}
-              title="Planung erstellen"
-              subtitle="Neuen Einsatz planen"
-              onClick={() => onNavigate('planning')}
-              disabled={!canPlanning}
-            />
-            <ActionCard
-              icon={ScanLine}
-              title="Scannen"
-              subtitle="Ein-/Auslagerung starten"
-              tone="success"
-              onClick={() => onNavigate('checkinCheckout')}
-              disabled={!canCheckinout}
-            />
-            <ActionCard
-              icon={TriangleAlert}
-              title="Defekt melden"
-              subtitle="Problem oder Defekt erfassen"
-              tone="warning"
-              onClick={() => onNavigate('tickets')}
-              disabled={!canTickets}
-            />
+        <article
+          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          style={cardShellStyle}
+        >
+          <div className="relative p-4 md:p-5">
+            <h3 className="text-[1.35rem] font-semibold tracking-tight text-ink">Schnellaktionen</h3>
+            <p className="mt-1 text-sm text-ink-muted">Direkter Zugriff auf die wichtigsten Lager- und Serviceprozesse.</p>
+            <div className="mt-4 space-y-3">
+              <ActionCard
+                icon={PackagePlus}
+                title="Neues Gerät"
+                subtitle="Gerät erfassen und inventarisieren"
+                tone="primary"
+                onClick={() => onNavigate('inventory')}
+                disabled={!canInventory}
+              />
+              <ActionCard
+                icon={CalendarPlus}
+                title="Planung erstellen"
+                subtitle="Neuen Einsatz planen"
+                onClick={() => onNavigate('planning')}
+                disabled={!canPlanning}
+              />
+              <ActionCard
+                icon={ScanLine}
+                title="Scannen"
+                subtitle="Ein-/Auslagerung starten"
+                tone="success"
+                onClick={() => onNavigate('checkinCheckout')}
+                disabled={!canCheckinout}
+              />
+              <ActionCard
+                icon={TriangleAlert}
+                title="Defekt melden"
+                subtitle="Problem oder Defekt erfassen"
+                tone="warning"
+                onClick={() => onNavigate('tickets')}
+                disabled={!canTickets}
+              />
+            </div>
           </div>
         </article>
       </div>
 
-      {/* AKTIVITÄTEN-TABELLE + BETRIEBSLAGE */}
-      <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card animate-fade-up overflow-hidden xl:col-span-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-ink">Aktuelle Aktivitäten</h3>
-            {canInventory ? (
-              <button
-                type="button"
-                onClick={() => onNavigate('inventory')}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-              >
-                Zum Inventar <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            ) : null}
-          </div>
-          {hasActivities ? (
-            <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-              <table className="w-full min-w-[560px] text-sm">
-                <thead>
-                  <tr className="border-b border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                    <th className="pb-2 pr-3 font-semibold">Zeit</th>
-                    <th className="pb-2 pr-3 font-semibold">Typ</th>
-                    <th className="pb-2 pr-3 font-semibold">Details</th>
-                    <th className="pb-2 pr-3 font-semibold">Gerät</th>
-                    <th className="pb-2 font-semibold">Standort</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentActivities.map((activity) => {
-                    const relatedAsset = activity.assetId ? assetsById.get(activity.assetId) : undefined;
-                    const assetKey = relatedAsset?.id ?? activity.assetId ?? '';
-                    const accent = assetKey ? getAssetAccentStyle(assetKey, theme) : null;
-                    const assetBadge = getReadableAssetLabel(relatedAsset);
-                    const detailText = normalizeActivityText(activity.detail, relatedAsset);
-                    const summary = summarizeActivityLine(activity.title, detailText);
-                    const typeClass = TYPE_BADGE[summary.actionLabel] ?? TYPE_BADGE_DEFAULT;
-                    return (
-                      <tr key={activity.id} className="border-b border-line/60 last:border-0">
-                        <td className="py-2.5 pr-3 align-top text-xs text-ink-muted">{activity.timestamp}</td>
-                        <td className="py-2.5 pr-3 align-top">
-                          <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ${typeClass}`}>
-                            {summary.actionLabel}
-                          </span>
-                        </td>
-                        <td className="py-2.5 pr-3 align-top text-xs text-ink">
-                          {summary.main}
-                          {summary.actor ? <span className="block text-[11px] text-ink-faint">durch {summary.actor}</span> : null}
-                        </td>
-                        <td className="py-2.5 pr-3 align-top">
-                          <span
-                            className="inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold"
-                            style={accent ? { borderColor: accent.border, backgroundColor: accent.bg, color: accent.text } : undefined}
-                          >
-                            {assetBadge}
-                          </span>
-                        </td>
-                        <td className="py-2.5 align-top text-xs text-ink-muted">{relatedAsset?.location || '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.82fr)]">
+        <article
+          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          style={cardShellStyle}
+        >
+          <div className="relative p-4 md:p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[1.35rem] font-semibold tracking-tight text-ink">Aktuelle Aktivitäten</h3>
+                <p className="mt-1 text-sm text-ink-muted">Letzte Buchungen, Änderungen und Systemvorgänge im Bestand.</p>
+              </div>
+              {canInventory ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('inventory')}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+                >
+                  Zum Inventar <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
             </div>
-          ) : (
-            <EmptyState
-              icon={CalendarRange}
-              title="Noch keine Aktivitäten vorhanden"
-              message="Sobald Buchungen oder Änderungen erfolgen, erscheint hier die Timeline."
-            />
-          )}
+            {hasActivities ? (
+              <div className="overflow-x-auto rounded-[22px] border border-line" style={insetShellStyle}>
+                <table className="w-full min-w-[620px] text-sm">
+                  <thead>
+                    <tr className="border-b border-line/80 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
+                      <th className="px-4 py-3 font-semibold">Zeit</th>
+                      <th className="px-4 py-3 font-semibold">Typ</th>
+                      <th className="px-4 py-3 font-semibold">Details</th>
+                      <th className="px-4 py-3 font-semibold">Gerät</th>
+                      <th className="px-4 py-3 font-semibold">Standort</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentActivities.map((activity) => {
+                      const relatedAsset = activity.assetId ? assetsById.get(activity.assetId) : undefined;
+                      const assetKey = relatedAsset?.id ?? activity.assetId ?? '';
+                      const accent = assetKey ? getAssetAccentStyle(assetKey, theme) : null;
+                      const assetBadge = getReadableAssetLabel(relatedAsset);
+                      const detailText = normalizeActivityText(activity.detail, relatedAsset);
+                      const summary = summarizeActivityLine(activity.title, detailText);
+                      const typeClass = TYPE_BADGE[summary.actionLabel] ?? TYPE_BADGE_DEFAULT;
+                      return (
+                        <tr key={activity.id} className="border-b border-line/60 last:border-0">
+                          <td className="px-4 py-3 align-top text-xs text-ink-muted">{activity.timestamp}</td>
+                          <td className="px-4 py-3 align-top">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${typeClass}`}>
+                              {summary.actionLabel}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top text-xs text-ink">
+                            {summary.main}
+                            {summary.actor ? <span className="mt-1 block text-[11px] text-ink-faint">durch {summary.actor}</span> : null}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <span
+                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                              style={accent ? { borderColor: accent.border, backgroundColor: accent.bg, color: accent.text } : undefined}
+                            >
+                              {assetBadge}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 align-top text-xs text-ink-muted">{relatedAsset?.location || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                icon={CalendarRange}
+                title="Noch keine Aktivitäten vorhanden"
+                message="Sobald Buchungen oder Änderungen erfolgen, erscheint hier die Timeline."
+              />
+            )}
+          </div>
         </article>
 
-        {/* Betriebslage — echte Kennzahlen (kein erfundener Systemstatus). */}
-        <article className="surface-card animate-fade-up xl:col-span-4">
-          <h3 className="mb-4 text-lg font-semibold text-ink">Betriebslage</h3>
-          <div className="space-y-2.5 text-sm">
-            <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-              <span className="inline-flex items-center gap-2 text-ink-muted">
-                <CalendarRange className="h-4 w-4 text-primary" />
-                Aktive Reservierungen
-              </span>
-              <span className="font-semibold text-ink">{activeReservations}</span>
+        <article
+          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          style={cardShellStyle}
+        >
+          <div className="relative p-4 md:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-[1.35rem] font-semibold tracking-tight text-ink">Betriebslage</h3>
+                <p className="mt-1 text-sm text-ink-muted">Kompakte Kennzahlen zum aktuellen Tagesbetrieb.</p>
+              </div>
+              <Sparkles className="h-9 w-9 text-ink-faint/70" />
             </div>
-            <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-              <span className="inline-flex items-center gap-2 text-ink-muted">
-                <TriangleAlert className="h-4 w-4 text-amber-500" />
-                Offene Tickets
-              </span>
-              <span className="font-semibold text-ink">{maintenanceOpen}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-              <span className="inline-flex items-center gap-2 text-ink-muted">
-                <Wrench className="h-4 w-4 text-amber-500" />
-                Geräte in Wartung
-              </span>
-              <span className="font-semibold text-ink">{inMaintenance}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-              <span className="inline-flex items-center gap-2 text-ink-muted">
-                <TriangleAlert className="h-4 w-4 text-rose-500" />
-                Engpass-Kategorien
-              </span>
-              <span className="font-semibold text-ink">{bottleneckCount}</span>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5">
-              <span className="inline-flex items-center gap-2 text-ink-muted">
-                <Boxes className="h-4 w-4 text-ink-faint" />
-                Gesamtbestand
-              </span>
-              <span className="font-semibold text-ink">{formatCount(assets.length)}</span>
-            </div>
-            {canUsers ? (
-              <button
-                type="button"
-                onClick={() => onNavigate('users')}
-                className="flex w-full items-center justify-between rounded-xl border border-line bg-surface-2 px-3 py-2.5 transition hover:border-line-strong hover:bg-surface"
-              >
+            <div className="space-y-2.5 text-sm">
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
                 <span className="inline-flex items-center gap-2 text-ink-muted">
-                  <Users className="h-4 w-4 text-ink-faint" />
-                  Team &amp; Rollen
+                  <CalendarRange className="h-4 w-4 text-primary" />
+                  Aktive Reservierungen
                 </span>
-                <ChevronRight className="h-4 w-4 text-ink-faint" />
-              </button>
-            ) : null}
+                <span className="font-semibold text-ink">{activeReservations}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
+                <span className="inline-flex items-center gap-2 text-ink-muted">
+                  <CalendarPlus className="h-4 w-4 text-sky-500" />
+                  Geräte geplant
+                </span>
+                <span className="font-semibold text-ink">{planningSummary?.upcomingPlannedQty ?? todayPlannedQty}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
+                <span className="inline-flex items-center gap-2 text-ink-muted">
+                  <TriangleAlert className="h-4 w-4 text-amber-500" />
+                  Offene Tickets
+                </span>
+                <span className="font-semibold text-ink">{maintenanceOpen}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
+                <span className="inline-flex items-center gap-2 text-ink-muted">
+                  <Wrench className="h-4 w-4 text-amber-500" />
+                  Geräte in Wartung
+                </span>
+                <span className="font-semibold text-ink">{inMaintenance}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
+                <span className="inline-flex items-center gap-2 text-ink-muted">
+                  <TriangleAlert className="h-4 w-4 text-rose-500" />
+                  Engpass-Kategorien
+                </span>
+                <span className="font-semibold text-ink">{bottleneckCount}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-line px-3.5 py-3" style={insetShellStyle}>
+                <span className="inline-flex items-center gap-2 text-ink-muted">
+                  <Boxes className="h-4 w-4 text-ink-faint" />
+                  Gesamtbestand
+                </span>
+                <span className="font-semibold text-ink">{formatCount(assets.length)}</span>
+              </div>
+              {canUsers ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('users')}
+                  className="flex w-full items-center justify-between rounded-2xl border border-line px-3.5 py-3 text-left transition hover:border-line-strong"
+                  style={insetShellStyle}
+                >
+                  <span className="inline-flex items-center gap-2 text-ink-muted">
+                    <Users className="h-4 w-4 text-ink-faint" />
+                    Team &amp; Rollen
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-ink-faint" />
+                </button>
+              ) : null}
+            </div>
           </div>
         </article>
       </div>
