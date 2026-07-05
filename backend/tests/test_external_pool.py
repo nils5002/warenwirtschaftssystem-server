@@ -740,3 +740,82 @@ def test_deleted_external_asset_disappears_from_listing_and_availability() -> No
     finally:
         _cleanup_planning(client, planning_id)
         _cleanup_assets(client, rented_ids)
+
+
+def test_bulk_delete_external_assets_skips_loaned_and_cleans_qr_groups() -> None:
+    client = TestClient(app)
+    suffix = uuid4().hex[:6]
+    today = date.today()
+    rented_ids = _create_external_pool(
+        client,
+        category=f"DelPool-Bulk-{suffix}",
+        count=2,
+        name_prefix=f"DelBulk-{suffix}",
+        available_from=today,
+        available_until=today + timedelta(days=30),
+    )
+    try:
+        group_res = client.post(
+            "/api/wms/qr-groups",
+            headers=_headers(client, "Admin"),
+            json={
+                "name": f"Sammelgruppe {suffix}",
+                "category": f"DelPool-Bulk-{suffix}",
+                "stockType": "rented",
+                "assetIds": rented_ids,
+            },
+        )
+        assert group_res.status_code == 200, group_res.text
+        group_id = group_res.json()["id"]
+
+        detail = client.get(f"/api/wms/assets/{rented_ids[0]}", headers=_headers(client, "Admin")).json()
+        detail["status"] = "Verliehen"
+        detail["assignedTo"] = "Test User"
+        upd = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=detail)
+        assert upd.status_code == 200, upd.text
+
+        pm_headers = auth_headers(client, "Projektmanager", user_id=f"pm-bulk-{suffix}")
+        bulk = client.post(
+            "/api/wms/assets/bulk-delete",
+            headers=pm_headers,
+            json={"assetIds": rented_ids},
+        )
+        assert bulk.status_code == 200, bulk.text
+        body = bulk.json()
+        assert body["deletedCount"] == 1
+        assert body["skippedCount"] == 1
+        skipped = {item["assetId"]: item for item in body["results"] if not item["deleted"]}
+        assert rented_ids[0] in skipped
+        assert "ausgegeben" in (skipped[rented_ids[0]]["reason"] or "")
+
+        listing = client.get("/api/wms/assets", headers=_headers(client, "Admin"))
+        assert listing.status_code == 200, listing.text
+        ids = {item["id"] for item in listing.json()}
+        assert rented_ids[1] not in ids
+        assert rented_ids[0] in ids
+
+        groups = client.get("/api/wms/qr-groups", headers=_headers(client, "Admin"))
+        assert groups.status_code == 200, groups.text
+        group = next(item for item in groups.json() if item["id"] == group_id)
+        assert group["memberCount"] == 1
+
+        detail = client.get(f"/api/wms/assets/{rented_ids[0]}", headers=_headers(client, "Admin")).json()
+        detail["status"] = "Verfuegbar"
+        detail["assignedTo"] = "-"
+        upd = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=detail)
+        assert upd.status_code == 200, upd.text
+
+        bulk_second = client.post(
+            "/api/wms/assets/bulk-delete",
+            headers=pm_headers,
+            json={"assetIds": [rented_ids[0]]},
+        )
+        assert bulk_second.status_code == 200, bulk_second.text
+        assert bulk_second.json()["deletedCount"] == 1
+        assert bulk_second.json()["skippedCount"] == 0
+
+        groups_after = client.get("/api/wms/qr-groups", headers=_headers(client, "Admin"))
+        assert groups_after.status_code == 200, groups_after.text
+        assert all(item["id"] != group_id for item in groups_after.json())
+    finally:
+        _cleanup_assets(client, rented_ids)

@@ -15,7 +15,7 @@ import secrets
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..database.models import (
@@ -246,6 +246,27 @@ def deactivate_group(db: Session, external_id: str) -> QrGroupItem:
     db.commit()
     db.refresh(group)
     return _to_item(db, group)
+
+
+def delete_group(db: Session, external_id: str) -> bool:
+    group = get_group(db, external_id)
+    if group is None:
+        return False
+
+    records = _member_asset_records(db, group)
+    loaned = _loaned_records(records)
+    if loaned:
+        raise HTTPException(
+            status_code=409,
+            detail="Sammel-QR kann nicht gelöscht werden, solange noch verliehene Geräte enthalten sind.",
+        )
+
+    db.execute(
+        delete(QrCodeGroupMemberRecord).where(QrCodeGroupMemberRecord.group_id == group.id)
+    )
+    db.delete(group)
+    db.commit()
+    return True
 
 
 def _format_checkout_assigned_to(recipient: str, project: str) -> str:

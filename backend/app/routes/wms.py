@@ -18,6 +18,8 @@ from ..schemas.wms import (
     ActivityItem,
     AssetItem,
     AssetMarkReturnedPayload,
+    BulkAssetDeletePayload,
+    BulkAssetDeleteResponse,
     BulkUserDeletePayload,
     BulkUserDeleteResponse,
     CategoryCreatePayload,
@@ -203,6 +205,27 @@ def delete_asset(
         )
 
     return {"deleted": WmsService.delete_asset(db, asset_id)}
+
+
+@router.post("/assets/bulk-delete", response_model=BulkAssetDeleteResponse)
+def bulk_delete_assets(
+    payload: BulkAssetDeletePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> BulkAssetDeleteResponse:
+    """Löscht mehrere Assets gesammelt.
+
+    Rechte und Fachlogik entsprechen der Einzel-Löschung:
+      - Admin/Techniker: dürfen alle Assets löschen.
+      - Projektmanager: nur Fremdbestand.
+      - Fremdbestand im Status 'Verliehen' wird übersprungen.
+    """
+    require_roles(context, "admin", "projektmanager")
+    return WmsService.bulk_delete_assets(
+        db,
+        payload.assetIds,
+        actor_role=context.role,
+    )
 
 
 @router.post("/assets/external-pool", response_model=ExternalPoolCreateResponse)

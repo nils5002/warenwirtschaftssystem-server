@@ -19,6 +19,8 @@ import {
   createQrGroup,
   deactivateQrGroup,
   deleteAsset,
+  deleteAssetsBulk,
+  deleteQrGroup,
   listQrGroups,
   markAssetReturned,
   type QrGroup,
@@ -160,6 +162,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
   );
   const [returningId, setReturningId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // --- Sammel-QR (Gruppen-QR) ---
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
@@ -173,6 +176,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
   const [viewQrGroup, setViewQrGroup] = useState<QrGroup | null>(null);
   const [bookingGroup, setBookingGroup] = useState<QrGroup | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
 
   const reloadGroups = async () => {
     setGroupsLoading(true);
@@ -183,6 +187,11 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     } finally {
       setGroupsLoading(false);
     }
+  };
+
+  const reloadExternalPoolData = async () => {
+    await onReloadData();
+    await reloadGroups();
   };
 
   useEffect(() => {
@@ -197,6 +206,22 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
         : { ...current, category: categoryNames[0] },
     );
   }, [categoryNames]);
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const validIds = new Set(externalAssets.map((asset) => asset.id));
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of current) {
+        if (validIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [externalAssets]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
@@ -327,6 +352,40 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     }
   };
 
+  const submitDeleteGroup = async (group: QrGroup) => {
+    if (group.loanedCount > 0) {
+      await alert({
+        title: 'Löschen nicht möglich',
+        message: 'Sammel-QR kann nicht gelöscht werden, solange noch verliehene Geräte enthalten sind.',
+      });
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Sammel-QR wirklich löschen?',
+      message: 'Diese Aktion kann nicht rückgängig gemacht werden.',
+      confirmLabel: 'Löschen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    setDeletingGroupId(group.id);
+    try {
+      await deleteQrGroup(group.id);
+      await reloadGroups();
+      await alert({
+        title: 'Sammel-QR gelöscht',
+        message: `Die Gruppe "${group.name}" wurde entfernt.`,
+      });
+    } catch (error) {
+      await alert({
+        title: 'Löschen nicht möglich',
+        message: error instanceof Error ? error.message : 'Unbekannter Fehler.',
+      });
+    } finally {
+      setDeletingGroupId(null);
+    }
+  };
+
   const submitCreate = async () => {
     if (!createForm.category.trim()) {
       setCreateError('Bitte eine Kategorie wählen.');
@@ -372,7 +431,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     setReturningId(asset.id);
     try {
       await markAssetReturned(asset.id);
-      await onReloadData();
+      await reloadExternalPoolData();
     } catch (error) {
       await alert({
         title: 'Rückgabe nicht möglich',
@@ -413,7 +472,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
     setDeletingId(asset.id);
     try {
       await deleteAsset(asset.id);
-      await onReloadData();
+      await reloadExternalPoolData();
       await alert({
         title: 'Fremdbestand gelöscht',
         message: 'Das Gerät wurde dauerhaft entfernt.',
@@ -428,6 +487,69 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
       });
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const bulkDeleteSelected = async () => {
+    if (!selectedAssets.length || bulkDeleting) return;
+    const loanedTargets = selectedAssets.filter((asset) => asset.status === 'Verliehen');
+    const accepted = await confirm({
+      title: 'Ausgewählte löschen?',
+      message: [
+        `${selectedAssets.length} Mietgeräte wirklich löschen?`,
+        loanedTargets.length
+          ? `${loanedTargets.length} ausgewählte Geräte sind aktuell ausgegeben und werden übersprungen.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
+      confirmLabel: 'Ausgewählte löschen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!accepted) return;
+
+    const nameById = new Map(selectedAssets.map((asset) => [asset.id, asset.name]));
+    setBulkDeleting(true);
+    try {
+      const result = await deleteAssetsBulk(selectedAssets.map((asset) => asset.id));
+      clearSelection();
+      await reloadExternalPoolData();
+
+      const skippedLines = result.results
+        .filter((item) => !item.deleted)
+        .slice(0, 5)
+        .map((item) => `${nameById.get(item.assetId) ?? item.assetId}: ${item.reason ?? 'Übersprungen.'}`);
+
+      if (result.deletedCount > 0 && result.skippedCount === 0) {
+        await alert({
+          title: 'Auswahl gelöscht',
+          message: `${result.deletedCount} Mietgeräte wurden gelöscht.`,
+        });
+        return;
+      }
+
+      if (result.deletedCount > 0 || result.skippedCount > 0) {
+        await alert({
+          title: result.deletedCount > 0 ? 'Bulk-Löschen abgeschlossen' : 'Nichts gelöscht',
+          message: [
+            `${result.deletedCount} gelöscht, ${result.skippedCount} übersprungen.`,
+            skippedLines.length ? skippedLines.join('\n') : '',
+            result.results.length - skippedLines.length > 0 && result.skippedCount > skippedLines.length
+              ? 'Weitere Einträge wurden ebenfalls übersprungen.'
+              : '',
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        });
+      }
+    } catch (error) {
+      await alert({
+        title: 'Bulk-Löschen nicht möglich',
+        message: error instanceof Error ? error.message : 'Unbekannter Fehler.',
+      });
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -451,6 +573,117 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
         <KpiCard title="Rückgabe bald" value={String(totals.rueckgabeBald)} trend="Innerhalb der nächsten 3 Tage" tone="warning" icon={CalendarClock} />
         <KpiCard title="Überfällig" value={String(totals.ueberfaellig)} trend="Rückgabe überschritten" tone="critical" icon={Undo2} />
       </div>
+
+      {/* Sammel-QR: vorhandene Gruppen */}
+      <article className="surface-card animate-fade-up">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="page-kicker">Sammel-QR</p>
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+              Sammel-QR-Codes
+            </h3>
+            <p className="text-xs text-slate-500">
+              Ein QR-Code bucht mehrere vorhandene Geräte gesammelt.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              void reloadGroups();
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Neu laden
+          </button>
+        </div>
+
+        {groups.length === 0 ? (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
+            {groupsLoading
+              ? 'Wird geladen …'
+              : 'Noch keine Sammel-QR-Codes. Wähle unten Mietgeräte aus und erstelle einen.'}
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {groups.map((group) => (
+              <article
+                key={group.id}
+                className={`rounded-xl border p-3 ${
+                  group.isActive
+                    ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+                    : 'border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950/40'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 dark:text-slate-100">
+                      {group.name}
+                      {!group.isActive ? (
+                        <span className="ml-2 rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                          deaktiviert
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {group.category} · {group.memberCount} Gerät{group.memberCount === 1 ? '' : 'e'} ·{' '}
+                      <span className="text-emerald-600">{group.availableCount} verfügbar</span> ·{' '}
+                      <span className="text-amber-600">{group.loanedCount} verliehen</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="btn-primary px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => setBookingGroup(group)}
+                      disabled={!group.isActive}
+                    >
+                      <ScanLine className="h-3.5 w-3.5" />
+                      Buchen
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary px-2.5 py-1.5 text-xs"
+                      onClick={() => setViewQrGroup(group)}
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      QR anzeigen
+                    </button>
+                    {group.isActive ? (
+                      <LoadingButton
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-0 py-0 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200"
+                        onClick={() => {
+                          void submitDeactivateGroup(group);
+                        }}
+                        isLoading={deactivatingId === group.id}
+                        loadingText=""
+                        disabled={deactivatingId !== null || deletingGroupId !== null}
+                        aria-label="Sammel-QR deaktivieren"
+                        title="Sammel-QR deaktivieren"
+                      >
+                        <Power className="h-3.5 w-3.5" />
+                      </LoadingButton>
+                    ) : null}
+                    <LoadingButton
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-0 py-0 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200"
+                      onClick={() => {
+                        void submitDeleteGroup(group);
+                      }}
+                      isLoading={deletingGroupId === group.id}
+                      loadingText=""
+                      disabled={deletingGroupId !== null || deactivatingId !== null}
+                      aria-label="Sammel-QR löschen"
+                      title="Sammel-QR löschen"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </LoadingButton>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </article>
 
       <article className="surface-card animate-fade-up">
         <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto_auto]">
@@ -498,7 +731,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
             type="button"
             className="btn-secondary"
             onClick={() => {
-              void onReloadData();
+              void reloadExternalPoolData();
             }}
           >
             <RefreshCw className="h-4 w-4" />
@@ -530,18 +763,30 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
               ) : null}
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" className="btn-ghost text-xs" onClick={clearSelection}>
+              <button type="button" className="btn-ghost text-xs" onClick={clearSelection} disabled={bulkDeleting}>
                 Auswahl leeren
               </button>
               <button
                 type="button"
                 className="btn-primary px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={openGroupDialog}
-                disabled={!selectionSingleCategory}
+                disabled={!selectionSingleCategory || bulkDeleting || groupBusy}
               >
                 <QrCode className="h-4 w-4" />
                 Sammel-QR erstellen
               </button>
+              <LoadingButton
+                type="button"
+                className="btn-danger px-3 py-1.5 text-xs"
+                onClick={() => {
+                  void bulkDeleteSelected();
+                }}
+                isLoading={bulkDeleting}
+                loadingText="Löscht …"
+              >
+                <Trash2 className="h-4 w-4" />
+                Ausgewählte löschen
+              </LoadingButton>
             </div>
           </div>
         ) : null}
@@ -639,7 +884,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                                 }}
                                 isLoading={returningId === asset.id}
                                 loadingText="Wird gespeichert …"
-                                disabled={isLoaned || returningId !== null || deletingId !== null}
+                                disabled={isLoaned || returningId !== null || deletingId !== null || bulkDeleting}
                                 title={
                                   isLoaned
                                     ? 'Gerät ist aktuell ausgegeben — erst regulären Check-in durchführen.'
@@ -657,7 +902,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                               }}
                               isLoading={deletingId === asset.id}
                               loadingText=""
-                              disabled={isLoaned || deletingId !== null || returningId !== null}
+                              disabled={isLoaned || deletingId !== null || returningId !== null || bulkDeleting}
                               title={
                                 isLoaned
                                   ? 'Verliehene Geräte können erst nach Rücknahme gelöscht werden.'
@@ -731,7 +976,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                           }}
                           isLoading={returningId === asset.id}
                           loadingText="…"
-                          disabled={isLoaned || returningId !== null || deletingId !== null}
+                          disabled={isLoaned || returningId !== null || deletingId !== null || bulkDeleting}
                         >
                           <Undo2 className="h-3.5 w-3.5" />
                           Zurückgegeben
@@ -744,7 +989,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                         }}
                         isLoading={deletingId === asset.id}
                         loadingText=""
-                        disabled={isLoaned || deletingId !== null || returningId !== null}
+                        disabled={isLoaned || deletingId !== null || returningId !== null || bulkDeleting}
                         aria-label="Fremdbestand löschen"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -759,104 +1004,6 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                 </article>
               );
             })}
-          </div>
-        )}
-      </article>
-
-      {/* Sammel-QR: vorhandene Gruppen */}
-      <article className="surface-card animate-fade-up">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="page-kicker">Sammel-QR</p>
-            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-              Sammel-QR-Codes
-            </h3>
-            <p className="text-xs text-slate-500">
-              Ein QR-Code bucht mehrere vorhandene Geräte gesammelt.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => {
-              void reloadGroups();
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Neu laden
-          </button>
-        </div>
-
-        {groups.length === 0 ? (
-          <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
-            {groupsLoading
-              ? 'Wird geladen …'
-              : 'Noch keine Sammel-QR-Codes. Wähle oben Mietgeräte aus und erstelle einen.'}
-          </div>
-        ) : (
-          <div className="mt-3 space-y-2">
-            {groups.map((group) => (
-              <article
-                key={group.id}
-                className={`rounded-xl border p-3 ${
-                  group.isActive
-                    ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
-                    : 'border-slate-200 bg-slate-50 opacity-70 dark:border-slate-800 dark:bg-slate-950/40'
-                }`}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900 dark:text-slate-100">
-                      {group.name}
-                      {!group.isActive ? (
-                        <span className="ml-2 rounded-full border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
-                          deaktiviert
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {group.category} · {group.memberCount} Gerät{group.memberCount === 1 ? '' : 'e'} ·{' '}
-                      <span className="text-emerald-600">{group.availableCount} verfügbar</span> ·{' '}
-                      <span className="text-amber-600">{group.loanedCount} verliehen</span>
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      className="btn-primary px-2.5 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => setBookingGroup(group)}
-                      disabled={!group.isActive}
-                    >
-                      <ScanLine className="h-3.5 w-3.5" />
-                      Buchen
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-secondary px-2.5 py-1.5 text-xs"
-                      onClick={() => setViewQrGroup(group)}
-                    >
-                      <QrCode className="h-3.5 w-3.5" />
-                      QR anzeigen
-                    </button>
-                    {group.isActive ? (
-                      <LoadingButton
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-0 py-0 text-rose-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-800/60 dark:bg-rose-950/40 dark:text-rose-200"
-                        onClick={() => {
-                          void submitDeactivateGroup(group);
-                        }}
-                        isLoading={deactivatingId === group.id}
-                        loadingText=""
-                        disabled={deactivatingId !== null}
-                        aria-label="Sammel-QR deaktivieren"
-                        title="Sammel-QR deaktivieren"
-                      >
-                        <Power className="h-3.5 w-3.5" />
-                      </LoadingButton>
-                    ) : null}
-                  </div>
-                </div>
-              </article>
-            ))}
           </div>
         )}
       </article>

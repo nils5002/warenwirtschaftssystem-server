@@ -291,6 +291,50 @@ def test_bulk_checkin_returns_quantity() -> None:
     assert too_many.status_code == 400, too_many.text
 
 
+def test_delete_group_removes_group() -> None:
+    client = TestClient(app)
+    admin = _admin(client)
+    suffix = uuid4().hex[:8]
+    category = _register_category(client, admin, suffix)
+    asset_ids = _create_external_assets(client, admin, suffix, 2, category=category)
+    group = _create_group(
+        client, admin, name="Delete Test", category=category, asset_ids=asset_ids
+    ).json()
+
+    deleted = client.delete(f"/api/wms/qr-groups/{group['id']}", headers=admin)
+    assert deleted.status_code == 200, deleted.text
+    assert deleted.json()["deleted"] is True
+
+    listing = client.get("/api/wms/qr-groups", headers=admin)
+    assert listing.status_code == 200, listing.text
+    assert all(item["id"] != group["id"] for item in listing.json())
+
+    resolved = client.get(f"/api/wms/qr-groups/resolve/{group['qrToken']}", headers=admin)
+    assert resolved.status_code == 404, resolved.text
+
+
+def test_delete_group_rejects_when_members_are_loaned() -> None:
+    client = TestClient(app)
+    admin = _admin(client)
+    suffix = uuid4().hex[:8]
+    category = _register_category(client, admin, suffix)
+    asset_ids = _create_external_assets(client, admin, suffix, 2, category=category)
+    group = _create_group(
+        client, admin, name="Delete Loaned Test", category=category, asset_ids=asset_ids
+    ).json()
+
+    out = client.post(
+        f"/api/wms/qr-groups/{group['id']}/checkout",
+        headers=admin,
+        json={"quantity": 1, "projectName": "Projekt Delete"},
+    )
+    assert out.status_code == 200, out.text
+
+    deleted = client.delete(f"/api/wms/qr-groups/{group['id']}", headers=admin)
+    assert deleted.status_code == 409, deleted.text
+    assert "verliehen" in deleted.json()["detail"]
+
+
 # -----------------------------------------------------------------------------
 # Test 5: Keine doppelte Zählung in der Einsatzplanung
 # -----------------------------------------------------------------------------

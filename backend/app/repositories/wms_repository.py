@@ -10,7 +10,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from ..database.models import (
@@ -23,6 +23,8 @@ from ..database.models import (
     PlanningRecord,
     PlanningDayRecord,
     PlanningItemRecord,
+    QrCodeGroupMemberRecord,
+    QrCodeGroupRecord,
 )
 from ..domain.categories import normalize_category
 from . import category_repository, planning_repository
@@ -512,6 +514,32 @@ def delete_asset(db: Session, external_id: str) -> bool:
     record = db.scalar(stmt)
     if not record:
         return False
+    affected_group_ids = list(
+        db.scalars(
+            select(QrCodeGroupMemberRecord.group_id).where(
+                QrCodeGroupMemberRecord.asset_external_id == external_id
+            )
+        ).all()
+    )
+    if affected_group_ids:
+        db.execute(
+            delete(QrCodeGroupMemberRecord).where(
+                QrCodeGroupMemberRecord.asset_external_id == external_id
+            )
+        )
+        empty_group_ids: list[int] = []
+        for group_id in sorted(set(affected_group_ids)):
+            remaining = db.scalar(
+                select(func.count())
+                .select_from(QrCodeGroupMemberRecord)
+                .where(QrCodeGroupMemberRecord.group_id == group_id)
+            )
+            if not remaining:
+                empty_group_ids.append(group_id)
+        if empty_group_ids:
+            db.execute(
+                delete(QrCodeGroupRecord).where(QrCodeGroupRecord.id.in_(empty_group_ids))
+            )
     db.delete(record)
     db.commit()
     return True
