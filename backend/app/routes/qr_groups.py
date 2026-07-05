@@ -100,3 +100,13 @@ def deactivate_group(
 ) -> QrGroupItem:
     require_roles(context, "admin", "projektmanager")
     return qr_group_repository.deactivate_group(db, external_id)
+
+
+@router.delete("/{external_id}")
+def delete_group(
+    external_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> dict[str, bool]:
+    require_roles(context, "admin", "projektmanager")
+    return {"deleted": qr_group_repository.delete_group(db, external_id)}

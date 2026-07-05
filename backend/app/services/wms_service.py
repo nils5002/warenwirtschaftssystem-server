@@ -14,6 +14,8 @@ from ..repositories import category_repository, wms_repository
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
+    BulkAssetDeleteResponse,
+    BulkAssetDeleteResultItem,
     BulkUserDeleteResponse,
     BulkUserDeleteResultItem,
     ExternalPoolCreatePayload,
@@ -61,6 +63,83 @@ class WmsService:
     @staticmethod
     def delete_asset(db: Session, asset_id: str) -> bool:
         return wms_repository.delete_asset(db, asset_id)
+
+    @staticmethod
+    def bulk_delete_assets(
+        db: Session,
+        asset_ids: list[str],
+        *,
+        actor_role: str,
+    ) -> BulkAssetDeleteResponse:
+        unique_ids: list[str] = []
+        seen: set[str] = set()
+        for raw in asset_ids or []:
+            if not isinstance(raw, str):
+                continue
+            trimmed = raw.strip()
+            if not trimmed or trimmed in seen:
+                continue
+            seen.add(trimmed)
+            unique_ids.append(trimmed)
+
+        results: list[BulkAssetDeleteResultItem] = []
+        deleted_count = 0
+        skipped_count = 0
+        for asset_id in unique_ids:
+            asset = wms_repository.get_asset(db, asset_id)
+            if asset is None:
+                results.append(
+                    BulkAssetDeleteResultItem(
+                        assetId=asset_id,
+                        deleted=False,
+                        reason="Gerät nicht gefunden.",
+                    )
+                )
+                skipped_count += 1
+                continue
+
+            is_external = asset.ownershipType in {"rented", "borrowed", "external"}
+            if actor_role == "projektmanager" and not is_external:
+                results.append(
+                    BulkAssetDeleteResultItem(
+                        assetId=asset_id,
+                        deleted=False,
+                        reason="Projektmanager dürfen nur Fremdbestand löschen.",
+                    )
+                )
+                skipped_count += 1
+                continue
+
+            if is_external and asset.status == "Verliehen":
+                results.append(
+                    BulkAssetDeleteResultItem(
+                        assetId=asset_id,
+                        deleted=False,
+                        reason="Dieses Gerät ist aktuell ausgegeben und kann erst nach Rücknahme gelöscht werden.",
+                    )
+                )
+                skipped_count += 1
+                continue
+
+            deleted = wms_repository.delete_asset(db, asset_id)
+            if deleted:
+                results.append(BulkAssetDeleteResultItem(assetId=asset_id, deleted=True))
+                deleted_count += 1
+            else:
+                results.append(
+                    BulkAssetDeleteResultItem(
+                        assetId=asset_id,
+                        deleted=False,
+                        reason="Gerät nicht gefunden.",
+                    )
+                )
+                skipped_count += 1
+
+        return BulkAssetDeleteResponse(
+            deletedCount=deleted_count,
+            skippedCount=skipped_count,
+            results=results,
+        )
 
     @staticmethod
     def create_external_pool(db: Session, payload: ExternalPoolCreatePayload) -> list[str]:

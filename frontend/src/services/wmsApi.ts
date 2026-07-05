@@ -831,6 +831,22 @@ export async function deleteAsset(assetId: string): Promise<{ deleted: boolean }
   return parseResponse<{ deleted: boolean }>(response);
 }
 
+export type BulkAssetDeleteResultItem = {
+  assetId: string;
+  deleted: boolean;
+  reason?: string | null;
+};
+
+export type BulkAssetDeleteResponse = {
+  deletedCount: number;
+  skippedCount: number;
+  results: BulkAssetDeleteResultItem[];
+};
+
+export function deleteAssetsBulk(assetIds: string[]): Promise<BulkAssetDeleteResponse> {
+  return postJson<BulkAssetDeleteResponse>('/api/wms/assets/bulk-delete', { assetIds });
+}
+
 // --- Fremdbestand: Bulk-Anlage und "Als zurückgegeben markieren" ---
 export type ExternalPoolCreatePayload = {
   category: string;
@@ -943,6 +959,13 @@ export function qrGroupCheckin(
 
 export function deactivateQrGroup(groupId: string): Promise<QrGroup> {
   return postJson<QrGroup>(`/api/wms/qr-groups/${encodeURIComponent(groupId)}/deactivate`, {});
+}
+
+export async function deleteQrGroup(groupId: string): Promise<{ deleted: boolean }> {
+  const response = await apiFetch(`/api/wms/qr-groups/${encodeURIComponent(groupId)}`, {
+    method: 'DELETE',
+  });
+  return parseResponse<{ deleted: boolean }>(response);
 }
 
 // --- Telekompass (LTE-Router) ---

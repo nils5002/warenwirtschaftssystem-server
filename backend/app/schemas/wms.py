@@ -116,6 +116,22 @@ class AssetMarkReturnedPayload(BaseModel):
     returnedAt: Optional[date] = None  # default = heute
 
 
+class BulkAssetDeletePayload(BaseModel):
+    assetIds: list[str] = Field(default_factory=list)
+
+
+class BulkAssetDeleteResultItem(BaseModel):
+    assetId: str
+    deleted: bool
+    reason: Optional[str] = None
+
+
+class BulkAssetDeleteResponse(BaseModel):
+    deletedCount: int
+    skippedCount: int
+    results: list[BulkAssetDeleteResultItem] = Field(default_factory=list)
+
+
 # --- Sammel-QR (Gruppen-QR für vorhandene Fremdbestand-Assets) ---
 
 
