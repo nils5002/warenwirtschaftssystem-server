@@ -1,5 +1,6 @@
 import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { AssetEditModal } from '../components/AssetEditModal';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { AssetVisual } from '../components/AssetVisual';
 import { KpiCard } from '../components/KpiCard';
@@ -7,7 +8,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
 import { getTelecomPassSettings } from '../../services/wmsApi';
 import { PageHeader } from '../../ui';
-import type { ActivityItem, AppRole, Asset, MaintenanceItem } from '../types';
+import type { ActivityItem, AppRole, Asset, CategoryItem, MaintenanceItem } from '../types';
 
 function formatEuro(value: number): string {
   return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(value);
@@ -26,13 +27,14 @@ type AssetDetailPageProps = {
   canManageDefects?: boolean;
   canReportDefects?: boolean;
   asset: Asset | null;
+  categories: CategoryItem[];
   activities: ActivityItem[];
   maintenanceItems: MaintenanceItem[];
   onReserveAsset: (assetId: string) => void;
   onCheckoutAsset: (assetId: string) => void;
   onCheckinAsset: (assetId: string) => void;
   onSetMaintenance: (assetId: string) => void;
-  onEditAsset: (assetId: string) => void;
+  onSaveAsset: (assetId: string, patch: Partial<Asset>) => Promise<void>;
   onCreateMaintenance: (payload: { assetName: string; issue: string; comment: string }) => void;
   onUpdateMaintenanceStatus: (id: string, status: MaintenanceItem['status']) => void;
   onOpenInventoryWithQuery: (query: string) => void;
@@ -43,17 +45,19 @@ export function AssetDetailPage({
   canManageDefects = true,
   canReportDefects = true,
   asset,
+  categories,
   activities,
   maintenanceItems,
   onReserveAsset,
   onCheckoutAsset,
   onCheckinAsset,
   onSetMaintenance,
-  onEditAsset,
+  onSaveAsset,
   onCreateMaintenance,
   onUpdateMaintenanceStatus,
   onOpenInventoryWithQuery,
 }: AssetDetailPageProps) {
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const isLteRouter = (asset?.category ?? '').trim().toLowerCase() === 'lte-router';
   // Telekompass-Preis nur für LTE-Router laden (Kostenanzeige). null = nicht
   // verfügbar/geladen → dann nur die Buchungsanzahl zeigen.
@@ -121,7 +125,7 @@ export function AssetDetailPage({
               </button>
             ) : null}
             {canEditAsset ? (
-              <button className="btn-secondary w-full sm:w-auto" onClick={() => onEditAsset(asset.id)}>
+              <button className="btn-secondary w-full sm:w-auto" onClick={() => setEditModalOpen(true)}>
                 Bearbeiten
               </button>
             ) : null}
@@ -478,6 +482,15 @@ export function AssetDetailPage({
           </div>
         ) : null}
       </article>
+
+      {canEditAsset && editModalOpen ? (
+        <AssetEditModal
+          asset={asset}
+          categories={categories}
+          onClose={() => setEditModalOpen(false)}
+          onSave={onSaveAsset}
+        />
+      ) : null}
     </section>
   );
 }
