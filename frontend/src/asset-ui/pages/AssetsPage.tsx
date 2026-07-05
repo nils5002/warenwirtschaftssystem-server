@@ -306,6 +306,7 @@ export function AssetsPage({
   const hoverPreviewCategoryImageUrl = hoverPreview
     ? resolveCategoryDefaultImageUrl(hoverPreview.asset.category, backendCategories)
     : null;
+  const selectedAssets = useMemo(() => assets.filter((asset) => selectedIds.includes(asset.id)), [assets, selectedIds]);
   const bulkCategoryTarget = useMemo(() => {
     const explicitCategory = bulkForm.category.trim();
     const selectionCategories = [...new Set(selectedAssets.map((asset) => asset.category.trim()).filter(Boolean))];
@@ -322,7 +323,6 @@ export function AssetsPage({
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
   const attentionCount = assets.filter((asset) => ['Defekt', 'In Wartung'].includes(asset.status)).length;
-  const selectedAssets = useMemo(() => assets.filter((asset) => selectedIds.includes(asset.id)), [assets, selectedIds]);
 
   useEffect(() => {
     setSearch(initialSearch ?? '');
