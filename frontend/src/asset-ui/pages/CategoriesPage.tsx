@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 
 import { CANONICAL_CATEGORIES, categoryHint, categoryOptionsFromRecords, normalizeCategory } from '../categories';
 import type { Asset, CategoryItem } from '../types';
@@ -140,13 +141,11 @@ export function CategoriesPage({
 
   return (
     <section className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Kategorien</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Gerätearten</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Kanonische Kategorien für Import, Inventar, Planung und Availability.
-        </p>
-      </div>
+      <PageHeader
+        kicker="Kategorien"
+        title="Gerätearten"
+        subtitle="Kanonische Kategorien für Import, Inventar, Planung und Availability."
+      />
 
       <article className="surface-card animate-fade-up">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

@@ -1,4 +1,19 @@
-import { Eye, Filter, Plus, QrCode, ScanLine, Search, Settings2, Trash2, TriangleAlert } from 'lucide-react';
+import {
+  Boxes,
+  Eye,
+  Filter,
+  Handshake,
+  PackageSearch,
+  Plus,
+  QrCode,
+  RefreshCcw,
+  ScanLine,
+  Search,
+  Settings2,
+  ShieldAlert,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
@@ -6,8 +21,11 @@ import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { AssetQuickView } from '../components/AssetQuickView';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { AssetQrCodePreview } from '../components/AssetQrCodePreview';
+import { AssetVisual } from '../components/AssetVisual';
+import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
+import { PageHeader, ToggleSwitch } from '../../ui';
 import type { AppPage, Asset, CategoryItem } from '../types';
 
 type AssetsPageProps = {
@@ -83,6 +101,20 @@ function defaultNameForCategory(category: string): string {
   if (normalized.includes('router')) return 'Router';
   if (normalized.includes('switch')) return 'Switch';
   return category;
+}
+
+function getOwnershipLabel(type?: Asset['ownershipType']): string | null {
+  if (!type || type === 'owned') return null;
+  if (type === 'rented') return 'Miete';
+  if (type === 'borrowed') return 'Leihe';
+  return 'Extern';
+}
+
+function formatRatio(part: number, total: number): string {
+  if (total <= 0) return '0,0';
+  return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(
+    (part / total) * 100,
+  );
 }
 
 type AdminActionForm = {
@@ -258,6 +290,7 @@ export function AssetsPage({
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
   const attentionCount = assets.filter((asset) => ['Defekt', 'In Wartung'].includes(asset.status)).length;
+  const selectedAssets = useMemo(() => assets.filter((asset) => selectedIds.includes(asset.id)), [assets, selectedIds]);
 
   useEffect(() => {
     setSearch(initialSearch ?? '');
@@ -763,199 +796,187 @@ export function AssetsPage({
 
   return (
     <section className="space-y-5">
-      <div className="surface-card animate-fade-up p-4 md:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="page-kicker">Inventar</p>
-            <h2 className="page-title">Gerätebestand</h2>
-            <p className="page-subtitle">Bestand filtern, Zustand prüfen und Aktionen direkt ausführen.</p>
-          </div>
-          <div className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+      <PageHeader
+        kicker="Inventar"
+        title="Gerätebestand & Verfügbarkeit"
+        subtitle="Bestand filtern, Zustand prüfen und Aktionen direkt ausführen."
+        actions={
+          <>
             {canManageAssets ? (
               <button className="btn-primary w-full sm:w-auto" onClick={openOnboarding}>
                 <Plus className="h-4 w-4" />
-                Neues Gerät erfassen
+                Neues Gerät
               </button>
             ) : null}
             <button className="btn-secondary w-full sm:w-auto" onClick={() => onNavigate('checkinCheckout')}>
               <ScanLine className="h-4 w-4" />
-              Ein-/Auslagerung
+              QR Scan
             </button>
             <button className="btn-secondary w-full sm:w-auto" onClick={() => onNavigate('tickets')}>
               <TriangleAlert className="h-4 w-4" />
               Defekt melden
             </button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {/* Stat-Kacheln: solange der erste Overview-Call läuft, zeigen wir
-            "—" statt "0", damit das Inventar nicht fälschlich leer wirkt.
-            Sobald hasLoadedOnce → isInitialLoading=false, springen die
-            echten Werte rein. */}
-        <div className="mt-4 grid gap-2 sm:grid-cols-3">
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">
-              {isInitialLoading && assets.length === 0 ? (
-                <span className="text-slate-400" aria-label="Wird geladen">
-                  …
-                </span>
-              ) : (
-                assets.length
-              )}
-            </p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600">Verfügbar</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">
-              {isInitialLoading && assets.length === 0 ? (
-                <span className="text-slate-400" aria-label="Wird geladen">
-                  …
-                </span>
-              ) : (
-                availableCount
-              )}
-            </p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600">Verliehen / Wartung</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">
-              {isInitialLoading && assets.length === 0 ? (
-                <span className="text-slate-400" aria-label="Wird geladen">
-                  …
-                </span>
-              ) : (
-                loanedCount + attentionCount
-              )}
-            </p>
-          </div>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard
+          title="Gesamtbestand"
+          value={isInitialLoading && assets.length === 0 ? '—' : String(assets.length)}
+          trend="Alle registrierten Geräte"
+          tone="neutral"
+          icon={Boxes}
+        />
+        <KpiCard
+          title="Verfügbar"
+          value={isInitialLoading && assets.length === 0 ? '—' : String(availableCount)}
+          trend={`${formatRatio(availableCount, assets.length)}% des Bestands`}
+          tone="positive"
+          icon={PackageSearch}
+        />
+        <KpiCard
+          title="Verliehen"
+          value={isInitialLoading && assets.length === 0 ? '—' : String(loanedCount)}
+          trend={`${formatRatio(loanedCount, assets.length)}% des Bestands`}
+          tone="neutral"
+          icon={Handshake}
+        />
+        <KpiCard
+          title="Defekt / Wartung"
+          value={isInitialLoading && assets.length === 0 ? '—' : String(attentionCount)}
+          trend={`${formatRatio(attentionCount, assets.length)}% des Bestands`}
+          tone="warning"
+          icon={ShieldAlert}
+        />
       </div>
 
-      <article className="surface-card animate-fade-up">
-        <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'md:grid-cols-6 xl:grid-cols-12'}`}>
-          <div className={`relative ${isMobile ? '' : 'md:col-span-3 xl:col-span-4'}`}>
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <article className="surface-card animate-fade-up space-y-4">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Suche nach Asset, Inventarnummer oder Seriennummer"
-              className="field-input w-full pl-9"
+              placeholder="Suche nach Asset, Inventarnummer, Seriennummer..."
+              className="field-input h-11 w-full pl-9"
             />
           </div>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input h-11">
             {categories.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={location} onChange={(event) => setLocation(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
+          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input h-11">
             {locations.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className={`field-input ${isMobile ? 'h-11' : 'md:col-span-1 xl:col-span-2'}`}>
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input h-11">
             {statuses.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <div className={`flex items-center gap-2 ${isMobile ? '' : 'md:col-span-1 xl:col-span-2'}`}>
-            <button className="btn-secondary h-10 px-3 text-sm" onClick={resetFilters}>
-              <Filter className="h-4 w-4" />
+          <button
+            type="button"
+            className="btn-secondary h-11"
+            onClick={() => {
+              void openByQrOrTag();
+            }}
+          >
+            <ScanLine className="h-4 w-4" />
+            QR Scan
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleSwitch checked={onlyAvailable} onChange={setOnlyAvailable} label="Nur verfügbare" />
+          <ToggleSwitch checked={onlyBroken} onChange={setOnlyBroken} label="Nur defekte" />
+          <ToggleSwitch
+            checked={showTechnicalColumns}
+            onChange={setShowTechnicalColumns}
+            label="Technische Daten anzeigen"
+          />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="text-sm text-ink-muted">
+              {isInitialLoading && assets.length === 0 ? 'Lädt …' : `${filteredAssets.length} Geräte`}
+            </span>
+            <button type="button" className="btn-secondary h-11 px-3" onClick={resetFilters}>
+              <RefreshCcw className="h-4 w-4" />
               Reset
             </button>
             <button
-              className="btn-secondary h-10 px-3 text-sm"
-              onClick={() => {
-                void openByQrOrTag();
-              }}
+              type="button"
+              className="btn-secondary h-11 px-3"
+              onClick={() => setShowTechnicalColumns((prev) => !prev)}
             >
-              <ScanLine className="h-4 w-4" />
-              QR
+              <Filter className="h-4 w-4" />
+              Mehr Filter
             </button>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
-          <label className="inline-flex items-center gap-2 text-slate-600">
-            <input
-              type="checkbox"
-              checked={onlyAvailable}
-              onChange={(event) => setOnlyAvailable(event.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Nur verfügbare Assets
-          </label>
-          <label className="inline-flex items-center gap-2 text-slate-600">
-            <input
-              type="checkbox"
-              checked={onlyBroken}
-              onChange={(event) => setOnlyBroken(event.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Nur defekte Assets
-          </label>
-          <button
-            type="button"
-            className="btn-secondary px-2.5 py-1.5 text-xs"
-            onClick={() => setShowTechnicalColumns((prev) => !prev)}
-          >
-            {showTechnicalColumns ? 'Technische Daten ausblenden' : 'Technische Daten anzeigen'}
-          </button>
-          <p className="text-slate-500">
-            {isInitialLoading && assets.length === 0 ? 'Lädt …' : `${filteredAssets.length} Treffer`}
-          </p>
-        </div>
-
-        {canManageAssets ? (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/70">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" className="btn-secondary px-2 py-1 text-xs" onClick={toggleSelectAllVisible}>
-                  {filteredAssets.length > 0 && filteredAssets.every((asset) => selectedIds.includes(asset.id))
-                    ? 'Auswahl aufheben'
-                    : 'Alle sichtbaren auswählen'}
-                </button>
-                <span className="text-xs text-slate-600">{selectedIds.length} markiert</span>
-              </div>
+        {canManageAssets && selectedIds.length > 0 ? (
+          <div className="rounded-2xl border border-primary/30 bg-primary/15 px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-lg bg-primary/20 text-primary">
+                <Boxes className="h-3.5 w-3.5" />
+              </span>
+              <span className="text-sm font-medium text-ink">{selectedIds.length} Geräte ausgewählt</span>
+              <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={toggleSelectAllVisible}>
+                {filteredAssets.length > 0 && filteredAssets.every((asset) => selectedIds.includes(asset.id))
+                  ? 'Auswahl aufheben'
+                  : 'Alle sichtbaren auswählen'}
+              </button>
+              <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={openBulkModal}>
+                Bulk-Aktionen
+              </button>
               <button
                 type="button"
-                className="btn-secondary px-2 py-1 text-xs"
-                disabled={selectedIds.length < 2}
-                onClick={openBulkModal}
+                className="btn-danger px-3 py-1.5 text-xs"
+                onClick={() => setBulkModalOpen(true)}
               >
-                Bulk-Aktionen
+                <Trash2 className="h-3.5 w-3.5" />
+                Ausgewählte löschen
               </button>
             </div>
           </div>
         ) : null}
 
-        <div className={`mt-4 ${isMobile ? 'hidden' : 'hidden lg:block'}`}>
-          <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
-          <table className="w-full border-collapse text-sm table-fixed">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className={`${isMobile ? 'hidden' : 'hidden lg:block'}`}>
+            <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+              <table className="w-full min-w-[1120px] border-collapse text-sm table-fixed">
             <colgroup>
               {canManageAssets ? <col style={{ width: '56px' }} /> : null}
-              <col style={{ width: '30%' }} />
+              <col style={{ width: '28%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '14%' }} />
               <col style={{ width: '18%' }} />
-              <col style={{ width: '20%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '20%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
-                {canManageAssets ? <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Auswahl</th> : null}
-                <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Name</th>
-                <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Kategorie</th>
-                <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Zugewiesen an</th>
-                <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-slate-900">Status</th>
-                <th className="sticky top-0 z-20 border-b border-l-2 border-slate-200 bg-slate-50 px-3 py-2.5 pl-4 text-right dark:border-slate-700 dark:bg-slate-900">
-                  Aktion
-                </th>
+              <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+                {canManageAssets ? <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3"> </th> : null}
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Asset / Inventarnummer</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Kategorie</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Status</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Zugewiesen / Projekt</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Standort</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Letzter Scan</th>
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3 text-right">Aktionen</th>
               </tr>
             </thead>
             <tbody>
               {filteredAssets.map((asset, rowIndex) => (
                 <Fragment key={asset.id}>
-                <tr className={`bg-white text-slate-800 hover:bg-sky-50/40 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/70 ${showTechnicalColumns ? '' : 'border-b border-slate-100 dark:border-slate-800'}`}>
+                <tr
+                  className={`border-b border-line/70 text-ink transition hover:bg-surface-2/75 ${
+                    quickViewId === asset.id ? 'bg-primary/8' : ''
+                  } ${showTechnicalColumns ? '' : 'last:border-0'}`}
+                >
                   {canManageAssets ? (
                     <td className="px-3 py-3">
                       <input
@@ -968,53 +989,40 @@ export function AssetsPage({
                       />
                     </td>
                   ) : null}
-                  <td
-                    className="px-3 py-3"
-                    onMouseEnter={(event) => handleNameHoverEnter(asset, event)}
-                    onMouseLeave={handleNameHoverLeave}
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p
-                        className="max-w-[220px] cursor-default truncate font-semibold text-slate-900 dark:text-slate-100"
-                        title={asset.name}
-                      >
-                        {asset.name}
-                      </p>
-                      {asset.ownershipType && asset.ownershipType !== 'owned' ? (
-                        <span
-                          className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:border-sky-700/50 dark:bg-sky-950/40 dark:text-sky-200"
-                          title={`Bestandsart: ${asset.ownershipType === 'rented' ? 'Mietgerät' : asset.ownershipType === 'borrowed' ? 'Leihgerät' : 'Extern'}`}
-                        >
-                          {asset.ownershipType === 'rented'
-                            ? 'Miete'
-                            : asset.ownershipType === 'borrowed'
-                              ? 'Leihe'
-                              : 'Extern'}
-                        </span>
-                      ) : null}
-                      {asset.availableForPlanning === false ? (
-                        <span
-                          className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                          title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
-                        >
-                          Nicht planbar
-                        </span>
-                      ) : null}
-                      {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
-                        <span
-                          className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-200"
-                          title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
-                        >
-                          Kein Kartendrucker
-                        </span>
-                      ) : null}
+                  <td className="px-3 py-3" onMouseEnter={(event) => handleNameHoverEnter(asset, event)} onMouseLeave={handleNameHoverLeave}>
+                    <div className="flex items-center gap-3">
+                      <AssetVisual category={asset.category} name={asset.name} size="sm" />
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="max-w-[220px] cursor-default truncate font-semibold text-ink" title={asset.name}>
+                            {asset.name}
+                          </p>
+                          {getOwnershipLabel(asset.ownershipType) ? (
+                            <span className="inline-flex items-center rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-300">
+                              {getOwnershipLabel(asset.ownershipType)}
+                            </span>
+                          ) : null}
+                          {asset.availableForPlanning === false ? (
+                            <span className="inline-flex items-center rounded-full border border-white/10 bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-ink-muted">
+                              Nicht planbar
+                            </span>
+                          ) : null}
+                          {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
+                            <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                              Kein Kartendrucker
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 text-xs text-ink-faint">{asset.tagNumber}</p>
+                        <p className="text-xs text-ink-muted">{asset.serialNumber}</p>
+                      </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-3 py-3 text-ink-muted">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
-                        className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-900"
+                        className="field-input h-10"
                         onChange={(e) => {
                           if (e.target.value) onAdminUpdateAsset(asset.id, { category: e.target.value });
                         }}
@@ -1028,16 +1036,27 @@ export function AssetsPage({
                       <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  <td className="px-3 py-3">
-                    <span className="inline-block max-w-[170px] truncate align-bottom" title={asset.assignedTo}>{asset.assignedTo}</span>
-                  </td>
                   <td className="whitespace-nowrap px-3 py-3 pr-6">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="border-l-2 border-slate-200 bg-white px-3 py-3 pl-4 text-right dark:border-slate-700 dark:bg-slate-900">
+                  <td className="px-3 py-3">
+                    <div className="max-w-[220px]">
+                      <p className="truncate text-sm font-medium text-ink" title={asset.assignedTo}>{asset.assignedTo}</p>
+                      <p className="truncate text-xs text-ink-faint">{asset.nextReservation !== '-' ? asset.nextReservation : 'Kein Projekt aktiv'}</p>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="text-sm text-ink">{asset.location}</div>
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2 text-sm text-ink">
+                      <span>{asset.lastCheckout}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 text-right">
                     <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
-                      <button type="button" className="btn-primary shrink-0 px-2.5 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
-                        Detail
+                      <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => setQuickViewId(asset.id)}>
+                        <Eye className="h-3.5 w-3.5" />
                       </button>
                       {canManageAssets ? (
                         <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
@@ -1045,44 +1064,38 @@ export function AssetsPage({
                           <span>Admin</span>
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn-ghost shrink-0 px-2 py-1 text-xs"
-                        onClick={() => setQuickViewId(asset.id)}
-                        title="Schnellansicht"
-                        aria-label="Schnellansicht"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
+                      <button type="button" className="btn-primary shrink-0 px-2.5 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
+                        Detail
                       </button>
                     </div>
                   </td>
                 </tr>
                 {showTechnicalColumns ? (
-                  <tr className="border-b border-slate-100 bg-slate-50/60 dark:border-slate-800 dark:bg-slate-900/60">
-                    <td colSpan={canManageAssets ? 6 : 5} className="px-3 pb-3 pt-1">
-                      <div className="grid gap-x-6 gap-y-1.5 sm:grid-cols-2 lg:grid-cols-3 text-xs text-slate-600 dark:text-slate-300">
+                  <tr className="border-b border-line/70 bg-surface-2/60">
+                    <td colSpan={canManageAssets ? 8 : 7} className="px-3 pb-3 pt-1">
+                      <div className="grid gap-x-6 gap-y-1.5 text-xs text-ink-muted sm:grid-cols-2 lg:grid-cols-3">
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">Modell</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">Modell</span>
                           <span className="truncate" title={asset.model || '-'}>{asset.model || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">Seriennummer</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">Seriennummer</span>
                           <span className="truncate" title={asset.serialNumber || '-'}>{asset.serialNumber || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">IP-Adresse</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">IP-Adresse</span>
                           <span className="truncate" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">MAC LAN</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">MAC LAN</span>
                           <span className="truncate font-mono" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">MAC WLAN</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">MAC WLAN</span>
                           <span className="truncate font-mono" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-slate-500 dark:text-slate-400">QR / Asset-ID</span>
+                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">QR / Asset-ID</span>
                           <span className="truncate" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber || '-'}</span>
                         </div>
                       </div>
@@ -1093,19 +1106,22 @@ export function AssetsPage({
               ))}
             </tbody>
           </table>
+            </div>
           </div>
-        </div>
 
-        <div className={`mt-4 grid gap-3 ${isMobile ? '' : 'lg:hidden'}`}>
+          <div className={`grid gap-3 ${isMobile ? '' : 'lg:hidden'}`}>
           {filteredAssets.map((asset) => (
             <article key={asset.id} className="surface-muted p-3">
               <div className="flex items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0">
+                  <div className="flex items-start gap-3">
+                    <AssetVisual category={asset.category} name={asset.name} size="sm" />
+                    <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <h4 className="text-sm font-semibold text-slate-900">{asset.name}</h4>
+                    <h4 className="truncate text-sm font-semibold text-ink">{asset.name}</h4>
                     {asset.availableForPlanning === false ? (
                       <span
-                        className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
+                        className="inline-flex items-center rounded-full border border-white/10 bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-ink-muted"
                         title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
                       >
                         Nicht planbar
@@ -1120,11 +1136,11 @@ export function AssetsPage({
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-xs text-slate-500 break-words">
+                  <p className="break-words text-xs text-ink-muted">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
-                        className="rounded border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs text-amber-900"
+                        className="field-input h-9 text-xs"
                         onChange={(e) => {
                           if (e.target.value) onAdminUpdateAsset(asset.id, { category: e.target.value });
                         }}
@@ -1139,17 +1155,19 @@ export function AssetsPage({
                     )}{' '}
                     • {asset.location}
                   </p>
+                      <p className="mt-1 break-all text-xs text-ink-faint">{asset.tagNumber}</p>
+                    </div>
+                  </div>
                 </div>
                 <StatusBadge value={asset.status} />
               </div>
               <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-2">
-                <p className="text-xs text-slate-500 break-all">ID: {asset.tagNumber}</p>
+                <p className="break-all text-xs text-ink-muted">SN: {asset.serialNumber || '-'}</p>
                 <button type="button" className="btn-primary min-h-[44px] px-3 py-2 text-xs" onClick={() => setQuickViewId(asset.id)}>
                   Schnellansicht
                 </button>
               </div>
-              <p className="mt-1 text-xs text-slate-500 break-all">SN: {asset.serialNumber || '-'}</p>
-              <p className="mt-1 text-xs text-slate-500 break-all">MAC LAN: {asset.macLan || '-'}</p>
+              <p className="mt-1 break-all text-xs text-ink-faint">Letzter Scan: {asset.lastCheckout}</p>
               {canManageAssets ? (
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <button
@@ -1174,16 +1192,53 @@ export function AssetsPage({
               ) : null}
             </article>
           ))}
+          </div>
+
+          <div className="hidden xl:block">
+            {quickViewAsset ? (
+              <AssetQuickView
+                asset={quickViewAsset}
+                variant="panel"
+                onOpenDetail={onOpenDetail}
+                onReserve={onReserveAsset}
+                onCheckout={onCheckoutAsset}
+              />
+            ) : (
+              <aside className="surface-card sticky top-24 animate-fade-up p-5">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Detailpanel</p>
+                <h3 className="mt-2 text-lg font-semibold text-ink">Gerät auswählen</h3>
+                <p className="mt-2 text-sm text-ink-muted">
+                  Öffne eine Schnellansicht aus der Tabelle, um Stammdaten, Verfügbarkeit und QR-Details rechts anzuzeigen.
+                </p>
+                {selectedAssets.length > 0 ? (
+                  <div className="mt-4 rounded-2xl border border-line bg-surface-2 p-4">
+                    <p className="text-sm font-medium text-ink">{selectedAssets.length} Geräte markiert</p>
+                    <p className="mt-1 text-xs text-ink-faint">Bulk-Aktionen bleiben über die blaue Auswahlleiste erreichbar.</p>
+                  </div>
+                ) : null}
+              </aside>
+            )}
+          </div>
         </div>
       </article>
 
-      <AssetQuickView
-        asset={quickViewAsset}
-        onClose={() => setQuickViewId(null)}
-        onOpenDetail={onOpenDetail}
-        onReserve={onReserveAsset}
-        onCheckout={onCheckoutAsset}
-      />
+      {!isMobile ? <div className="xl:hidden">{quickViewAsset ? (
+        <AssetQuickView
+          asset={quickViewAsset}
+          onClose={() => setQuickViewId(null)}
+          onOpenDetail={onOpenDetail}
+          onReserve={onReserveAsset}
+          onCheckout={onCheckoutAsset}
+        />
+      ) : null}</div> : (
+        <AssetQuickView
+          asset={quickViewAsset}
+          onClose={() => setQuickViewId(null)}
+          onOpenDetail={onOpenDetail}
+          onReserve={onReserveAsset}
+          onCheckout={onCheckoutAsset}
+        />
+      )}
 
       {/* Verzögerte QR-Vorschau: per Portal über der Tabelle, damit der
           scroll-/overflow-Container sie nicht abschneidet. Kein Modal/Backdrop. */}

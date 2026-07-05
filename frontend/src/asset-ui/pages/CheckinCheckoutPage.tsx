@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronUp, ClipboardCheck, Handshake, QrCode, ScanLine, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 import {
   getTelecomPassSettings,
   listPlannings,
@@ -964,11 +965,11 @@ export function CheckinCheckoutPage({
     >
       {/* Page-Header nur auf Desktop. Auf Mobile direkt zur Aktion. */}
       {!isMobile ? (
-        <div>
-          <p className="page-kicker">Ein-/Auslagerung</p>
-          <h2 className="page-title">Schnellflow mit QR</h2>
-          <p className="page-subtitle">Klare Trennung: Ausgabe und Rücknahme als eigene Modi.</p>
-        </div>
+        <PageHeader
+          kicker="Ein-/Auslagerung"
+          title="Schnellflow mit QR"
+          subtitle="Klare Trennung: Ausgabe und Rücknahme als eigene Modi."
+        />
       ) : null}
 
       <div className={`surface-card ${isMobile ? '!p-2' : ''}`}>

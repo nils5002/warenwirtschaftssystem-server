@@ -2,6 +2,7 @@ import { Download, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import { useRef, useState } from 'react';
 import type { Asset } from '../types';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 import {
   confirmHardwareImport,
   downloadHardwareImportTemplate,
@@ -136,13 +137,11 @@ export function ImportExportPage({ assets, onImported }: ImportExportPageProps) 
 
   return (
     <section className="space-y-5">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Import / Export</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">Datenmanagement</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Excel-Bestand importieren und Inventar als CSV exportieren.
-        </p>
-      </div>
+      <PageHeader
+        kicker="Import / Export"
+        title="Datenmanagement"
+        subtitle="Excel-Bestand importieren und Inventar als CSV exportieren."
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <article className="surface-card animate-fade-up">

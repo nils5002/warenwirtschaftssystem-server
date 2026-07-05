@@ -2,6 +2,7 @@ import { Signal } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { LoadingButton } from '../../components/loading';
 import { getTelecomPassSettings, updateTelecomPassSettings } from '../../services/wmsApi';
+import { PageHeader } from '../../ui';
 
 type Feedback = { kind: 'success' | 'error'; text: string } | null;
 
@@ -54,14 +55,11 @@ export function TelecomPassSettingsPage() {
 
   return (
     <section className="space-y-5">
-      <div>
-        <p className="page-kicker">Stammdaten und Integrationen</p>
-        <h2 className="page-title">Telekompass</h2>
-        <p className="page-subtitle">
-          Globaler Preis pro Telekompass-Buchung. Wird bei der Rückgabe von LTE-Routern zur
-          Kostenanzeige verwendet.
-        </p>
-      </div>
+      <PageHeader
+        kicker="Stammdaten und Integrationen"
+        title="Telekompass"
+        subtitle="Globaler Preis pro Telekompass-Buchung. Wird bei der Rückgabe von LTE-Routern zur Kostenanzeige verwendet."
+      />
 
       <article className="surface-card max-w-xl space-y-4 animate-fade-up">
         <div className="inline-flex items-center gap-2 text-base font-semibold text-slate-900">

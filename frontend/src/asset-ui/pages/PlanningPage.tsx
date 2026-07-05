@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 import { PlanningCalendarAddOn } from './PlanningCalendarAddOn';
 import {
   createPlanning,
@@ -1886,11 +1887,11 @@ export function PlanningPage({
     <section className="space-y-5">
       <div className="surface-card animate-fade-up">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="page-kicker">Einsatzplanung</p>
-            <h2 className="page-title">Projektbezogene Hardwareplanung</h2>
-            <p className="page-subtitle">Bedarf für den gesamten Projektzeitraum planen, Summen prüfen und Engpässe direkt sehen.</p>
-          </div>
+          <PageHeader
+            kicker="Einsatzplanung"
+            title="Projektbezogene Hardwareplanung"
+            subtitle="Bedarf für den gesamten Projektzeitraum planen, Summen prüfen und Engpässe direkt sehen."
+          />
           {canEdit ? (
             <button type="button" data-testid="planning-create" className="btn-primary" onClick={() => setCreateOpen(true)}>
               <CalendarPlus className="h-4 w-4" />

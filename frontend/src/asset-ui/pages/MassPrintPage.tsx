@@ -5,6 +5,7 @@ import type { Asset } from '../types';
 import { getAssetQrCode } from '../qr';
 import { printMultipleLabels, type LabelInput, type MassLabelSettings } from '../printLabels';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 
 type MassPrintPageProps = {
   assets: Asset[];
@@ -264,11 +265,11 @@ export function MassPrintPage({ assets }: MassPrintPageProps) {
 
   return (
     <section className="space-y-5">
-      <div>
-        <p className="page-kicker">Admin</p>
-        <h2 className="page-title">QR-Code Massendruck</h2>
-        <p className="page-subtitle">Bestehende Assets auswählen und als einzelne QR-Labels drucken.</p>
-      </div>
+      <PageHeader
+        kicker="Admin"
+        title="QR-Code Massendruck"
+        subtitle="Bestehende Assets auswählen und als einzelne QR-Labels drucken."
+      />
 
       <article className="surface-card animate-fade-up space-y-4">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

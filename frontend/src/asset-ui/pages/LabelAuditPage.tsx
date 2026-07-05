@@ -22,6 +22,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QrScannerDialog } from '../components/QrScannerDialog';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
+import { PageHeader } from '../../ui';
 import {
   archiveLabelAuditSession,
   createLabelAuditSession,
@@ -451,14 +452,11 @@ export function LabelAuditPage({ assets }: LabelAuditPageProps) {
 
   return (
     <section className="space-y-4 sm:space-y-5">
-      <div>
-        <p className="page-kicker">Admin</p>
-        <h2 className="page-title">Label-Prüfung</h2>
-        <p className="page-subtitle">
-          QR-Labels nach dem Bekleben einscannen und prüfen — reines Lesetool, ändert keine Hardwaredaten. Die
-          Prüfrunde wird serverseitig gespeichert und bleibt nach Reload, Gerätewechsel und Redeploy erhalten.
-        </p>
-      </div>
+      <PageHeader
+        kicker="Admin"
+        title="Label-Prüfung"
+        subtitle="QR-Labels nach dem Bekleben einscannen und prüfen — reines Lesetool, ändert keine Hardwaredaten. Die Prüfrunde wird serverseitig gespeichert und bleibt nach Reload, Gerätewechsel und Redeploy erhalten."
+      />
 
       {loadError ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

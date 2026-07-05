@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { LoadingButton } from '../../components/loading';
+import { PageHeader } from '../../ui';
 import {
   createExternalPool,
   createQrGroup,
@@ -25,6 +26,7 @@ import {
 import type { Asset, CategoryItem, OwnershipType } from '../types';
 import { AssetQrCard } from '../components/AssetQrCard';
 import { BulkGroupDialog } from '../components/BulkGroupDialog';
+import { KpiCard } from '../components/KpiCard';
 
 type ExternalPoolPageProps = {
   assets: Asset[];
@@ -431,37 +433,23 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
 
   return (
     <section className={`space-y-5 ${isMobile ? 'pb-16' : ''}`}>
-      <div className="surface-card animate-fade-up">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="page-kicker">Inventar</p>
-            <h2 className="page-title">Fremdbestand</h2>
-            <p className="page-subtitle">Gemietete, geliehene oder externe Geräte verwalten.</p>
-          </div>
+      <PageHeader
+        kicker="Inventar"
+        title="Fremdbestand"
+        subtitle="Gemietete, geliehene oder externe Geräte verwalten."
+        actions={
           <button type="button" className="btn-primary" onClick={() => setCreateOpen(true)}>
             <PackagePlus className="h-4 w-4" />
             Fremdbestand hinzufügen
           </button>
-        </div>
+        }
+      />
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-4">
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{totals.total}</p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Aktiv</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{totals.aktiv}</p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Rückgabe bald</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{totals.rueckgabeBald}</p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Überfällig</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900 dark:text-slate-100">{totals.ueberfaellig}</p>
-          </div>
-        </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard title="Gesamt" value={String(totals.total)} trend="Alle externen Geräte" tone="neutral" icon={PackagePlus} />
+        <KpiCard title="Aktiv" value={String(totals.aktiv)} trend="Aktuell verfügbar oder laufend" tone="positive" icon={Power} />
+        <KpiCard title="Rückgabe bald" value={String(totals.rueckgabeBald)} trend="Innerhalb der nächsten 3 Tage" tone="warning" icon={CalendarClock} />
+        <KpiCard title="Überfällig" value={String(totals.ueberfaellig)} trend="Rückgabe überschritten" tone="critical" icon={Undo2} />
       </div>
 
       <article className="surface-card animate-fade-up">

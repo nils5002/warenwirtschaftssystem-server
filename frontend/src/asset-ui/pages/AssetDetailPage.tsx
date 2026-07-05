@@ -1,9 +1,12 @@
 import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { AssetQrCard } from '../components/AssetQrCard';
+import { AssetVisual } from '../components/AssetVisual';
+import { KpiCard } from '../components/KpiCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
 import { getTelecomPassSettings } from '../../services/wmsApi';
+import { PageHeader } from '../../ui';
 import type { ActivityItem, AppRole, Asset, MaintenanceItem } from '../types';
 
 function formatEuro(value: number): string {
@@ -74,10 +77,7 @@ export function AssetDetailPage({
   if (!asset) {
     return (
       <section className="surface-card animate-fade-up">
-        <h2 className="text-xl font-semibold text-slate-900">Asset-Detail</h2>
-        <p className="mt-2 text-sm text-slate-500">
-          Bitte ein Asset in der Inventaransicht auswählen, um Details zu sehen.
-        </p>
+        <PageHeader title="Asset-Detail" subtitle="Bitte ein Asset in der Inventaransicht auswählen, um Details zu sehen." />
       </section>
     );
   }
@@ -100,111 +100,100 @@ export function AssetDetailPage({
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Asset-Detailseite</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{asset.name}</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Inventarnummer {asset.tagNumber} • Seriennummer {asset.serialNumber}
-          </p>
-          {(asset.availableForPlanning === false ||
-            (asset.category === 'Laptop' && asset.cardPrinterCompatible === false)) ? (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {asset.availableForPlanning === false ? (
-                <span
-                  className="inline-flex items-center rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                  title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
-                >
-                  Nicht planbar
-                </span>
-              ) : null}
-              {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
-                <span
-                  className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-600/50 dark:bg-amber-950/40 dark:text-amber-200"
-                  title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
-                >
-                  Nicht kartendrucker-kompatibel
-                </span>
-              ) : null}
-            </div>
+      <PageHeader
+        kicker="Asset-Detailseite"
+        title={asset.name}
+        subtitle={`Inventarnummer ${asset.tagNumber} • Seriennummer ${asset.serialNumber}`}
+        actions={
+          <>
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => onReserveAsset(asset.id)}>
+              Verleihen
+            </button>
+            <button className="btn-primary w-full sm:w-auto" onClick={() => onCheckoutAsset(asset.id)}>
+              Ausgeben
+            </button>
+            <button className="btn-secondary w-full sm:w-auto" onClick={() => onCheckinAsset(asset.id)}>
+              Zurücknehmen
+            </button>
+            {canManageDefects ? (
+              <button className="btn-secondary w-full sm:w-auto" onClick={() => onSetMaintenance(asset.id)}>
+                In Wartung setzen
+              </button>
+            ) : null}
+            {canEditAsset ? (
+              <button className="btn-secondary w-full sm:w-auto" onClick={() => onEditAsset(asset.id)}>
+                Bearbeiten
+              </button>
+            ) : null}
+            {canReportDefects ? (
+              <button
+                className="btn-danger w-full sm:w-auto"
+                onClick={() =>
+                  onCreateMaintenance({
+                    assetName: asset.name,
+                    issue: 'Gerät defekt',
+                    comment: '',
+                  })
+                }
+              >
+                Defekt melden
+              </button>
+            ) : null}
+          </>
+        }
+      />
+
+      {(asset.availableForPlanning === false || (asset.category === 'Laptop' && asset.cardPrinterCompatible === false)) ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {asset.availableForPlanning === false ? (
+            <span className="inline-flex items-center rounded-full border border-white/10 bg-slate-500/10 px-2.5 py-1 text-xs font-semibold text-ink-muted">
+              Nicht planbar
+            </span>
+          ) : null}
+          {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
+            <span className="inline-flex items-center rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-300">
+              Nicht kartendrucker-kompatibel
+            </span>
           ) : null}
         </div>
-        <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
-          <button
-            className="w-full rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 sm:w-auto"
-            onClick={() => onReserveAsset(asset.id)}
-          >
-            Verleihen
-          </button>
-          <button
-            className="w-full rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 sm:w-auto"
-            onClick={() => onCheckoutAsset(asset.id)}
-          >
-            Ausgeben
-          </button>
-          <button
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
-            onClick={() => onCheckinAsset(asset.id)}
-          >
-            Zurücknehmen
-          </button>
-          {canManageDefects ? (
-            <button
-              className="w-full rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-100 sm:w-auto"
-              onClick={() => onSetMaintenance(asset.id)}
-            >
-              In Wartung setzen
-            </button>
-          ) : null}
-          {canEditAsset ? (
-            <button
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 sm:w-auto"
-              onClick={() => onEditAsset(asset.id)}
-            >
-              Bearbeiten
-            </button>
-          ) : null}
-          {canReportDefects ? (
-            <button
-              className="w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 sm:w-auto"
-              onClick={() =>
-                onCreateMaintenance({
-                  assetName: asset.name,
-                  issue: 'Gerät defekt',
-                  comment: '',
-                })
-              }
-            >
-              Defekt melden
-            </button>
-          ) : null}
-        </div>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <KpiCard title="Status" value={asset.status} trend="Aktueller Gerätezustand" tone="positive" icon={ShieldCheck} />
+        <KpiCard title="Standort" value={asset.location} trend="Aktueller Lager- oder Einsatzort" tone="neutral" icon={ClipboardList} />
+        <KpiCard title="Reservierung" value={asset.nextReservation} trend="Nächste geplante Belegung" tone="neutral" icon={CalendarClock} />
+        <KpiCard
+          title="Offene Tickets"
+          value={String(openMaintenanceCount)}
+          trend="Defekt- oder Wartungsfälle"
+          tone={openMaintenanceCount > 0 ? 'warning' : 'positive'}
+          icon={Wrench}
+        />
       </div>
 
       <article className="surface-card animate-fade-up">
         <div className="grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-4">
-            <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-gradient-to-br from-brand-700 to-brand-500 p-5 text-white">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 text-xl font-bold">
-                {asset.name.charAt(0)}
-              </div>
-              <h3 className="mt-4 text-xl font-semibold">{asset.name}</h3>
-              <p className="mt-1 text-sm text-brand-100">{asset.category}</p>
+            <div className="flex h-full flex-col rounded-2xl border border-line bg-surface-2 p-5">
+              <AssetVisual category={asset.category} name={asset.name} size="lg" />
+              <h3 className="mt-4 text-xl font-semibold text-ink">{asset.tagNumber}</h3>
+              <p className="mt-1 text-sm text-ink-muted">{asset.name}</p>
+              <p className="text-sm text-ink-faint">{asset.category}</p>
               <div className="mt-4">
                 <StatusBadge value={asset.status} />
               </div>
               <dl className="mt-5 space-y-2 text-sm">
                 <div className="flex justify-between gap-3">
-                  <dt className="text-brand-100">Standort</dt>
-                  <dd className="font-medium">{asset.location}</dd>
+                  <dt className="text-ink-faint">Standort</dt>
+                  <dd className="font-medium text-ink">{asset.location}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-brand-100">Zugewiesen an</dt>
-                  <dd className="font-medium">{asset.assignedTo}</dd>
+                  <dt className="text-ink-faint">Zugewiesen an</dt>
+                  <dd className="font-medium text-ink">{asset.assignedTo}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <dt className="text-brand-100">Nächste Rückgabe</dt>
-                  <dd className="font-medium">{asset.nextReturn}</dd>
+                  <dt className="text-ink-faint">Nächste Rückgabe</dt>
+                  <dd className="font-medium text-ink">{asset.nextReturn}</dd>
                 </div>
               </dl>
             </div>
@@ -212,61 +201,61 @@ export function AssetDetailPage({
 
           <div className="space-y-4 lg:col-span-8">
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Kategorie</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{asset.category}</p>
+              <div className="rounded-2xl border border-line bg-surface-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Kategorie</p>
+                <p className="mt-1 text-sm font-medium text-ink">{asset.category}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Inventarnummer</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{asset.tagNumber}</p>
+              <div className="rounded-2xl border border-line bg-surface-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Inventarnummer</p>
+                <p className="mt-1 text-sm font-medium text-ink">{asset.tagNumber}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Seriennummer</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{asset.serialNumber}</p>
+              <div className="rounded-2xl border border-line bg-surface-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Seriennummer</p>
+                <p className="mt-1 text-sm font-medium text-ink">{asset.serialNumber}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Wartungsstatus</p>
-                <p className="mt-1 text-sm font-medium text-slate-900">{asset.maintenanceState}</p>
+              <div className="rounded-2xl border border-line bg-surface-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Wartungsstatus</p>
+                <p className="mt-1 text-sm font-medium text-ink">{asset.maintenanceState}</p>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                   <ClipboardList className="h-3.5 w-3.5" />
                   Letzte Ausgabe
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">{asset.lastCheckout}</p>
+                <p className="mt-2 text-sm font-medium text-ink">{asset.lastCheckout}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                   <CalendarClock className="h-3.5 w-3.5" />
                   Nächste Reservierung
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">{asset.nextReservation}</p>
+                <p className="mt-2 text-sm font-medium text-ink">{asset.nextReservation}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Wartung
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">{asset.maintenanceState}</p>
+                <p className="mt-2 text-sm font-medium text-ink">{asset.maintenanceState}</p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <div className="rounded-2xl border border-line bg-surface p-4">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                   <Wrench className="h-3.5 w-3.5" />
                   Offene Tickets
                 </p>
-                <p className="mt-2 text-sm font-medium text-slate-900">{openMaintenanceCount}</p>
+                <p className="mt-2 text-sm font-medium text-ink">{openMaintenanceCount}</p>
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            <div className="rounded-2xl border border-line bg-surface p-4">
+              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
                 <PenSquare className="h-3.5 w-3.5" />
                 Notizen
               </p>
-              <p className="mt-2 text-sm text-slate-700">{asset.notes}</p>
+              <p className="mt-2 text-sm text-ink-muted">{asset.notes}</p>
             </div>
 
             <AssetQrCard qrValue={qrValue} assetName={asset.name} tagNumber={asset.tagNumber} />
