@@ -239,7 +239,6 @@ function App() {
               onAdminUpdateAsset={controller.adminUpdateAsset}
               onAdminDeleteAsset={controller.adminDeleteAsset}
               onSetAssetMaintenance={controller.setAssetMaintenance}
-              onEditAsset={controller.editAsset}
               onCreateReservation={controller.createReservation}
               onEditReservation={controller.editReservation}
               onCheckoutReservation={controller.checkoutReservation}

@@ -596,13 +596,20 @@ export function useWmsController(options: UseWmsControllerOptions) {
 
   const createId = (prefix: string) => `${prefix}-${Date.now().toString(36)}`;
 
-  const saveAsset = async (asset: Asset) => {
+  const saveAsset = async (asset: Asset): Promise<Asset> => {
+    const previous = assets.find((item) => item.id === asset.id) ?? null;
     const normalizedAsset = { ...asset, qrCode: getAssetQrCode(asset) };
     setAssets((prev) => prev.map((item) => (item.id === normalizedAsset.id ? normalizedAsset : item)));
     try {
-      await upsertAsset(normalizedAsset);
-    } catch {
+      const persisted = await upsertAsset(normalizedAsset);
+      setAssets((prev) => prev.map((item) => (item.id === persisted.id ? persisted : item)));
+      return persisted;
+    } catch (error) {
+      if (previous) {
+        setAssets((prev) => prev.map((item) => (item.id === previous.id ? previous : item)));
+      }
       setWmsError('Asset konnte nicht im Backend gespeichert werden.');
+      throw (error instanceof Error ? error : new Error('Asset konnte nicht im Backend gespeichert werden.'));
     }
   };
 
@@ -879,35 +886,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
     };
     await saveAsset(updated);
     await addActivity('Asset in Wartung', `${asset.name}: ${note.trim()}`, asset.id);
-  };
-
-  const editAsset = async (assetId: string) => {
-    const asset = assets.find((item) => item.id === assetId);
-    if (!asset) return;
-    const name = (await prompt({
-      title: 'Gerät bearbeiten',
-      message: 'Gerätename',
-      defaultValue: asset.name,
-      required: true,
-      submitLabel: 'Weiter',
-    })) || asset.name;
-    const location = (await prompt({
-      title: 'Gerät bearbeiten',
-      message: 'Standort',
-      defaultValue: asset.location,
-      required: true,
-      submitLabel: 'Weiter',
-    })) || asset.location;
-    const notes =
-      (await prompt({
-        title: 'Gerät bearbeiten',
-        message: 'Notizen',
-        defaultValue: asset.notes,
-        multiline: true,
-      })) ?? asset.notes;
-    const updated: Asset = { ...asset, name: name.trim(), location: location.trim(), notes };
-    await saveAsset(updated);
-    await addActivity('Asset bearbeitet', `${updated.name} wurde aktualisiert.`, updated.id);
   };
 
   const createReservation = async () => {
@@ -1421,7 +1399,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
     checkoutAsset,
     checkinAsset,
     setAssetMaintenance,
-    editAsset,
     createReservation,
     editReservation,
     checkoutReservation,

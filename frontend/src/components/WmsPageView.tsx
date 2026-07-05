@@ -76,7 +76,6 @@ type WmsPageViewProps = {
   onAdminUpdateAsset: (assetId: string, patch: Partial<Asset>) => Promise<void>;
   onAdminDeleteAsset: (assetId: string) => Promise<void>;
   onSetAssetMaintenance: (assetId: string) => Promise<void>;
-  onEditAsset: (assetId: string) => Promise<void>;
   onCreateReservation: () => Promise<void>;
   onEditReservation: (id: string) => Promise<void>;
   onCheckoutReservation: (id: string) => Promise<void>;
@@ -187,7 +186,6 @@ export function WmsPageView({
   onAdminUpdateAsset,
   onAdminDeleteAsset,
   onSetAssetMaintenance,
-  onEditAsset,
   onCreateReservation,
   onEditReservation,
   onCheckoutReservation,
@@ -332,6 +330,7 @@ export function WmsPageView({
           canManageDefects={canManageDefects}
           canReportDefects={canReportDefects}
           asset={selectedAsset}
+          categories={categories}
           activities={activities}
           maintenanceItems={maintenanceItems}
           onReserveAsset={(id) => {
@@ -346,8 +345,8 @@ export function WmsPageView({
           onSetMaintenance={(id) => {
             void onSetAssetMaintenance(id);
           }}
-          onEditAsset={(id) => {
-            void onEditAsset(id);
+          onSaveAsset={async (id, patch) => {
+            await onAdminUpdateAsset(id, patch);
           }}
           onCreateMaintenance={(payload) => {
             void onCreateMaintenance(payload);
