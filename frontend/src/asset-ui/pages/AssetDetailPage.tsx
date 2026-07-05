@@ -181,14 +181,14 @@ export function AssetDetailPage({
         <div className="grid gap-4 lg:grid-cols-12">
           <div className="lg:col-span-4">
             <div className="flex h-full flex-col rounded-2xl border border-line bg-surface-2 p-5">
-              <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
-              <h3 className="mt-4 text-xl font-semibold text-ink">{asset.tagNumber}</h3>
-              <p className="mt-1 text-sm text-ink-muted">{asset.name}</p>
-              <p className="text-sm text-ink-faint">{asset.category}</p>
-              <div className="mt-4">
+              <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="xl" className="mx-auto" />
+              <h3 className="mt-5 text-center text-xl font-semibold text-ink">{asset.tagNumber}</h3>
+              <p className="mt-1 text-center text-sm text-ink-muted">{asset.name}</p>
+              <p className="text-center text-sm text-ink-faint">{asset.category}</p>
+              <div className="mt-4 flex justify-center">
                 <StatusBadge value={asset.status} />
               </div>
-              <dl className="mt-5 space-y-2 text-sm">
+              <dl className="mt-6 space-y-2 text-sm">
                 <div className="flex justify-between gap-3">
                   <dt className="text-ink-faint">Standort</dt>
                   <dd className="font-medium text-ink">{asset.location}</dd>

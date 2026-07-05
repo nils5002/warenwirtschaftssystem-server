@@ -26,15 +26,27 @@ export function AssetQuickView({
 }: AssetQuickViewProps) {
   if (!asset) return null;
   const qrValue = getAssetQrCode(asset);
+  const heroSize = variant === 'panel' ? 'xl' : 'lg';
 
   const content = (
     <>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-start gap-3">
-            <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
+      <div className={`gap-4 ${variant === 'panel' ? 'flex flex-col' : 'flex items-start justify-between gap-3'}`}>
+        <div className={`min-w-0 ${variant === 'panel' ? '' : 'flex-1'}`}>
+          <div
+            className={
+              variant === 'panel'
+                ? 'rounded-[28px] border border-line bg-surface-2 p-4'
+                : 'flex flex-col gap-4 sm:flex-row sm:items-start'
+            }
+          >
+            <AssetImage
+              asset={asset}
+              categoryImageUrl={categoryImageUrl}
+              size={heroSize}
+              className={variant === 'panel' ? 'mx-auto' : ''}
+            />
+            <div className={`min-w-0 ${variant === 'panel' ? 'mt-4 text-center' : ''}`}>
+              <div className={`flex flex-wrap gap-2 ${variant === 'panel' ? 'justify-center' : 'items-center'}`}>
                 <h3 className="truncate text-xl font-semibold text-ink">{asset.tagNumber}</h3>
                 <StatusBadge value={asset.status} />
               </div>
