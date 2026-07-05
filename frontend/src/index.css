@@ -4,53 +4,81 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   UI-V2 Design-Tokens
+   Einzige Farbquelle für Shell + Kernkomponenten. Dark ist der
+   Produkt-Look (Navy, orientiert an den Design-Mockups), Light
+   bleibt als helle Variante vollständig nutzbar.
+   Tailwind-Aliase: canvas / surface / surface-2 / line / ink /
+   primary (siehe tailwind.config.js).
+   ============================================================ */
+
 :root {
   color-scheme: light;
   /* Hintergrund leicht kühl/grau getönt, NICHT reinweiß. Sorgt zusammen mit
      den weißen Surface-Cards für eine klare visuelle Hierarchie ohne harte
      Farbkanten. */
-  --app-bg: #e9eef5;
-  --app-bg-soft: #f3f6fb;
-  --app-surface: #ffffff;
-  /* Etwas kräftigere Border, damit Cards/Inputs auf hellem Hintergrund
-     wirklich abgesetzt sind, ohne hart zu wirken. */
-  --app-border: #c8d2e0;
-  --app-text: #0f172a;
-  /* Sekundärer Text deutlich lesbarer (vorher zu blass). */
-  --app-muted: #475569;
+  --ui-bg: #e9eef5;
+  --ui-bg-soft: #f3f6fb;
+  --ui-surface: #ffffff;
+  --ui-surface-2: #f1f5f9;
+  --ui-border: #c8d2e0;
+  --ui-border-strong: #94a3b8;
+  --ui-text: #0f172a;
+  --ui-text-muted: #475569;
+  --ui-text-faint: #64748b;
+  --ui-primary: #2563eb;
+  --ui-primary-hover: #1d4ed8;
+  --ui-primary-soft: rgb(37 99 235 / 0.12);
+
+  /* Legacy-Aliase (ältere Stellen referenzieren --app-*): */
+  --app-bg: var(--ui-bg);
+  --app-bg-soft: var(--ui-bg-soft);
+  --app-surface: var(--ui-surface);
+  --app-border: var(--ui-border);
+  --app-text: var(--ui-text);
+  --app-muted: var(--ui-text-muted);
 }
 
 :root.dark {
   color-scheme: dark;
-  --app-bg: #020617;
-  --app-bg-soft: #0f172a;
-  --app-surface: #0b1321;
-  --app-border: #253246;
-  --app-text: #e2e8f0;
-  --app-muted: #9ba9bc;
+  /* Navy-Dark nach Mockup: sehr dunkler Seitengrund, Karten als leicht
+     hellere Navy-Flächen, Tiefe über Border statt Blur/Schatten. */
+  --ui-bg: #050b16;
+  --ui-bg-soft: #0a1322;
+  --ui-surface: #0b1424;
+  --ui-surface-2: #101c30;
+  --ui-border: #1d2c47;
+  --ui-border-strong: #2c4066;
+  --ui-text: #e6edf7;
+  --ui-text-muted: #94a5bd;
+  --ui-text-faint: #64748b;
+  --ui-primary: #2f7df6;
+  --ui-primary-hover: #4b8ff8;
+  --ui-primary-soft: rgb(47 125 246 / 0.16);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   font-family: 'Manrope', 'Segoe UI', sans-serif;
-  color: var(--app-text);
-  /* Radial-Highlights deutlich gedämpft (vorher sehr saturierte Pastell-
-     blautöne wirkten "grell"). Jetzt gibt es nur noch einen sehr leisen
-     kühlen Schimmer, damit der Hintergrund ruhig bleibt und Cards den
-     Fokus tragen. */
+  color: var(--ui-text);
+  /* Radial-Highlights deutlich gedämpft: nur ein sehr leiser kühler
+     Schimmer, damit der Hintergrund ruhig bleibt und Cards den Fokus
+     tragen. */
   background:
     radial-gradient(circle at 4% -12%, rgb(186 219 248 / 0.45) 0%, transparent 40%),
     radial-gradient(circle at 96% 6%, rgb(199 220 246 / 0.40) 0%, transparent 36%),
-    linear-gradient(180deg, var(--app-bg-soft) 0%, var(--app-bg) 100%);
+    linear-gradient(180deg, var(--ui-bg-soft) 0%, var(--ui-bg) 100%);
   transition: background 200ms ease, color 200ms ease;
 }
 
 :root.dark body {
+  /* Flacher Navy-Grund wie im Mockup — nur ein dezenter blauer Schimmer
+     oben, keine großflächigen Gradients. */
   background:
-    radial-gradient(circle at 10% -12%, rgb(30 64 175 / 0.22) 0%, transparent 34%),
-    radial-gradient(circle at 92% 0%, rgb(14 165 233 / 0.2) 0%, transparent 36%),
-    linear-gradient(170deg, #020617 0%, #0b1321 45%, #0f172a 100%);
+    radial-gradient(circle at 50% -20%, rgb(47 125 246 / 0.10) 0%, transparent 42%),
+    var(--ui-bg);
 }
 
 h1,
@@ -64,44 +92,56 @@ h3 {
 }
 
 @layer components {
-  /* Vollopaque weiße Karte mit klarer (aber nicht harter) Border und
-     dezent weicherem Schatten. Hebt sich auf dem leicht getönten Body
-     deutlich ab, ohne wie ein gleißender Block zu wirken. */
+  /* Karte auf Token-Basis: klare Border, ruhiger Schatten, KEIN
+     backdrop-blur (Performance in langen Listen). Dark-Variante kommt
+     automatisch über die Tokens. */
   .surface-card {
-    @apply rounded-2xl border border-slate-300 bg-white p-4 shadow-soft backdrop-blur md:p-5;
+    @apply rounded-2xl border p-4 shadow-soft md:p-5;
+    border-color: var(--ui-border);
+    background-color: var(--ui-surface);
   }
 
-  /* Zweite Surface-Stufe für eingebettete Sub-Cards. Im Light Mode klar
-     gegen die weiße surface-card abgesetzt (slate-50 mit voller Border),
-     ohne durch eine zu graue Fläche schwer zu wirken. Dark-Mode-Variante
-     unten in den .dark-Overrides definiert. */
+  /* Zweite Surface-Stufe für eingebettete Sub-Cards. */
   .surface-muted {
-    @apply rounded-2xl border border-slate-200 bg-slate-50;
+    @apply rounded-2xl border;
+    border-color: var(--ui-border);
+    background-color: var(--ui-surface-2);
   }
 
   .page-kicker {
-    @apply text-xs font-semibold uppercase tracking-[0.16em] text-brand-700;
+    @apply text-xs font-semibold uppercase tracking-[0.16em];
+    color: var(--ui-primary);
   }
 
   .page-title {
-    @apply mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl;
+    @apply mt-1 text-2xl font-semibold tracking-tight sm:text-3xl;
+    color: var(--ui-text);
   }
 
-  /* Sekundärer Text spürbar lesbarer (slate-500 → slate-600) bei
-     identischer Hierarchie zur Page-Title. */
   .page-subtitle {
-    @apply mt-1 text-sm text-slate-600;
+    @apply mt-1 text-sm;
+    color: var(--ui-text-muted);
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60;
+    background-color: var(--ui-primary);
   }
 
-  /* btn-secondary: kräftigere Border + leichter Shadow, damit Buttons im
-     Light Mode auf weißen Cards nicht "verschwinden". Hover bekommt einen
-     etwas dunkleren Slate, der wirklich erkennbar ist. */
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--ui-primary-hover);
+  }
+
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60;
+    border-color: var(--ui-border);
+    background-color: var(--ui-surface);
+    color: var(--ui-text);
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--ui-border-strong);
+    background-color: var(--ui-surface-2);
   }
 
   .btn-dark {
@@ -112,20 +152,35 @@ h3 {
     @apply inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
-  /* btn-ghost: Hover-Kontrast etwas verstärkt (slate-100 → slate-200) so
-     dass die Aktion auf weißen Cards spürbar ist. */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-200/70 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60;
+    color: var(--ui-text-muted);
+  }
+
+  .btn-ghost:hover:not(:disabled) {
+    background-color: var(--ui-surface-2);
+    color: var(--ui-text);
   }
 
   .field {
-    @apply flex flex-col gap-1.5 text-sm font-semibold text-slate-700;
+    @apply flex flex-col gap-1.5 text-sm font-semibold;
+    color: var(--ui-text-muted);
   }
 
-  /* Inputs mit kräftigerer Resting-Border für klare Eingabefelder im
-     Light Mode. Fokuszustand bleibt unverändert (Brand-Ring). */
   .field-input {
-    @apply h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 shadow-sm outline-none ring-brand-300 transition placeholder:text-slate-400 focus:border-brand-300 focus:ring-2;
+    @apply h-10 rounded-xl border px-3 text-sm shadow-sm outline-none transition;
+    border-color: var(--ui-border);
+    background-color: var(--ui-surface);
+    color: var(--ui-text);
+  }
+
+  .field-input::placeholder {
+    color: var(--ui-text-faint);
+  }
+
+  .field-input:focus {
+    border-color: var(--ui-primary);
+    box-shadow: 0 0 0 3px var(--ui-primary-soft);
   }
 
   textarea.field-input {
@@ -174,33 +229,17 @@ h3 {
     background-clip: padding-box;
   }
 
-  /* Etwas opakere Card (95 %) für klarere Kanten auf dem Dark-Body. */
-  .dark .surface-card {
-    @apply border-slate-700/80 bg-slate-900/95;
+  /* Statusfarbene Buttons: im Dark Mode transparente Ton-Flächen statt
+     Pastell (Token-System deckt nur Neutral-/Primary-Farben ab). */
+  .dark .btn-danger {
+    border-color: rgb(244 63 94 / 0.35);
+    background-color: rgb(244 63 94 / 0.12);
+    color: #fda4af;
   }
 
-  /* Surface-Muted im Dark Mode wie im Light Mode jetzt klar differenzierbar
-     vom übergeordneten surface-card (vorher fast identische Helligkeit). */
-  .dark .surface-muted {
-    @apply border-slate-700/80 bg-slate-950/55;
-  }
-
-  .dark .page-kicker {
-    color: #7dd3fc;
-  }
-
-  .dark .page-subtitle {
-    color: #94a3b8;
-  }
-
-  .dark .btn-secondary {
-    border-color: #334155;
-    background-color: #0f172a;
-    color: #e2e8f0;
-  }
-
-  .dark .btn-secondary:hover {
-    background-color: #1e293b;
+  .dark .btn-danger:hover:not(:disabled) {
+    border-color: rgb(244 63 94 / 0.5);
+    background-color: rgb(244 63 94 / 0.2);
   }
 
   .dark .btn-dark {
@@ -208,148 +247,129 @@ h3 {
     color: #0f172a;
   }
 
-  .dark .btn-dark:hover {
+  .dark .btn-dark:hover:not(:disabled) {
     background-color: #ffffff;
   }
 
-  .dark .btn-danger {
-    border-color: rgb(136 19 55 / 0.6);
-    background-color: rgb(76 5 25 / 0.5);
-    color: #fecdd3;
+  /* Dark-Schatten flacher: Tiefe entsteht im Navy-Look über Border und
+     Flächenhelligkeit, nicht über große Streuschatten. */
+  .dark .shadow-soft {
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.35);
   }
 
-  .dark .btn-danger:hover {
-    background-color: rgb(136 19 55 / 0.5);
+  .dark .shadow-panel {
+    box-shadow: 0 2px 6px 0 rgb(0 0 0 / 0.45);
   }
 
-  .dark .btn-ghost {
-    color: #cbd5e1;
-  }
-
-  .dark .btn-ghost:hover {
-    background-color: #1e293b;
-    color: #f1f5f9;
-  }
-
-  .dark .field {
-    @apply text-slate-300;
-  }
-
-  .dark .field-input {
-    @apply border-slate-700 bg-slate-900 text-slate-100 focus:border-brand-500;
-  }
-
-  .dark .field-input::placeholder {
-    color: #64748b;
-  }
+  /* ------------------------------------------------------------
+     KOMPATIBILITÄTS-SCHICHT (wird pro migrierter Seite abgebaut):
+     biegt hartkodierte Light-Utilities der noch nicht auf Tokens
+     migrierten Seiten im Dark Mode um. NICHT erweitern — neue/
+     migrierte Seiten nutzen die Token-Klassen (surface/ink/line).
+     ------------------------------------------------------------ */
 
   .dark .bg-white {
-    background-color: #0f172a;
+    background-color: var(--ui-surface);
   }
 
-  /* Volle Coverage für die in Pages benutzten bg-white/<opacity>-Varianten,
-     damit sie im Dark Mode nicht als gleißend-weiße Fläche durchschlagen.
-     Die Werte mappen auf slate-900-Töne mit identischer Transparenz. */
   .dark .bg-white\/95 {
-    background-color: rgb(15 23 42 / 0.95);
+    background-color: rgb(11 20 36 / 0.95);
   }
 
   .dark .bg-white\/90 {
-    background-color: rgb(15 23 42 / 0.9);
+    background-color: rgb(11 20 36 / 0.9);
   }
 
   .dark .bg-white\/85 {
-    background-color: rgb(15 23 42 / 0.85);
+    background-color: rgb(11 20 36 / 0.85);
   }
 
   .dark .bg-white\/80 {
-    background-color: rgb(15 23 42 / 0.8);
+    background-color: rgb(11 20 36 / 0.8);
   }
 
   .dark .bg-white\/75 {
-    background-color: rgb(15 23 42 / 0.75);
+    background-color: rgb(11 20 36 / 0.75);
   }
 
   .dark .bg-white\/70 {
-    background-color: rgb(15 23 42 / 0.7);
+    background-color: rgb(11 20 36 / 0.7);
   }
 
   .dark .bg-white\/65 {
-    background-color: rgb(15 23 42 / 0.65);
+    background-color: rgb(11 20 36 / 0.65);
   }
 
   .dark .bg-white\/40 {
-    background-color: rgb(15 23 42 / 0.4);
+    background-color: rgb(11 20 36 / 0.4);
   }
 
   .dark .bg-slate-50 {
-    background-color: rgb(30 41 59 / 0.6);
+    background-color: var(--ui-surface-2);
   }
 
   .dark .bg-slate-50\/85 {
-    background-color: rgb(15 23 42 / 0.8);
+    background-color: rgb(16 28 48 / 0.85);
   }
 
   .dark .bg-slate-100 {
-    background-color: #1e293b;
+    background-color: var(--ui-surface-2);
   }
 
   .dark .bg-slate-200 {
-    background-color: #334155;
+    background-color: #1b2c4a;
   }
 
   .dark .text-slate-900 {
-    color: #f1f5f9;
+    color: var(--ui-text);
   }
 
   .dark .text-slate-800 {
-    color: #f1f5f9;
+    color: var(--ui-text);
   }
 
   .dark .text-slate-700 {
-    color: #cbd5e1;
+    color: #c4d0e2;
   }
 
   .dark .text-slate-600 {
-    color: #94a3b8;
+    color: var(--ui-text-muted);
   }
 
   .dark .text-slate-500 {
-    color: #94a3b8;
+    color: var(--ui-text-muted);
   }
 
   .dark .text-slate-400 {
-    color: #64748b;
+    color: var(--ui-text-faint);
   }
 
   .dark .border-slate-200 {
-    border-color: #334155;
+    border-color: var(--ui-border);
   }
 
   .dark .border-slate-200\/70 {
-    border-color: rgb(51 65 85 / 0.8);
+    border-color: rgb(29 44 71 / 0.8);
   }
 
   .dark .border-slate-200\/80 {
-    border-color: rgb(51 65 85 / 0.8);
+    border-color: rgb(29 44 71 / 0.8);
   }
 
   .dark .border-slate-300 {
-    border-color: #475569;
+    border-color: var(--ui-border-strong);
   }
 
-  /* Hover-Border-Override damit der Light-Mode-Hover (slate-400) im
-     Dark Mode nicht als helle Linie aufpoppt. */
   .dark .hover\:border-slate-400:hover {
-    border-color: #475569;
+    border-color: var(--ui-border-strong);
   }
 
   .dark .ring-slate-200 {
-    --tw-ring-color: #334155;
+    --tw-ring-color: var(--ui-border);
   }
 
   .dark .ring-slate-300 {
-    --tw-ring-color: #475569;
+    --tw-ring-color: var(--ui-border-strong);
   }
 
   .dark .bg-zinc-100 {
@@ -373,19 +393,19 @@ h3 {
   }
 
   .dark .hover\:bg-slate-50:hover {
-    background-color: #1e293b;
+    background-color: var(--ui-surface-2);
   }
 
   .dark .hover\:bg-slate-100:hover {
-    background-color: #1e293b;
+    background-color: var(--ui-surface-2);
   }
 
   .dark .hover\:bg-slate-800:hover {
-    background-color: #334155;
+    background-color: #1b2c4a;
   }
 
   .dark .hover\:text-slate-900:hover {
-    color: #f1f5f9;
+    color: var(--ui-text);
   }
 }
 

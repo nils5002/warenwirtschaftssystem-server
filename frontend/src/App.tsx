@@ -164,13 +164,8 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen text-slate-900">
+    <div className="min-h-screen text-ink">
       <UpdateNotesModal />
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-20 -top-12 h-72 w-72 rounded-full bg-brand-200/55 blur-3xl" />
-        <div className="absolute right-0 top-14 h-80 w-80 rounded-full bg-cyan-200/35 blur-3xl" />
-      </div>
-
       <Sidebar
         items={visibleNavigation}
         activePage={controller.activePage}
@@ -212,7 +207,7 @@ function App() {
               die Aktivität fokussiert dort, wo sie stattfindet.
             */}
             {controller.wmsError ? (
-              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                 {controller.wmsError}
               </div>
             ) : null}
@@ -277,7 +272,7 @@ function App() {
           </div>
         </main>
         {isMobile ? (
-          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
             <div className="grid grid-cols-5 gap-2">
               {mobileNavItems.map((item) => {
                 const active = controller.activePage === item.key;
@@ -285,14 +280,14 @@ function App() {
                   <button
                     key={item.key}
                     type="button"
-                    className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl border px-1 text-[10px] font-semibold leading-tight ${
+                    className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl px-1 text-[10px] font-semibold leading-tight transition ${
                       active
-                        ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-200'
-                        : 'border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
+                        ? 'bg-primary-soft text-primary'
+                        : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
                     }`}
                     onClick={() => controller.setActivePage(item.key)}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <item.icon className="h-5 w-5" />
                     <span className="mt-1 truncate">{mobileNavLabelMap[item.key] ?? item.label}</span>
                   </button>
                 );
