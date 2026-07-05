@@ -1,4 +1,4 @@
-import { Bell, ChevronRight, CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { Bell, CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
 import type { AppPage, AppRole } from '../types';
 
 type TopbarProps = {
@@ -21,35 +21,32 @@ type TopbarProps = {
   compact?: boolean;
 };
 
-const BREADCRUMB_MAP: Record<AppPage, [string, string]> = {
-  dashboard: ['Betrieb', 'Dashboard'],
-  planning: ['Betrieb', 'Einsatzplanung'],
-  inventory: ['Lager', 'Inventar'],
-  externalPool: ['Lager', 'Fremdbestand'],
-  assetDetail: ['Lager', 'Inventar / Detail'],
-  checkinCheckout: ['Lager', 'Ein-/Auslagerung'],
-  tickets: ['Tickets', 'Defekte / Tickets'],
-  users: ['Verwaltung', 'Benutzerverwaltung'],
-  categories: ['Verwaltung', 'Kategorien'],
-  importExport: ['System', 'Import / Export'],
-  backup: ['System', 'Backup'],
-  qrFunctions: ['System', 'QR-Code'],
-  massPrint: ['System', 'Massendruck'],
-  labelAudit: ['System', 'Label-Prüfung'],
-  updateNotes: ['System', 'Update-Notizen'],
-  rolesPermissions: ['Verwaltung', 'Rollen & Rechte'],
-  telecomPass: ['Verwaltung', 'Telekompass'],
+// Gruppen-Label je Seite — im Compact-Modus (Mobile) als Orientierung über
+// dem Seitentitel sichtbar; Desktop-Topbar kommt nach Mockup ohne Titel aus
+// (der Seitentitel lebt im Content als PageHeader).
+const PAGE_GROUP_MAP: Record<AppPage, string> = {
+  dashboard: 'Betrieb',
+  planning: 'Betrieb',
+  inventory: 'Lager',
+  externalPool: 'Lager',
+  assetDetail: 'Lager',
+  checkinCheckout: 'Lager',
+  tickets: 'Tickets',
+  users: 'Verwaltung',
+  categories: 'Verwaltung',
+  importExport: 'System',
+  backup: 'System',
+  qrFunctions: 'System',
+  massPrint: 'System',
+  labelAudit: 'System',
+  updateNotes: 'System',
+  rolesPermissions: 'Verwaltung',
+  telecomPass: 'Verwaltung',
 };
 
-// Tailwind-Klassen für Icon-Buttons innerhalb der gruppierten Capsule rechts.
-// Eigene Klasse statt btn-secondary, damit die Buttons OHNE eigene Border /
-// Hintergrund auskommen — die Capsule liefert beides einmalig drumherum.
-const ICON_CAPSULE_BUTTON =
-  'inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition ' +
-  'hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ' +
-  'dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-slate-100';
-
-const ICON_CAPSULE_DIVIDER = 'h-5 w-px bg-slate-200/80 dark:bg-slate-700/70';
+const ICON_BUTTON =
+  'inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition ' +
+  'hover:bg-surface-2 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 function buildInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -75,59 +72,47 @@ export function Topbar({
   onLogout,
   activePage,
   activeLabel,
-  activeHint,
   compact = false,
 }: TopbarProps) {
-  const [crumbGroup, crumbPage] = BREADCRUMB_MAP[activePage] ?? ['Betrieb', 'Dashboard'];
   const initials = buildInitials(userName);
   const themeToggleLabel = theme === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln';
+  const crumbGroup = PAGE_GROUP_MAP[activePage] ?? 'Betrieb';
 
   if (compact) {
     return (
-      <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-slate-50/95 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
+      <header className="sticky top-0 z-20 border-b border-line bg-surface shadow-sm">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <button type="button" className="btn-secondary h-11 w-11 p-0" onClick={onMenuOpen} aria-label="Menü öffnen">
               <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-brand-700 dark:text-sky-400">
-                {crumbGroup}
-              </p>
-              <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{activeLabel}</p>
+              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">{crumbGroup}</p>
+              <p className="truncate text-sm font-semibold text-ink">{activeLabel}</p>
             </div>
           </div>
 
-          {/* Mobile-Right: Theme + Profil-Avatar + Logout — gleicher Capsule-Stil wie Desktop. */}
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-white/80 p-1 shadow-sm backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/70">
-              <button
-                type="button"
-                onClick={onToggleTheme}
-                title={themeToggleLabel}
-                aria-label={themeToggleLabel}
-                className={ICON_CAPSULE_BUTTON}
-              >
-                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </button>
-              <span className={ICON_CAPSULE_DIVIDER} aria-hidden />
-              <button
-                type="button"
-                onClick={onOpenProfile}
-                aria-label="Profil"
-                className={`${ICON_CAPSULE_BUTTON} font-semibold`}
-              >
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-[11px] font-bold text-white shadow-sm">
-                  {initials}
-                </span>
-              </button>
-            </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              title={themeToggleLabel}
+              aria-label={themeToggleLabel}
+              className={`${ICON_BUTTON} h-11 w-11`}
+            >
+              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+            <button type="button" onClick={onOpenProfile} aria-label="Profil" className={`${ICON_BUTTON} h-11 w-11`}>
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
+                {initials}
+              </span>
+            </button>
             <button
               type="button"
               onClick={onLogout}
               title="Abmelden"
               aria-label="Abmelden"
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-xl text-ink-muted transition hover:bg-rose-500/10 hover:text-rose-400"
             >
               <LogOut className="h-5 w-5" />
             </button>
@@ -138,148 +123,108 @@ export function Topbar({
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-slate-50/85 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
-      <div className="mx-auto grid max-w-[1600px] gap-3 px-3 py-3 sm:px-4 md:grid-cols-[minmax(240px,auto)_minmax(320px,1fr)_auto] md:items-center md:gap-5 md:px-8 md:py-3.5">
-        {/* LINKS: Branding + Breadcrumb + aktive Seite */}
-        <div className="flex min-w-0 items-start gap-2.5 md:gap-3">
-          <button
-            type="button"
-            className="btn-secondary mt-0.5 p-2.5 md:hidden"
-            onClick={onMenuOpen}
-            aria-label="Menü öffnen"
-          >
-            <Menu className="h-4.5 w-4.5" />
-          </button>
-          <div className="min-w-0">
-            <p className="truncate text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700 dark:text-sky-400">
-              Warenwirtschaftssystem Conventex
-            </p>
-            <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
-              <span className="font-medium">{crumbGroup}</span>
-              <ChevronRight className="h-3 w-3 text-slate-400 dark:text-slate-500" />
-              <span className="font-semibold text-slate-700 dark:text-slate-200">{crumbPage}</span>
-            </div>
-            <p className="mt-0.5 truncate text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg">
-              {activeLabel}
-            </p>
-            {activeHint ? (
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">{activeHint}</p>
-            ) : null}
-          </div>
+    <header className="sticky top-0 z-20 border-b border-line bg-surface shadow-sm">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-3 py-3 sm:px-4 md:gap-4 md:px-8">
+        <button
+          type="button"
+          className="btn-secondary p-2.5 md:hidden"
+          onClick={onMenuOpen}
+          aria-label="Menü öffnen"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+
+        {/* Globale Suche — nimmt die verfügbare Breite ein (Mockup). */}
+        <div className="relative min-w-0 flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint"
+            aria-hidden
+          />
+          <input
+            value={search}
+            onChange={(event) => onSearch(event.target.value)}
+            placeholder="Suche nach Asset, Ticket, Inventarnummer oder Team..."
+            aria-label="Suche"
+            className="h-10 w-full rounded-xl border border-line bg-surface-2 pl-10 pr-12 text-sm text-ink outline-none transition placeholder:text-ink-faint focus:border-primary"
+          />
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-line px-1.5 py-0.5 text-[10px] font-semibold text-ink-faint md:block">
+            Strg K
+          </kbd>
         </div>
 
-        {/* MITTE: Suche + Rollen-Pille + Projektkontext in EINER Reihe.
-            Auf schmaleren Screens umbruchfähig — Touch-Größen bleiben groß. */}
-        <div className="min-w-0">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-            <div className="relative flex-1 min-w-0">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-400 dark:text-slate-500"
-                aria-hidden
-              />
-              <input
-                value={search}
-                onChange={(event) => onSearch(event.target.value)}
-                placeholder="Suchen nach Asset, Ticket, Inventarnummer oder Team..."
-                aria-label="Suche"
-                className="h-10 w-full rounded-xl border border-slate-200/80 bg-white/90 pl-10 pr-3 text-sm text-slate-800 shadow-sm outline-none ring-brand-300 transition placeholder:text-slate-400 focus:ring-2 dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-100 dark:placeholder:text-slate-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              {/* Rollen-Pille: dezenter Indikator, gut lesbar im Dark Mode. */}
-              <span
-                className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-sky-200/80 bg-sky-50/80 px-3 text-xs font-semibold text-sky-700 dark:border-sky-900/70 dark:bg-sky-950/40 dark:text-sky-200"
-                title={`Aktive Rolle: ${activeRole}`}
-              >
-                <span className="hidden h-1.5 w-1.5 rounded-full bg-sky-500 dark:bg-sky-300 sm:block" aria-hidden />
-                <span className="text-[11px] font-medium uppercase tracking-wider opacity-70">Rolle</span>
-                <span>{activeRole}</span>
-              </span>
-
-              {/* Projektkontext: optional, immer im Layoutfluss — auf sehr
-                  schmalen Screens unter die Pille umbrechen. */}
-              <input
-                className="h-10 w-full max-w-[220px] rounded-xl border border-slate-200/80 bg-white/90 px-3 text-xs text-slate-700 outline-none ring-brand-300 transition placeholder:text-slate-400 focus:ring-2 dark:border-slate-700/70 dark:bg-slate-900/70 dark:text-slate-200 dark:placeholder:text-slate-500"
-                placeholder="Projektkontext (optional)"
-                value={projectContext}
-                onChange={(event) => onProjectContextChange(event.target.value)}
-                aria-label="Projektkontext"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* RECHTS: Icon-Capsule (Theme | Hilfe | Benachrichtigungen) +
-            Profil-Capsule + dezenter Logout. */}
-        <div className="flex items-center justify-end gap-2">
-          <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200/80 bg-white/80 p-1 shadow-sm backdrop-blur dark:border-slate-700/70 dark:bg-slate-900/70">
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              title={themeToggleLabel}
-              aria-label={themeToggleLabel}
-              className={ICON_CAPSULE_BUTTON}
-            >
-              {theme === 'dark' ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-            </button>
-            <span className={ICON_CAPSULE_DIVIDER} aria-hidden />
-            <button
-              type="button"
-              onClick={onOpenHelp}
-              title="Hilfe"
-              aria-label="Hilfe"
-              className={`${ICON_CAPSULE_BUTTON} hidden sm:inline-flex`}
-            >
-              <CircleHelp className="h-4.5 w-4.5" />
-            </button>
-            <span className={`${ICON_CAPSULE_DIVIDER} hidden sm:block`} aria-hidden />
-            <button
-              type="button"
-              onClick={onOpenNotifications}
-              title="Benachrichtigungen"
-              aria-label="Benachrichtigungen"
-              className={`${ICON_CAPSULE_BUTTON} relative`}
-            >
-              <Bell className="h-4.5 w-4.5" />
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-sky-500 ring-2 ring-white dark:ring-slate-900" aria-hidden />
-            </button>
-          </div>
-
-          {/* Profil-Capsule: Avatar + Name + Rolle (Name/Rolle ab lg sichtbar
-              statt erst ab xl — bessere Nutzung der Desktop-Breite). */}
-          <button
-            type="button"
-            onClick={onOpenProfile}
-            aria-label={`Profil ${userName}`}
-            className="inline-flex h-10 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white/80 px-2 py-1 shadow-sm backdrop-blur transition hover:border-brand-300 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700/70 dark:bg-slate-900/70 dark:hover:border-brand-500/60 dark:hover:bg-slate-900"
-          >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-brand-800 text-[11px] font-bold text-white shadow-sm ring-1 ring-white/60 dark:ring-slate-900/60">
-              {initials}
+        {/* Projektkontext (Freitext, dezent als eigenes Feld). */}
+        <div className="hidden min-w-0 lg:block">
+          <label className="block rounded-xl border border-line bg-surface-2 px-3 py-1.5 transition focus-within:border-primary">
+            <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+              Projektkontext
             </span>
-            <span className="hidden text-left leading-tight lg:block">
-              <span className="block max-w-[160px] truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
-                {userName}
-              </span>
-              <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                {activeRole}
-              </span>
-            </span>
-          </button>
+            <input
+              className="w-[170px] bg-transparent text-xs font-semibold text-ink outline-none placeholder:font-normal placeholder:text-ink-faint"
+              placeholder="Standardprojekt"
+              value={projectContext}
+              onChange={(event) => onProjectContextChange(event.target.value)}
+              aria-label="Projektkontext"
+            />
+          </label>
+        </div>
 
-          {/* Logout: dezent, aber jederzeit erreichbar. Icon-only auf kleinen
-              Screens, mit Text ab md. Hover signalisiert Destruktion via Rosa. */}
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={onLogout}
-            title="Abmelden"
-            aria-label="Abmelden"
-            className="inline-flex h-10 items-center gap-2 rounded-xl px-2.5 text-slate-500 transition hover:bg-rose-50 hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-300 md:px-3"
+            onClick={onToggleTheme}
+            title={themeToggleLabel}
+            aria-label={themeToggleLabel}
+            className={ICON_BUTTON}
           >
-            <LogOut className="h-4.5 w-4.5" />
-            <span className="hidden text-xs font-medium md:inline">Logout</span>
+            {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            title="Hilfe"
+            aria-label="Hilfe"
+            className={`${ICON_BUTTON} hidden sm:inline-flex`}
+          >
+            <CircleHelp className="h-[18px] w-[18px]" />
+          </button>
+          <button
+            type="button"
+            onClick={onOpenNotifications}
+            title="Benachrichtigungen"
+            aria-label="Benachrichtigungen"
+            className={`${ICON_BUTTON} relative`}
+          >
+            <Bell className="h-[18px] w-[18px]" />
+            <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-[color:var(--ui-surface)]" aria-hidden />
           </button>
         </div>
+
+        {/* Profil: Avatar + Name + Rolle. */}
+        <button
+          type="button"
+          onClick={onOpenProfile}
+          aria-label={`Profil ${userName}`}
+          className="inline-flex h-10 shrink-0 items-center gap-2.5 rounded-xl border border-line bg-surface-2 px-2 py-1 transition hover:border-line-strong focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
+            {initials}
+          </span>
+          <span className="hidden text-left leading-tight lg:block">
+            <span className="block max-w-[160px] truncate text-xs font-semibold text-ink">{userName}</span>
+            <span className="block text-[10px] font-medium uppercase tracking-wider text-ink-faint">{activeRole}</span>
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          title="Abmelden"
+          aria-label="Abmelden"
+          className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-2.5 text-ink-muted transition hover:bg-rose-500/10 hover:text-rose-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 md:px-3"
+        >
+          <LogOut className="h-[18px] w-[18px]" />
+          <span className="hidden text-xs font-medium xl:inline">Logout</span>
+        </button>
       </div>
     </header>
   );

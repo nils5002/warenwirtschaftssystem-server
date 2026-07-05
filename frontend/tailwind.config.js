@@ -1,6 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // WICHTIG: 'class' statt Default 'media' — der Theme-Toggle der App setzt
+  // die .dark-Klasse auf <html>. Ohne dieses Setting würden alle dark:-
+  // Varianten am OS-Farbschema hängen und den Toggle ignorieren.
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -15,6 +19,28 @@ export default {
           700: '#0b658c',
           800: '#0d5674',
           900: '#124861',
+        },
+        // UI-V2 Design-Tokens (CSS-Variablen in index.css, je Light/Dark).
+        // Verwendung: bg-canvas, bg-surface, bg-surface-2, border-line,
+        // text-ink, text-ink-muted, bg-primary, ...
+        canvas: 'var(--ui-bg)',
+        surface: {
+          DEFAULT: 'var(--ui-surface)',
+          2: 'var(--ui-surface-2)',
+        },
+        line: {
+          DEFAULT: 'var(--ui-border)',
+          strong: 'var(--ui-border-strong)',
+        },
+        ink: {
+          DEFAULT: 'var(--ui-text)',
+          muted: 'var(--ui-text-muted)',
+          faint: 'var(--ui-text-faint)',
+        },
+        primary: {
+          DEFAULT: 'var(--ui-primary)',
+          hover: 'var(--ui-primary-hover)',
+          soft: 'var(--ui-primary-soft)',
         },
       },
       boxShadow: {

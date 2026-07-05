@@ -21,8 +21,8 @@
       (() => {
         const storageKey = 'asset-console-theme';
         const stored = localStorage.getItem(storageKey);
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+        // UI-V2: Dark ist Default (muss zu resolveInitialTheme in useTheme.ts passen).
+        const theme = stored === 'light' || stored === 'dark' ? stored : 'dark';
         if (theme === 'dark') {
           document.documentElement.classList.add('dark');
         }

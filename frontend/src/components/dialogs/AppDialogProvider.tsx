@@ -200,11 +200,11 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
     <DialogContext.Provider value={api}>
       {children}
       {active ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-panel">
-            <h3 className="text-lg font-semibold text-slate-900">{active.options.title}</h3>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-panel">
+            <h3 className="text-lg font-semibold text-ink">{active.options.title}</h3>
             {'message' in active.options && active.options.message ? (
-              <p className="mt-2 text-sm text-slate-600">{active.options.message}</p>
+              <p className="mt-2 text-sm text-ink-muted">{active.options.message}</p>
             ) : null}
 
             {active.type === 'prompt' ? (
@@ -231,31 +231,23 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
 
             <div className="mt-5 flex flex-wrap justify-end gap-2">
               {active.type === 'alert' ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-                  onClick={closeAlert}
-                >
+                <button type="button" className="btn-primary" onClick={closeAlert}>
                   {active.options.buttonLabel ?? 'OK'}
                 </button>
               ) : null}
 
               {active.type === 'confirm' ? (
                 <>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    onClick={() => closeConfirm(false)}
-                  >
+                  <button type="button" className="btn-secondary" onClick={() => closeConfirm(false)}>
                     {active.options.cancelLabel ?? 'Abbrechen'}
                   </button>
                   <button
                     type="button"
-                    className={`rounded-xl px-3 py-2 text-sm font-medium text-white ${
+                    className={
                       active.options.tone === 'danger'
-                        ? 'bg-rose-600 hover:bg-rose-700'
-                        : 'bg-brand-600 hover:bg-brand-700'
-                    }`}
+                        ? 'inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-700'
+                        : 'btn-primary'
+                    }
                     onClick={() => closeConfirm(true)}
                   >
                     {active.options.confirmLabel ?? 'Bestätigen'}
@@ -265,18 +257,10 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
 
               {active.type === 'prompt' ? (
                 <>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    onClick={() => closePrompt(false)}
-                  >
+                  <button type="button" className="btn-secondary" onClick={() => closePrompt(false)}>
                     {active.options.cancelLabel ?? 'Abbrechen'}
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
-                    onClick={() => closePrompt(true)}
-                  >
+                  <button type="button" className="btn-primary" onClick={() => closePrompt(true)}>
                     {active.options.submitLabel ?? 'Speichern'}
                   </button>
                 </>
