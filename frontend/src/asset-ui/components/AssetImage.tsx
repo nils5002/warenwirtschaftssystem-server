@@ -4,6 +4,7 @@ import type { Asset } from '../types';
 
 type AssetImageProps = {
   asset: Asset;
+  categoryImageUrl?: string | null;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 };
@@ -14,15 +15,21 @@ const sizeMap: Record<NonNullable<AssetImageProps['size']>, string> = {
   lg: 'h-28 w-28 rounded-2xl',
 };
 
-export function AssetImage({ asset, size = 'md', className = '' }: AssetImageProps) {
-  const [broken, setBroken] = useState(false);
-  const imageUrl = (asset.productImageUrl || '').trim();
+export function AssetImage({
+  asset,
+  categoryImageUrl,
+  size = 'md',
+  className = '',
+}: AssetImageProps) {
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const imageSources = [(asset.productImageUrl || '').trim(), (categoryImageUrl || '').trim()].filter(Boolean);
+  const imageUrl = imageSources.find((url) => !failedSources.includes(url)) || '';
 
   useEffect(() => {
-    setBroken(false);
-  }, [imageUrl]);
+    setFailedSources([]);
+  }, [asset.productImageUrl, categoryImageUrl]);
 
-  if (!imageUrl || broken) {
+  if (!imageUrl) {
     if (size === 'lg') {
       return (
         <div className={`flex shrink-0 items-center justify-center border border-line bg-surface-2 ${sizeMap[size]} ${className}`.trim()}>
@@ -38,7 +45,9 @@ export function AssetImage({ asset, size = 'md', className = '' }: AssetImagePro
       src={imageUrl}
       alt={asset.name}
       loading="lazy"
-      onError={() => setBroken(true)}
+      onError={() =>
+        setFailedSources((current) => (current.includes(imageUrl) ? current : [...current, imageUrl]))
+      }
       className={`shrink-0 border border-line bg-white object-contain p-1 ${sizeMap[size]} ${className}`.trim()}
     />
   );

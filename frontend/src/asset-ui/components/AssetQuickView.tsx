@@ -7,6 +7,7 @@ import type { Asset } from '../types';
 
 type AssetQuickViewProps = {
   asset: Asset | null;
+  categoryImageUrl?: string | null;
   onClose?: () => void;
   onOpenDetail: (assetId: string) => void;
   onReserve: (assetId: string) => void;
@@ -16,6 +17,7 @@ type AssetQuickViewProps = {
 
 export function AssetQuickView({
   asset,
+  categoryImageUrl,
   onClose,
   onOpenDetail,
   onReserve,
@@ -30,7 +32,7 @@ export function AssetQuickView({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-start gap-3">
-            <AssetImage asset={asset} size="lg" />
+            <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="truncate text-xl font-semibold text-ink">{asset.tagNumber}</h3>

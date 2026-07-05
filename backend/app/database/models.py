@@ -181,6 +181,12 @@ class CategoryRecord(TimestampMixin, Base):
     normalized_name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
     is_standard: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    default_image_source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    default_image_cached_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    default_image_mime_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    default_image_last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    default_image_fetch_status: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    default_image_fetch_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class UserRecord(TimestampMixin, Base):

@@ -10,7 +10,17 @@ router = APIRouter(tags=["Media"])
 
 @router.get("/media/product-images/assets/{image_name}")
 def get_product_image(image_name: str) -> FileResponse:
-    target = product_image_service.resolve_cached_file_path(image_name)
+    target = product_image_service.resolve_cached_file_path(image_name, owner_kind="assets")
+    return FileResponse(
+        target,
+        media_type="image/webp",
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
+
+
+@router.get("/media/product-images/categories/{image_name}")
+def get_category_product_image(image_name: str) -> FileResponse:
+    target = product_image_service.resolve_cached_file_path(image_name, owner_kind="categories")
     return FileResponse(
         target,
         media_type="image/webp",

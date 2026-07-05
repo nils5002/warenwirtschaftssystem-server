@@ -224,5 +224,8 @@ export type CategoryItem = {
   name: string;
   isActive?: boolean;
   isStandard?: boolean;
+  defaultImageUrl?: string | null;
+  defaultImageSourceUrl?: string | null;
+  defaultImageStatus?: string | null;
 };
 

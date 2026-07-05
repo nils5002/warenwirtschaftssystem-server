@@ -731,6 +731,15 @@ async function putJson<T>(path: string, payload: unknown): Promise<T> {
   return parseResponse<T>(response);
 }
 
+async function patchJson<T>(path: string, payload: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(normalizeOutbound(payload)),
+  });
+  return parseResponse<T>(response);
+}
+
 export async function fetchWmsOverview(signal?: AbortSignal): Promise<WmsOverview> {
   // Optionales AbortSignal: der Aufrufer kann einen noch laufenden
   // Overview-Request abbrechen, sobald ein neuer ihn ersetzt.
@@ -1011,6 +1020,13 @@ export async function listCategories(): Promise<CategoryItem[]> {
 // 422 — die Meldung steht jeweils im detail.
 export function createCategory(name: string): Promise<CategoryItem> {
   return postJson<CategoryItem>('/api/wms/categories', { name });
+}
+
+export function updateCategory(
+  categoryId: number,
+  payload: { defaultImageSourceUrl?: string | null },
+): Promise<CategoryItem> {
+  return patchJson<CategoryItem>(`/api/wms/categories/${categoryId}`, payload);
 }
 
 // Löscht eine Kategorie. Wirft mit verständlicher Meldung, wenn die

@@ -254,6 +254,7 @@ function App() {
               onEditLocation={controller.editLocation}
               onCleanupUnusedLocations={controller.cleanupUnusedLocations}
               onCreateCategory={controller.createCategory}
+              onUpdateCategory={controller.updateCategory}
               onDeleteCategory={controller.deleteCategory}
               onReloadData={controller.loadWms}
               onCheckoutFromForm={controller.checkoutFromForm}

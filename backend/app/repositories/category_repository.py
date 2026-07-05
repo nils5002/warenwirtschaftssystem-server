@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from ..database.models import AssetRecord, CategoryRecord
 from ..domain.categories import CANONICAL_CATEGORIES, category_hint, normalize_known_category
 from ..domain.categories import _category_key as category_key
 from ..schemas.wms import CategoryItem
+from ..services import product_image_service
 
 
 def _to_schema(record: CategoryRecord) -> CategoryItem:
@@ -16,6 +19,12 @@ def _to_schema(record: CategoryRecord) -> CategoryItem:
         name=record.name,
         isStandard=record.is_standard,
         isActive=record.is_active,
+        defaultImageUrl=product_image_service.build_public_image_url(
+            getattr(record, "default_image_cached_path", None),
+            owner_kind="categories",
+        ),
+        defaultImageSourceUrl=getattr(record, "default_image_source_url", None),
+        defaultImageStatus=getattr(record, "default_image_fetch_status", "none"),
     )
 
 
@@ -117,6 +126,60 @@ def create_category(db: Session, name: str) -> CategoryItem:
         is_active=True,
     )
     db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _to_schema(record)
+
+
+def update_category_default_image(
+    db: Session,
+    category_id: int,
+    source_url: str | None,
+) -> CategoryItem:
+    record = db.scalar(select(CategoryRecord).where(CategoryRecord.id == category_id))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Kategorie nicht gefunden.")
+
+    normalized_source_url = (source_url or "").strip()
+    image_payload: dict[str, str | None] | None = None
+    if normalized_source_url:
+        previous_source_url = (getattr(record, "default_image_source_url", None) or "").strip()
+        previous_cached_path = (getattr(record, "default_image_cached_path", None) or "").strip()
+        if (
+            normalized_source_url == previous_source_url
+            and previous_cached_path
+            and product_image_service.cached_file_exists(
+                previous_cached_path,
+                owner_kind="categories",
+            )
+        ):
+            image_payload = {
+                "source_url": previous_source_url,
+                "cached_path": previous_cached_path,
+                "mime_type": getattr(record, "default_image_mime_type", None),
+                "fetch_status": getattr(record, "default_image_fetch_status", "ready"),
+                "fetch_error": getattr(record, "default_image_fetch_error", None),
+            }
+        else:
+            image_payload = product_image_service.sync_product_image(
+                normalized_source_url,
+                owner_kind="categories",
+            )
+    elif (
+        getattr(record, "default_image_source_url", None)
+        or getattr(record, "default_image_cached_path", None)
+    ):
+        image_payload = product_image_service.clear_product_image()
+
+    if image_payload is None:
+        return _to_schema(record)
+
+    record.default_image_source_url = image_payload["source_url"]
+    record.default_image_cached_path = image_payload["cached_path"]
+    record.default_image_mime_type = image_payload["mime_type"]
+    record.default_image_fetch_status = image_payload["fetch_status"] or "none"
+    record.default_image_fetch_error = image_payload["fetch_error"]
+    record.default_image_last_fetched_at = datetime.now(UTC) if image_payload["cached_path"] else None
     db.commit()
     db.refresh(record)
     return _to_schema(record)

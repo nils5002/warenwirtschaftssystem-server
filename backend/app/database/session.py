@@ -118,6 +118,12 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("assets", "product_image_last_fetched_at", "DATETIME"),
     ("assets", "product_image_fetch_status", "VARCHAR(32) NOT NULL DEFAULT 'none'"),
     ("assets", "product_image_fetch_error", "VARCHAR(255)"),
+    ("categories", "default_image_source_url", "VARCHAR(1024)"),
+    ("categories", "default_image_cached_path", "VARCHAR(255)"),
+    ("categories", "default_image_mime_type", "VARCHAR(64)"),
+    ("categories", "default_image_last_fetched_at", "DATETIME"),
+    ("categories", "default_image_fetch_status", "VARCHAR(32) NOT NULL DEFAULT 'none'"),
+    ("categories", "default_image_fetch_error", "VARCHAR(255)"),
     # Schritt A: erwartetes Rückgabedatum verliehener Eigengeräte. Nullable,
     # damit bestehende Daten und Altbackups ohne Wert unverändert importierbar
     # bleiben (Fallback auf next_return in der Availability-Logik).

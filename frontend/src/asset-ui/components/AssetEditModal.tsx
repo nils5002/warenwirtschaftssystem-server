@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { LoadingButton } from '../../components/loading';
 import { AssetImage } from './AssetImage';
 import { AssetQrCodePreview } from './AssetQrCodePreview';
+import { resolveCategoryDefaultImageUrl } from '../categories';
 import { getAssetQrCode } from '../qr';
 import type { Asset, CategoryItem } from '../types';
 
@@ -91,6 +92,10 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
   const qrValue = useMemo(() => getAssetQrCode(asset), [asset]);
   const assignment = useMemo(() => parseAssignment(asset.assignedTo), [asset.assignedTo]);
   const imageUrlChanged = form.productImageSourceUrl.trim() !== (asset.productImageSourceUrl ?? '').trim();
+  const categoryImageUrl = useMemo(
+    () => resolveCategoryDefaultImageUrl(form.category || asset.category, categories),
+    [asset.category, categories, form.category],
+  );
 
   const validate = (): boolean => {
     const nextErrors: FieldErrors = {};
@@ -424,17 +429,23 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
                   Produktbild
                 </p>
                 <div className="mt-4 flex items-center gap-4">
-                  <AssetImage asset={asset} size="lg" />
+                  <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink">
-                      {asset.productImageUrl && !imageUrlChanged ? 'Lokale Bildvorschau aktiv' : 'Noch keine lokale Bildvorschau'}
+                      {asset.productImageUrl && !imageUrlChanged
+                        ? 'Lokale Bildvorschau aktiv'
+                        : categoryImageUrl
+                          ? 'Kategorie-Standardbild aktiv'
+                          : 'Noch keine lokale Bildvorschau'}
                     </p>
                     <p className="mt-1 text-xs text-ink-muted">
                       {form.productImageSourceUrl.trim()
                         ? imageUrlChanged
                           ? 'Neue URL erkannt. Vorschau erscheint nach dem Speichern aus dem lokalen Cache.'
                           : `Status: ${asset.productImageStatus || 'none'}`
-                        : 'Kein Produktbild hinterlegt. Es wird automatisch auf das Kategorie-Icon zurückgefallen.'}
+                        : categoryImageUrl
+                          ? 'Ohne eigenes Produktbild greift automatisch das Standardbild der Kategorie.'
+                          : 'Kein Produktbild hinterlegt. Es wird automatisch auf das Kategorie-Icon zurückgefallen.'}
                     </p>
                   </div>
                 </div>
