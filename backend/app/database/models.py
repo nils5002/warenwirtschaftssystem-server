@@ -44,6 +44,12 @@ class AssetRecord(TimestampMixin, Base):
     last_checkout: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
     next_reservation: Mapped[str] = mapped_column(String(120), nullable=False, default="-")
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    product_image_source_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    product_image_cached_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    product_image_mime_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    product_image_last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    product_image_fetch_status: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
+    product_image_fetch_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # --- Fremdbestand-Felder ---
     # Bestandsart: owned (Eigenbestand, Default) oder rented / borrowed /

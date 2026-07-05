@@ -116,6 +116,12 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "lastCheckout": item.last_checkout,
                     "nextReservation": item.next_reservation,
                     "sourceFile": item.source_file,
+                    "productImageSourceUrl": item.product_image_source_url,
+                    "productImageCachedPath": item.product_image_cached_path,
+                    "productImageMimeType": item.product_image_mime_type,
+                    "productImageLastFetchedAt": item.product_image_last_fetched_at,
+                    "productImageStatus": item.product_image_fetch_status,
+                    "productImageFetchError": item.product_image_fetch_error,
                     # Fremdbestand-Felder mit ausgeben, damit Mietgeräte
                     # nach Restore weiter im richtigen Zeitraum verfügbar
                     # sind und das Bestandsart-Badge erhalten bleibt.
@@ -384,6 +390,12 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     last_checkout=item.lastCheckout,
                     next_reservation=item.nextReservation,
                     source_file=item.sourceFile,
+                    product_image_source_url=item.productImageSourceUrl,
+                    product_image_cached_path=item.productImageCachedPath,
+                    product_image_mime_type=item.productImageMimeType,
+                    product_image_last_fetched_at=item.productImageLastFetchedAt,
+                    product_image_fetch_status=item.productImageStatus or "none",
+                    product_image_fetch_error=item.productImageFetchError,
                     # Fremdbestand-Felder beim Restore weitergeben.
                     # Defaults im BackupAsset-Schema (ownershipType="owned",
                     # rest = None) sorgen dafür, dass alte Backups OHNE

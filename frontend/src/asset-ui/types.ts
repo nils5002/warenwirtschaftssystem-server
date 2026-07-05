@@ -73,6 +73,9 @@ export type Asset = {
   lastCheckout: string;
   nextReservation: string;
   sourceFile?: string;
+  productImageUrl?: string | null;
+  productImageSourceUrl?: string | null;
+  productImageStatus?: string | null;
   // Fremdbestand-Felder (alle optional). Bestehende Eigenbestand-Geräte
   // ohne diese Felder verhalten sich unverändert (Default = owned).
   ownershipType?: OwnershipType;
