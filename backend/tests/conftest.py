@@ -10,6 +10,11 @@ import pytest
 # gesetzt werden, weil get_settings() das Ergebnis cached.
 os.environ.setdefault("OVERVIEW_CACHE_TTL_SECONDS", "0")
 
+# Bild-Selbstheilung beim Startup in Tests deaktivieren: der Background-Task
+# wuerde sonst bei TestClient-Kontextmanager-Nutzung echte HTTP-Downloads
+# fuer Datensaetze mit Bild-URL anstossen.
+os.environ.setdefault("PRODUCT_IMAGE_RECACHE_ON_STARTUP", "0")
+
 from app.database.session import SessionLocal, init_db
 from app.repositories import category_repository, role_permission_repository
 from app.services.auth_service import ensure_initial_admin, ensure_user_passwords

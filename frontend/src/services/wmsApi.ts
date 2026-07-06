@@ -1052,6 +1052,24 @@ export function updateCategory(
   return patchJson<CategoryItem>(`/api/wms/categories/${categoryId}`, payload);
 }
 
+// „Bild neu laden": erzwingt einen erneuten serverseitigen Download des
+// Kategorie-Standardbilds aus der gespeicherten Quell-URL. Antwort trägt den
+// aktualisierten Status (ready/failed) inkl. Fehlermeldung.
+export function refreshCategoryDefaultImage(categoryId: number): Promise<CategoryItem> {
+  return postJson<CategoryItem>(
+    `/api/wms/categories/${categoryId}/default-image/refresh`,
+    {},
+  );
+}
+
+// „Bild neu laden" für ein einzelnes Asset (Produktbild).
+export function refreshAssetProductImage(assetId: string): Promise<Asset> {
+  return postJson<Asset>(
+    `/api/wms/assets/${encodeURIComponent(assetId)}/product-image/refresh`,
+    {},
+  );
+}
+
 // Löscht eine Kategorie. Wirft mit verständlicher Meldung, wenn die
 // Kategorie noch von Geräten verwendet wird (Backend liefert HTTP 409).
 export async function deleteCategory(categoryId: number): Promise<{ deleted: boolean; id: number }> {

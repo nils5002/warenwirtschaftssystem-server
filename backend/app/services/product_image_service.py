@@ -30,7 +30,11 @@ _VALID_OWNER_KINDS = {"assets", "categories"}
 
 
 def _asset_cache_dir() -> Path:
-    base_dir = Path(__file__).resolve().parents[1]
+    # parents[2] = backend-Wurzel (Datei liegt unter app/services/). Relativer
+    # Settings-Pfad "app/data/..." muss dort landen — nicht unter app/app/...,
+    # sonst liegt der Cache im Container ausserhalb des persistenten Volumes
+    # und jeder Redeploy verliert alle Bilder.
+    base_dir = Path(__file__).resolve().parents[2]
     target = get_settings().resolve_product_image_cache_path(base_dir)
     target.mkdir(parents=True, exist_ok=True)
     return target
@@ -179,7 +183,10 @@ def build_public_image_url(cached_path: str | None, *, owner_kind: str = _DEFAUL
     if not value:
         return None
     normalized = _normalize_owner_kind(owner_kind)
-    return f"/media/product-images/{normalized}/{value}"
+    # Unter /api/wms, damit Bilder garantiert dieselbe Proxy-Kette wie alle
+    # API-Requests nehmen (Vite-Dev-Proxy, Prod-Reverse-Proxy). Die alte
+    # /media/...-Route bleibt als Alias bestehen.
+    return f"/api/wms/product-images/{normalized}/{value}"
 
 
 def cached_file_exists(file_name: str | None, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> bool:
@@ -209,12 +216,17 @@ def resolve_cached_file_path(file_name: str, *, owner_kind: str = _DEFAULT_OWNER
     return target
 
 
-def sync_product_image(source_url: str, *, owner_kind: str = _DEFAULT_OWNER_KIND) -> dict[str, str | None]:
+def sync_product_image(
+    source_url: str,
+    *,
+    owner_kind: str = _DEFAULT_OWNER_KIND,
+    force: bool = False,
+) -> dict[str, str | None]:
     normalized_owner_kind = _normalize_owner_kind(owner_kind)
     normalized_url = _validate_url(source_url)
     file_name = f"{_cache_key(normalized_url)}.webp"
     target_path = _cache_dir(normalized_owner_kind) / file_name
-    if target_path.exists():
+    if target_path.exists() and not force:
         return {
             "source_url": normalized_url,
             "cached_path": file_name,
@@ -235,6 +247,48 @@ def sync_product_image(source_url: str, *, owner_kind: str = _DEFAULT_OWNER_KIND
     }
 
 
+def try_sync_product_image(
+    source_url: str,
+    *,
+    owner_kind: str = _DEFAULT_OWNER_KIND,
+    force: bool = False,
+) -> dict[str, str | None]:
+    """Wie ``sync_product_image``, aber Download-/Inhaltsfehler brechen den
+    Aufrufer NICHT ab.
+
+    Syntaktisch ungueltige URLs (Schema/Host/Zugangsdaten) werfen weiterhin
+    sofort HTTP 400 — das ist direktes Eingabe-Feedback. Alle Fehler beim
+    tatsaechlichen Abruf (Hotlink-Block, abgelaufene URL, kein Bild, zu gross)
+    werden als Status ``failed`` + ``fetch_error`` zurueckgegeben, damit ein
+    totes Bild nie einen Asset-/Kategorie-Save (inkl. Checkout/Checkin)
+    blockiert.
+    """
+    # Nur Syntax-Pruefung eager (400 = Eingabefehler). Der DNS-/Host-Check in
+    # _validate_url ist ein Laufzeitfehler und gehoert in den failed-Pfad.
+    normalized_url = _normalize_source_url(source_url)
+    if normalized_url is None:
+        raise HTTPException(status_code=400, detail="Produktbild-URL fehlt.")
+    try:
+        return sync_product_image(normalized_url, owner_kind=owner_kind, force=force)
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Produktbild konnte nicht geladen werden."
+        return {
+            "source_url": normalized_url,
+            "cached_path": None,
+            "mime_type": None,
+            "fetch_status": "failed",
+            "fetch_error": detail[:255],
+        }
+    except OSError as exc:
+        return {
+            "source_url": normalized_url,
+            "cached_path": None,
+            "mime_type": None,
+            "fetch_status": "failed",
+            "fetch_error": f"Produktbild konnte nicht gespeichert werden: {exc}"[:255],
+        }
+
+
 def clear_product_image() -> dict[str, str | None]:
     return {
         "source_url": None,
@@ -243,3 +297,82 @@ def clear_product_image() -> dict[str, str | None]:
         "fetch_status": "none",
         "fetch_error": None,
     }
+
+
+def recache_missing_images(db, *, apply: bool = True) -> dict[str, object]:
+    """Repariert Bild-Datensaetze, deren Cache-Datei fehlt (Deploy/Restore).
+
+    Prueft Assets und Kategorien mit gespeicherter Quell-URL: existiert die
+    referenzierte Cache-Datei nicht (mehr), wird das Bild neu geladen. Fehler
+    einzelner Datensaetze brechen den Lauf nie ab, sondern landen als Status
+    ``failed`` + ``fetch_error`` am Datensatz (nur bei ``apply=True``).
+
+    Wird vom Startup-Task und vom Skript ``scripts/recache_product_images.py``
+    gemeinsam genutzt. ``apply=False`` = reiner Dry-Run ohne Schreibzugriffe.
+    """
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from ..database.models import AssetRecord, CategoryRecord
+
+    report: dict[str, object] = {"checked": 0, "intact": 0, "refetched": 0, "failed": 0}
+    details: list[dict[str, str]] = []
+    targets = (
+        ("assets", AssetRecord, "product_image"),
+        ("categories", CategoryRecord, "default_image"),
+    )
+    for owner_kind, model, prefix in targets:
+        records = db.scalars(select(model)).all()
+        for record in records:
+            source_url = (getattr(record, f"{prefix}_source_url", None) or "").strip()
+            cached_path = (getattr(record, f"{prefix}_cached_path", None) or "").strip()
+            if not source_url:
+                continue
+            report["checked"] = int(report["checked"]) + 1
+            if cached_path and cached_file_exists(cached_path, owner_kind=owner_kind):
+                report["intact"] = int(report["intact"]) + 1
+                continue
+            label = getattr(record, "name", None) or getattr(record, "external_id", None) or str(getattr(record, "id", "?"))
+            if not apply:
+                details.append({"owner": owner_kind, "name": str(label), "action": "wuerde neu laden"})
+                continue
+            try:
+                payload = try_sync_product_image(source_url, owner_kind=owner_kind)
+            except HTTPException as exc:
+                # Auch eine (inzwischen) syntaktisch ungueltige gespeicherte
+                # URL darf den Reparaturlauf nicht abbrechen.
+                detail = exc.detail if isinstance(exc.detail, str) else "Produktbild-URL ist ungültig."
+                payload = {
+                    "source_url": source_url,
+                    "cached_path": None,
+                    "mime_type": None,
+                    "fetch_status": "failed",
+                    "fetch_error": detail[:255],
+                }
+            setattr(record, f"{prefix}_source_url", payload["source_url"])
+            setattr(record, f"{prefix}_cached_path", payload["cached_path"])
+            setattr(record, f"{prefix}_mime_type", payload["mime_type"])
+            setattr(record, f"{prefix}_fetch_status", payload["fetch_status"] or "none")
+            setattr(record, f"{prefix}_fetch_error", payload["fetch_error"])
+            setattr(
+                record,
+                f"{prefix}_last_fetched_at",
+                datetime.now(UTC) if payload["cached_path"] else None,
+            )
+            if payload["fetch_status"] == "ready":
+                report["refetched"] = int(report["refetched"]) + 1
+                details.append({"owner": owner_kind, "name": str(label), "action": "neu geladen"})
+            else:
+                report["failed"] = int(report["failed"]) + 1
+                details.append(
+                    {
+                        "owner": owner_kind,
+                        "name": str(label),
+                        "action": f"fehlgeschlagen: {payload['fetch_error'] or 'unbekannt'}",
+                    }
+                )
+    if apply:
+        db.commit()
+    report["details"] = details
+    return report

@@ -36,6 +36,7 @@ type AssetDetailPageProps = {
   onCheckinAsset: (assetId: string) => void;
   onSetMaintenance: (assetId: string) => void;
   onSaveAsset: (assetId: string, patch: Partial<Asset>) => Promise<void>;
+  onRefreshAssetImage?: (assetId: string) => Promise<Asset>;
   onCreateMaintenance: (payload: { assetName: string; issue: string; comment: string }) => void;
   onUpdateMaintenanceStatus: (id: string, status: MaintenanceItem['status']) => void;
   onOpenInventoryWithQuery: (query: string) => void;
@@ -54,6 +55,7 @@ export function AssetDetailPage({
   onCheckinAsset,
   onSetMaintenance,
   onSaveAsset,
+  onRefreshAssetImage,
   onCreateMaintenance,
   onUpdateMaintenanceStatus,
   onOpenInventoryWithQuery,
@@ -491,6 +493,7 @@ export function AssetDetailPage({
           categories={categories}
           onClose={() => setEditModalOpen(false)}
           onSave={onSaveAsset}
+          onRefreshImage={onRefreshAssetImage}
         />
       ) : null}
     </section>

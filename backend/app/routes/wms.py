@@ -377,6 +377,28 @@ def update_category(
     return WmsService.update_category_default_image(db, category_id, payload.defaultImageSourceUrl)
 
 
+@router.post("/categories/{category_id}/default-image/refresh", response_model=CategoryItem)
+def refresh_category_default_image(
+    category_id: int,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> CategoryItem:
+    """Erzwingt einen erneuten Download des Kategorie-Standardbilds ("Bild neu laden")."""
+    require_permission(context, db, "categories.manage")
+    return WmsService.refresh_category_default_image(db, category_id)
+
+
+@router.post("/assets/{asset_id}/product-image/refresh", response_model=AssetItem)
+def refresh_asset_product_image(
+    asset_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> AssetItem:
+    """Erzwingt einen erneuten Download des Asset-Produktbilds ("Bild neu laden")."""
+    require_roles(context, "admin")
+    return WmsService.refresh_asset_product_image(db, asset_id)
+
+
 @router.delete("/categories/{category_id}")
 def delete_category(
     category_id: int,

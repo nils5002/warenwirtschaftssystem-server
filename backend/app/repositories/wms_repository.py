@@ -170,6 +170,7 @@ def _asset_to_schema(record: AssetRecord, known_categories: set[str] | None = No
         ),
         productImageSourceUrl=getattr(record, "product_image_source_url", None),
         productImageStatus=getattr(record, "product_image_fetch_status", "none"),
+        productImageFetchError=getattr(record, "product_image_fetch_error", None),
         ownershipType=_normalize_ownership_type(record.ownership_type),
         sourceName=record.source_name,
         availableFrom=record.available_from,
@@ -285,6 +286,31 @@ def get_asset(db: Session, external_id: str) -> AssetItem | None:
     stmt = select(AssetRecord).where(AssetRecord.external_id == external_id)
     record = db.scalar(stmt)
     return _asset_to_schema(record, category_repository.active_category_names(db)) if record else None
+
+
+def refresh_asset_product_image(db: Session, external_id: str) -> AssetItem:
+    """Laedt das Produktbild eines Assets erneut aus der Quell-URL.
+
+    Erzwingt den Download auch bei vorhandener Cache-Datei ("Bild neu laden"),
+    damit sich sowohl fehlende Dateien (Deploy/Restore) als auch inhaltlich
+    geaenderte Quellbilder reparieren lassen.
+    """
+    record = db.scalar(select(AssetRecord).where(AssetRecord.external_id == external_id))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Asset nicht gefunden.")
+    source_url = (getattr(record, "product_image_source_url", None) or "").strip()
+    if not source_url:
+        raise HTTPException(status_code=400, detail="Für dieses Asset ist keine Bild-URL gespeichert.")
+    image_payload = product_image_service.try_sync_product_image(source_url, force=True)
+    record.product_image_source_url = image_payload["source_url"]
+    record.product_image_cached_path = image_payload["cached_path"]
+    record.product_image_mime_type = image_payload["mime_type"]
+    record.product_image_fetch_status = image_payload["fetch_status"] or "none"
+    record.product_image_fetch_error = image_payload["fetch_error"]
+    record.product_image_last_fetched_at = datetime.now(UTC) if image_payload["cached_path"] else None
+    db.commit()
+    db.refresh(record)
+    return _asset_to_schema(record, category_repository.active_category_names(db))
 
 
 def _find_asset_for_maintenance(db: Session, asset_name: str) -> AssetRecord | None:
@@ -418,7 +444,10 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
                 "fetch_error": getattr(record, "product_image_fetch_error", None),
             }
         else:
-            image_payload = product_image_service.sync_product_image(normalized_image_source_url)
+            # try_sync: ein nicht (mehr) ladbares Bild darf den Asset-Save
+            # (inkl. Checkout/Checkin ueber denselben Upsert) nie blockieren —
+            # stattdessen Status failed + fetch_error persistieren.
+            image_payload = product_image_service.try_sync_product_image(normalized_image_source_url)
     elif record and (
         getattr(record, "product_image_source_url", None)
         or getattr(record, "product_image_cached_path", None)

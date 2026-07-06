@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     wms_legacy_json_path: str = "app/data/wms_db.json"
     hardware_import_path: str = "/app/data/hardware_imports"
     product_image_cache_path: str = "app/data/product_images/assets"
+    # Einmalige Selbstheilung nach dem Start: fehlt zu einem Datensatz mit
+    # Bild-Status "ready" die Cache-Datei (z. B. nach Redeploy/Restore), wird
+    # sie aus der gespeicherten Quell-URL neu geladen. In Tests abschaltbar.
+    product_image_recache_on_startup: bool = True
 
     # Automatische Projektübergabe (Asset-Handover A→B). Der Hintergrund-Job führt
     # fällige Übergaben selbstständig aus. In Tests/Dev per ENV abschaltbar

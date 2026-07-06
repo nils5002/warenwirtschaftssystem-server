@@ -23,6 +23,8 @@ __pycache__/
 *.log
 *.log.*
 backend/app/data/logs/
+# Lokal gecachte Produkt-/Kategoriebilder (Laufzeitdaten, nie committen)
+backend/app/data/product_images/
 *.out
 *.err
 npm-debug.log*

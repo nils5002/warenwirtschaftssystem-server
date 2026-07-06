@@ -244,6 +244,43 @@ def create_app() -> FastAPI:
                 # wird ausführlich geloggt; Operator kann nachsteuern.
                 logger.exception("Passwort-Initialisierung fehlgeschlagen — App startet trotzdem")
 
+    def _recache_product_images_once() -> None:
+        # Lazy-Import vermeidet Import-Zyklen beim Modul-Load.
+        from .services import product_image_service
+
+        with SessionLocal() as db:
+            report = product_image_service.recache_missing_images(db, apply=True)
+            if report["refetched"] or report["failed"]:
+                logger.info(
+                    "Produktbild-Selbstheilung: %s geprüft, %s intakt, %s neu geladen, %s fehlgeschlagen",
+                    report["checked"],
+                    report["intact"],
+                    report["refetched"],
+                    report["failed"],
+                )
+
+    @app.on_event("startup")
+    async def _start_product_image_recache() -> None:
+        """Einmalige Bild-Selbstheilung nach dem Start (nicht blockierend).
+
+        Nach einem Redeploy (Container-Filesystem frisch) oder Backup-Restore
+        koennen Datensaetze auf Cache-Dateien zeigen, die nicht existieren —
+        die UI zeigt dann kaputte Bilder trotz Status "ready". Der Task laedt
+        solche Bilder aus der gespeicherten Quell-URL nach; Fehler einzelner
+        Bilder landen als Status "failed" am Datensatz und crashen nie den
+        Start. Per Setting abschaltbar (Tests/Dev).
+        """
+        if not settings.product_image_recache_on_startup:
+            return
+
+        async def _run() -> None:
+            try:
+                await asyncio.to_thread(_recache_product_images_once)
+            except Exception:  # noqa: BLE001
+                logger.exception("Produktbild-Selbstheilung fehlgeschlagen — App läuft normal weiter")
+
+        app.state.product_image_recache_task = asyncio.create_task(_run())
+
     def _run_due_handovers_once() -> None:
         # Lazy-Import vermeidet Import-Zyklen beim Modul-Load.
         from .services import handover_service
@@ -286,11 +323,12 @@ def create_app() -> FastAPI:
 
     @app.on_event("shutdown")
     async def _stop_handover_scheduler() -> None:
-        task = getattr(app.state, "handover_task", None)
-        if task is not None:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
+        for attr in ("handover_task", "product_image_recache_task"):
+            task = getattr(app.state, attr, None)
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await task
 
     return app
 
