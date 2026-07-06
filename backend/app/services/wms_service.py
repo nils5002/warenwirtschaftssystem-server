@@ -213,6 +213,14 @@ class WmsService:
         return category_repository.update_category_default_image(db, category_id, source_url)
 
     @staticmethod
+    def refresh_category_default_image(db: Session, category_id: int) -> CategoryItem:
+        return category_repository.refresh_category_default_image(db, category_id)
+
+    @staticmethod
+    def refresh_asset_product_image(db: Session, asset_id: str) -> AssetItem:
+        return wms_repository.refresh_asset_product_image(db, asset_id)
+
+    @staticmethod
     def delete_category(db: Session, category_id: int) -> dict[str, object]:
         return category_repository.delete_category(db, category_id)
 

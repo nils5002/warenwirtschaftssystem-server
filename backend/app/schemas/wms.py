@@ -60,6 +60,7 @@ class AssetItem(BaseModel):
     productImageUrl: Optional[str] = None
     productImageSourceUrl: Optional[str] = None
     productImageStatus: Optional[str] = None
+    productImageFetchError: Optional[str] = None
     # --- Fremdbestand-Felder (alle optional, Default = Eigenbestand) ---
     ownershipType: OwnershipType = "owned"
     sourceName: Optional[str] = None
@@ -243,6 +244,7 @@ class CategoryItem(BaseModel):
     defaultImageUrl: str | None = None
     defaultImageSourceUrl: str | None = None
     defaultImageStatus: str | None = None
+    defaultImageFetchError: str | None = None
 
 
 class CategoryCreatePayload(BaseModel):

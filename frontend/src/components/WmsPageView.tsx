@@ -128,6 +128,8 @@ type WmsPageViewProps = {
     categoryId: number,
     payload: { defaultImageSourceUrl?: string | null },
   ) => Promise<CategoryItem>;
+  onRefreshCategoryImage?: (categoryId: number) => Promise<CategoryItem>;
+  onRefreshAssetImage?: (assetId: string) => Promise<Asset>;
   onDeleteCategory?: (categoryId: number) => Promise<void>;
   onReloadData: () => Promise<void>;
   onCheckoutFromForm: (payload: {
@@ -206,6 +208,8 @@ export function WmsPageView({
   onCleanupUnusedLocations,
   onCreateCategory,
   onUpdateCategory,
+  onRefreshCategoryImage,
+  onRefreshAssetImage,
   onDeleteCategory,
   onReloadData,
   onCheckoutFromForm,
@@ -354,6 +358,7 @@ export function WmsPageView({
           onSaveAsset={async (id, patch) => {
             await onAdminUpdateAsset(id, patch);
           }}
+          onRefreshAssetImage={onRefreshAssetImage}
           onCreateMaintenance={(payload) => {
             void onCreateMaintenance(payload);
           }}
@@ -375,6 +380,7 @@ export function WmsPageView({
           canDeleteCategories={activeRole === 'Admin' || activeRole === 'Projektmanager'}
           onCreateCategory={onCreateCategory}
           onUpdateCategory={onUpdateCategory}
+          onRefreshCategoryImage={onRefreshCategoryImage}
           onDeleteCategory={onDeleteCategory}
         />
       );

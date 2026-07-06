@@ -76,6 +76,7 @@ export type Asset = {
   productImageUrl?: string | null;
   productImageSourceUrl?: string | null;
   productImageStatus?: string | null;
+  productImageFetchError?: string | null;
   // Fremdbestand-Felder (alle optional). Bestehende Eigenbestand-Geräte
   // ohne diese Felder verhalten sich unverändert (Default = owned).
   ownershipType?: OwnershipType;
@@ -227,5 +228,6 @@ export type CategoryItem = {
   defaultImageUrl?: string | null;
   defaultImageSourceUrl?: string | null;
   defaultImageStatus?: string | null;
+  defaultImageFetchError?: string | null;
 };
 

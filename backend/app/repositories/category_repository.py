@@ -25,6 +25,7 @@ def _to_schema(record: CategoryRecord) -> CategoryItem:
         ),
         defaultImageSourceUrl=getattr(record, "default_image_source_url", None),
         defaultImageStatus=getattr(record, "default_image_fetch_status", "none"),
+        defaultImageFetchError=getattr(record, "default_image_fetch_error", None),
     )
 
 
@@ -161,7 +162,9 @@ def update_category_default_image(
                 "fetch_error": getattr(record, "default_image_fetch_error", None),
             }
         else:
-            image_payload = product_image_service.sync_product_image(
+            # try_sync: Abruffehler blockieren das Speichern nicht, sondern
+            # landen als Status failed + fetch_error am Datensatz.
+            image_payload = product_image_service.try_sync_product_image(
                 normalized_source_url,
                 owner_kind="categories",
             )
@@ -174,12 +177,40 @@ def update_category_default_image(
     if image_payload is None:
         return _to_schema(record)
 
+    _apply_default_image_payload(record, image_payload)
+    db.commit()
+    db.refresh(record)
+    return _to_schema(record)
+
+
+def _apply_default_image_payload(record: CategoryRecord, image_payload: dict[str, str | None]) -> None:
     record.default_image_source_url = image_payload["source_url"]
     record.default_image_cached_path = image_payload["cached_path"]
     record.default_image_mime_type = image_payload["mime_type"]
     record.default_image_fetch_status = image_payload["fetch_status"] or "none"
     record.default_image_fetch_error = image_payload["fetch_error"]
     record.default_image_last_fetched_at = datetime.now(UTC) if image_payload["cached_path"] else None
+
+
+def refresh_category_default_image(db: Session, category_id: int) -> CategoryItem:
+    """Laedt das Standardbild einer Kategorie erneut aus der Quell-URL.
+
+    Erzwingt den Download auch bei vorhandener Cache-Datei ("Bild neu laden"),
+    damit sich sowohl fehlende Dateien (Deploy/Restore) als auch inhaltlich
+    geaenderte Quellbilder reparieren lassen.
+    """
+    record = db.scalar(select(CategoryRecord).where(CategoryRecord.id == category_id))
+    if record is None:
+        raise HTTPException(status_code=404, detail="Kategorie nicht gefunden.")
+    source_url = (getattr(record, "default_image_source_url", None) or "").strip()
+    if not source_url:
+        raise HTTPException(status_code=400, detail="Für diese Kategorie ist keine Bild-URL gespeichert.")
+    image_payload = product_image_service.try_sync_product_image(
+        source_url,
+        owner_kind="categories",
+        force=True,
+    )
+    _apply_default_image_payload(record, image_payload)
     db.commit()
     db.refresh(record)
     return _to_schema(record)

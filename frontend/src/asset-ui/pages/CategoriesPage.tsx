@@ -18,8 +18,19 @@ type CategoriesPageProps = {
   canDeleteCategories?: boolean;
   onCreateCategory: (name: string) => Promise<CategoryItem>;
   onUpdateCategory?: (categoryId: number, payload: { defaultImageSourceUrl?: string | null }) => Promise<CategoryItem>;
+  onRefreshCategoryImage?: (categoryId: number) => Promise<CategoryItem>;
   onDeleteCategory?: (categoryId: number) => Promise<void>;
 };
+
+// Eindeutige Klartexte statt rohem Status-Code („ready"). „failed" heißt:
+// die externe URL ist gespeichert, aber das Bild konnte serverseitig nicht
+// lokal zwischengespeichert werden (Hotlink-Block, abgelaufene URL, …).
+function categoryImageStatusText(status: string, hasImageUrl: boolean): string {
+  if (status === 'failed') return 'Externe URL gespeichert, aber Cache fehlgeschlagen';
+  if (status === 'pending') return 'Bild wird geladen …';
+  if (hasImageUrl) return 'Bild lokal gespeichert';
+  return 'Kein Standardbild';
+}
 
 export function CategoriesPage({
   assets,
@@ -28,12 +39,17 @@ export function CategoriesPage({
   canDeleteCategories = false,
   onCreateCategory,
   onUpdateCategory,
+  onRefreshCategoryImage,
   onDeleteCategory,
 }: CategoriesPageProps) {
   const { confirm, alert } = useAppDialog();
   const [candidate, setCandidate] = useState('');
   const [busy, setBusy] = useState(false);
   const [savingImageId, setSavingImageId] = useState<number | null>(null);
+  const [refreshingImageId, setRefreshingImageId] = useState<number | null>(null);
+  // URLs, deren <img> nicht laden konnte → Platzhalter statt kaputtem
+  // Browser-Icon (z. B. Cache-Datei nach Redeploy/Restore verschwunden).
+  const [failedImageUrls, setFailedImageUrls] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const categoryOptions = useMemo(() => categoryOptionsFromRecords(categories), [categories]);
@@ -69,6 +85,7 @@ export function CategoriesPage({
       defaultImageUrl: record?.defaultImageUrl ?? null,
       defaultImageSourceUrl: record?.defaultImageSourceUrl ?? '',
       defaultImageStatus: record?.defaultImageStatus ?? 'none',
+      defaultImageFetchError: record?.defaultImageFetchError ?? null,
     };
   });
 
@@ -152,15 +169,47 @@ export function CategoriesPage({
         defaultImageSourceUrl: nextUrl || null,
       });
       setImageDrafts((current) => ({ ...current, [item.category]: updated.defaultImageSourceUrl ?? '' }));
-      setMessage(
-        nextUrl
-          ? `${item.category}: Standardbild wurde gespeichert.`
-          : `${item.category}: Standardbild wurde entfernt.`,
-      );
+      setFailedImageUrls(new Set());
+      if (nextUrl && updated.defaultImageStatus === 'failed') {
+        setError(
+          `${item.category}: Externe URL gespeichert, aber Cache fehlgeschlagen` +
+            (updated.defaultImageFetchError ? ` (${updated.defaultImageFetchError})` : '.'),
+        );
+      } else {
+        setMessage(
+          nextUrl
+            ? `${item.category}: Standardbild wurde gespeichert.`
+            : `${item.category}: Standardbild wurde entfernt.`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Standardbild konnte nicht gespeichert werden.');
     } finally {
       setSavingImageId(null);
+    }
+  };
+
+  // „Bild neu laden": erzwingt den erneuten serverseitigen Download aus der
+  // gespeicherten Quell-URL (repariert fehlende Cache-Dateien).
+  const refreshCategoryImage = async (item: (typeof rows)[number]) => {
+    if (!canManageCategories || !onRefreshCategoryImage || item.id == null) return;
+    setRefreshingImageId(item.id);
+    setError(null);
+    setMessage(null);
+    try {
+      const updated = await onRefreshCategoryImage(item.id);
+      setFailedImageUrls(new Set());
+      if (updated.defaultImageStatus === 'ready') {
+        setMessage(`${item.category}: Bild wurde neu geladen.`);
+      } else {
+        setError(
+          `${item.category}: ${updated.defaultImageFetchError || 'Bild konnte nicht neu geladen werden.'}`,
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Bild konnte nicht neu geladen werden.');
+    } finally {
+      setRefreshingImageId(null);
     }
   };
 
@@ -213,12 +262,20 @@ export function CategoriesPage({
                 className="relative rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/60"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950">
-                    {item.defaultImageUrl ? (
+                  <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white sm:h-28 sm:w-28 dark:border-slate-700 dark:bg-slate-950">
+                    {item.defaultImageUrl && !failedImageUrls.has(item.defaultImageUrl) ? (
                       <img
                         src={item.defaultImageUrl}
                         alt={item.category}
                         loading="lazy"
+                        onError={() => {
+                          // Kaputte Cache-Datei → Platzhalter statt Browser-Icon.
+                          setFailedImageUrls((current) => {
+                            const next = new Set(current);
+                            next.add(item.defaultImageUrl ?? '');
+                            return next;
+                          });
+                        }}
                         className="h-full w-full object-contain p-1"
                       />
                     ) : (
@@ -233,9 +290,20 @@ export function CategoriesPage({
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                       {item.isStandard ? 'Standard' : 'Stammdatum'}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {item.defaultImageUrl ? `Standardbild aktiv (${item.defaultImageStatus})` : 'Kein Standardbild'}
+                    <p
+                      className={`mt-1 text-xs ${
+                        item.defaultImageStatus === 'failed'
+                          ? 'text-rose-600 dark:text-rose-400'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    >
+                      {categoryImageStatusText(item.defaultImageStatus, Boolean(item.defaultImageUrl))}
                     </p>
+                    {item.defaultImageStatus === 'failed' && item.defaultImageFetchError ? (
+                      <p className="mt-0.5 text-xs text-rose-500 dark:text-rose-400" title={item.defaultImageFetchError}>
+                        {item.defaultImageFetchError}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="mt-3 space-y-2">
@@ -265,6 +333,16 @@ export function CategoriesPage({
                         onClick={() => void saveCategoryImage(item)}
                       >
                         Speichern
+                      </LoadingButton>
+                      <LoadingButton
+                        type="button"
+                        className="btn-secondary px-3 py-2 text-xs"
+                        disabled={item.id == null || !item.defaultImageSourceUrl || !onRefreshCategoryImage}
+                        isLoading={refreshingImageId === item.id}
+                        loadingText="Lädt neu ..."
+                        onClick={() => void refreshCategoryImage(item)}
+                      >
+                        Bild neu laden
                       </LoadingButton>
                       <LoadingButton
                         type="button"

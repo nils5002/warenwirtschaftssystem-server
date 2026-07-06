@@ -24,6 +24,12 @@ services:
       HARDWARE_IMPORT_PATH: ${HARDWARE_IMPORT_PATH:-/app/data/hardware_imports}
       BACKUP_PATH: ${BACKUP_PATH:-/app/data/backups}
 
+      # Absoluter Pfad aus demselben Grund wie DATABASE_URL: der Bild-Cache
+      # muss im persistenten Volume warehouse_app_data liegen. Mit dem
+      # relativen Default würde er im Container-Filesystem landen und bei
+      # jedem Redeploy verloren gehen (Symptom: Status "ready", Bild 404).
+      PRODUCT_IMAGE_CACHE_PATH: ${PRODUCT_IMAGE_CACHE_PATH:-/app/data/product_images/assets}
+
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}

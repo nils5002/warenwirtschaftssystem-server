@@ -34,6 +34,8 @@ import {
   upsertReservation,
   upsertUser,
   updateCategory as updateCategoryRequest,
+  refreshCategoryDefaultImage as refreshCategoryDefaultImageRequest,
+  refreshAssetProductImage as refreshAssetProductImageRequest,
   type BulkUserDeleteResponse,
   type WmsOverview,
 } from '../services/wmsApi';
@@ -615,6 +617,31 @@ export function useWmsController(options: UseWmsControllerOptions) {
     [refreshCategoryRecords],
   );
 
+  // „Bild neu laden": erzwingt den erneuten serverseitigen Download des
+  // Kategorie-Standardbilds. Antwort ersetzt den Datensatz im State, damit
+  // Status/Fehlermeldung sofort sichtbar sind.
+  const refreshCategoryImageAction = useCallback(
+    async (categoryId: number): Promise<CategoryItem> => {
+      try {
+        const updated = await refreshCategoryDefaultImageRequest(categoryId);
+        setCategoryRecords((prev) => {
+          const next = prev.filter((item) => item.id !== updated.id && item.name !== updated.name);
+          return [...next, updated];
+        });
+        void refreshCategoryRecords();
+        return updated;
+      } catch (error) {
+        if (isWmsApiError(error) && error.detail) {
+          throw new Error(error.detail);
+        }
+        throw error instanceof Error
+          ? error
+          : new Error('Bild konnte nicht neu geladen werden.');
+      }
+    },
+    [refreshCategoryRecords],
+  );
+
   const openAssetDetail = (assetId: string) => {
     setSelectedAssetId(assetId);
     setActivePage('assetDetail');
@@ -636,6 +663,22 @@ export function useWmsController(options: UseWmsControllerOptions) {
       }
       setWmsError('Asset konnte nicht im Backend gespeichert werden.');
       throw (error instanceof Error ? error : new Error('Asset konnte nicht im Backend gespeichert werden.'));
+    }
+  };
+
+  // „Bild neu laden" für ein einzelnes Asset (Produktbild).
+  const refreshAssetImage = async (assetId: string): Promise<Asset> => {
+    try {
+      const updated = await refreshAssetProductImageRequest(assetId);
+      setAssets((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      return updated;
+    } catch (error) {
+      if (isWmsApiError(error) && error.detail) {
+        throw new Error(error.detail);
+      }
+      throw error instanceof Error
+        ? error
+        : new Error('Bild konnte nicht neu geladen werden.');
     }
   };
 
@@ -1416,11 +1459,13 @@ export function useWmsController(options: UseWmsControllerOptions) {
     categories,
     createCategory,
     updateCategory: updateCategoryAction,
+    refreshCategoryImage: refreshCategoryImageAction,
     deleteCategory: deleteCategoryAction,
     openAssetDetail,
     createAsset,
     createAssetFromInput,
     adminUpdateAsset,
+    refreshAssetImage,
     adminDeleteAsset,
     reserveAsset,
     checkoutAsset,

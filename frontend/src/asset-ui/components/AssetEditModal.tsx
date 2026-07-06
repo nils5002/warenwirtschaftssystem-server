@@ -12,7 +12,20 @@ type AssetEditModalProps = {
   categories: CategoryItem[];
   onClose: () => void;
   onSave: (assetId: string, patch: Partial<Asset>) => Promise<void>;
+  // „Bild neu laden": erzwingt den erneuten serverseitigen Download des
+  // Produktbilds aus der gespeicherten Quell-URL.
+  onRefreshImage?: (assetId: string) => Promise<Asset>;
 };
+
+// Eindeutige Klartexte statt rohem Status-Code („ready"). „failed" heißt:
+// die externe URL ist gespeichert, aber das Bild konnte serverseitig nicht
+// lokal zwischengespeichert werden (Hotlink-Block, abgelaufene URL, …).
+function productImageStatusText(status: string | null | undefined): string {
+  if (status === 'ready') return 'Bild lokal gespeichert';
+  if (status === 'failed') return 'Externe URL gespeichert, aber Cache fehlgeschlagen';
+  if (status === 'pending') return 'Bild wird geladen …';
+  return 'Noch nicht lokal gespeichert';
+}
 
 type AssetEditFormState = {
   name: string;
@@ -68,18 +81,24 @@ function parseAssignment(value: string): { assignee: string; project: string } {
   };
 }
 
-export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEditModalProps) {
+export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshImage }: AssetEditModalProps) {
   const [form, setForm] = useState<AssetEditFormState>(() => createInitialState(asset));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshingImage, setIsRefreshingImage] = useState(false);
+  const [imageRefreshMessage, setImageRefreshMessage] = useState<string | null>(null);
 
   useEffect(() => {
     setForm(createInitialState(asset));
     setErrors({});
     setSaveError(null);
     setIsSaving(false);
-  }, [asset]);
+    // Bewusst nur asset.id: „Bild neu laden" ersetzt das Asset-Objekt im
+    // State — ungespeicherte Formulareingaben dürfen dabei nicht verloren
+    // gehen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset.id]);
 
   const categoryOptions = useMemo(() => {
     const activeNames = categories
@@ -113,6 +132,27 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleRefreshImage = async () => {
+    if (!onRefreshImage || isRefreshingImage) return;
+    setIsRefreshingImage(true);
+    setImageRefreshMessage(null);
+    setSaveError(null);
+    try {
+      const updated = await onRefreshImage(asset.id);
+      setImageRefreshMessage(
+        updated.productImageStatus === 'ready'
+          ? 'Bild wurde neu geladen.'
+          : updated.productImageFetchError || 'Bild konnte nicht geladen werden.',
+      );
+    } catch (error) {
+      setImageRefreshMessage(
+        error instanceof Error ? error.message : 'Bild konnte nicht neu geladen werden.',
+      );
+    } finally {
+      setIsRefreshingImage(false);
+    }
   };
 
   const handleSave = async () => {
@@ -429,7 +469,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
                   Produktbild
                 </p>
                 <div className="mt-4 flex items-center gap-4">
-                  <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="lg" />
+                  <AssetImage asset={asset} categoryImageUrl={categoryImageUrl} size="xl" />
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink">
                       {asset.productImageUrl && !imageUrlChanged
@@ -438,17 +478,44 @@ export function AssetEditModal({ asset, categories, onClose, onSave }: AssetEdit
                           ? 'Kategorie-Standardbild aktiv'
                           : 'Noch keine lokale Bildvorschau'}
                     </p>
-                    <p className="mt-1 text-xs text-ink-muted">
+                    <p
+                      className={`mt-1 text-xs ${
+                        asset.productImageStatus === 'failed' && !imageUrlChanged
+                          ? 'text-rose-300'
+                          : 'text-ink-muted'
+                      }`}
+                    >
                       {form.productImageSourceUrl.trim()
                         ? imageUrlChanged
                           ? 'Neue URL erkannt. Vorschau erscheint nach dem Speichern aus dem lokalen Cache.'
-                          : `Status: ${asset.productImageStatus || 'none'}`
+                          : productImageStatusText(asset.productImageStatus)
                         : categoryImageUrl
                           ? 'Ohne eigenes Produktbild greift automatisch das Standardbild der Kategorie.'
                           : 'Kein Produktbild hinterlegt. Es wird automatisch auf das Kategorie-Icon zurückgefallen.'}
                     </p>
+                    {asset.productImageStatus === 'failed' && !imageUrlChanged && asset.productImageFetchError ? (
+                      <p className="mt-1 text-xs text-rose-300" title={asset.productImageFetchError}>
+                        {asset.productImageFetchError}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
+                {onRefreshImage && (asset.productImageSourceUrl ?? '').trim() && !imageUrlChanged ? (
+                  <div className="mt-3">
+                    <LoadingButton
+                      type="button"
+                      className="btn-secondary px-3 py-2 text-xs"
+                      isLoading={isRefreshingImage}
+                      loadingText="Lädt neu ..."
+                      onClick={() => void handleRefreshImage()}
+                    >
+                      Bild neu laden
+                    </LoadingButton>
+                    {imageRefreshMessage ? (
+                      <p className="mt-2 text-xs text-ink-muted">{imageRefreshMessage}</p>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4">

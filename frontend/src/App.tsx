@@ -255,6 +255,8 @@ function App() {
               onCleanupUnusedLocations={controller.cleanupUnusedLocations}
               onCreateCategory={controller.createCategory}
               onUpdateCategory={controller.updateCategory}
+              onRefreshCategoryImage={controller.refreshCategoryImage}
+              onRefreshAssetImage={controller.refreshAssetImage}
               onDeleteCategory={controller.deleteCategory}
               onReloadData={controller.loadWms}
               onCheckoutFromForm={controller.checkoutFromForm}
