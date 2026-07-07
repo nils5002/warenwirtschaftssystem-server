@@ -1281,7 +1281,7 @@ export function AssetsPage({
           </div>
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid gap-4">
           <div className={`${isMobile ? 'hidden' : 'hidden lg:block'}`}>
             <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
               <table className="w-full min-w-[960px] border-collapse text-sm table-fixed">
@@ -1539,55 +1539,19 @@ export function AssetsPage({
           ))}
           </div>
 
-          <div className="hidden xl:block">
-            {quickViewAsset ? (
-              <AssetQuickView
-                asset={quickViewAsset}
-                categoryImageUrl={quickViewCategoryImageUrl}
-                variant="panel"
-                onOpenDetail={onOpenDetail}
-                onReserve={onReserveAsset}
-                onCheckout={onCheckoutAsset}
-              />
-            ) : (
-              <aside className="surface-card sticky top-24 animate-fade-up p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Detailpanel</p>
-                <h3 className="mt-2 text-lg font-semibold text-ink">Gerät auswählen</h3>
-                <p className="mt-2 text-sm text-ink-muted">
-                  Klicke eine Zeile in der Tabelle an, um Stammdaten, Verfügbarkeit und QR-Details rechts anzuzeigen.
-                  Rechtsklick (oder langes Drücken) öffnet alle Aktionen.
-                </p>
-                {selectedAssets.length > 0 ? (
-                  <div className="mt-4 rounded-2xl border border-line bg-surface-2 p-4">
-                    <p className="text-sm font-medium text-ink">{selectedAssets.length} Geräte markiert</p>
-                    <p className="mt-1 text-xs text-ink-faint">Bulk-Aktionen bleiben über die blaue Auswahlleiste erreichbar.</p>
-                  </div>
-                ) : null}
-              </aside>
-            )}
-          </div>
         </div>
       </article>
 
-      {!isMobile ? <div className="xl:hidden">{quickViewAsset ? (
-        <AssetQuickView
-          asset={quickViewAsset}
-          categoryImageUrl={quickViewCategoryImageUrl}
-          onClose={() => setQuickViewId(null)}
-          onOpenDetail={onOpenDetail}
-          onReserve={onReserveAsset}
-          onCheckout={onCheckoutAsset}
-        />
-      ) : null}</div> : (
-        <AssetQuickView
-          asset={quickViewAsset}
-          categoryImageUrl={quickViewCategoryImageUrl}
-          onClose={() => setQuickViewId(null)}
-          onOpenDetail={onOpenDetail}
-          onReserve={onReserveAsset}
-          onCheckout={onCheckoutAsset}
-        />
-      )}
+      {/* Detail-Drawer: erscheint nur bei aktiver Auswahl und schiebt sich von
+          rechts über die volle Tabelle (alle Breakpoints). */}
+      <AssetQuickView
+        asset={quickViewAsset}
+        categoryImageUrl={quickViewCategoryImageUrl}
+        onClose={() => setQuickViewId(null)}
+        onOpenDetail={onOpenDetail}
+        onReserve={onReserveAsset}
+        onCheckout={onCheckoutAsset}
+      />
 
       {/* Verzögerte Produktbild-Vorschau: per Portal über der Tabelle, damit der
           scroll-/overflow-Container sie nicht abschneidet. Kein Modal/Backdrop. */}
