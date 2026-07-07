@@ -1124,8 +1124,9 @@ export function AssetsPage({
   };
 
   return (
-    <section className="space-y-5">
+    <section className="space-y-4">
       <PageHeader
+        dense
         kicker="Inventar"
         title="Gerätebestand & Verfügbarkeit"
         subtitle="Bestand filtern, Zustand prüfen — Aktionen per Rechtsklick auf eine Zeile."
@@ -1149,8 +1150,9 @@ export function AssetsPage({
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard
+          dense
           title="Gesamtbestand"
           value={isInitialLoading && assets.length === 0 ? '—' : String(assets.length)}
           trend="Alle registrierten Geräte"
@@ -1158,6 +1160,7 @@ export function AssetsPage({
           icon={Boxes}
         />
         <KpiCard
+          dense
           title="Verfügbar"
           value={isInitialLoading && assets.length === 0 ? '—' : String(availableCount)}
           trend={`${formatRatio(availableCount, assets.length)}% des Bestands`}
@@ -1165,6 +1168,7 @@ export function AssetsPage({
           icon={PackageSearch}
         />
         <KpiCard
+          dense
           title="Verliehen"
           value={isInitialLoading && assets.length === 0 ? '—' : String(loanedCount)}
           trend={`${formatRatio(loanedCount, assets.length)}% des Bestands`}
@@ -1172,6 +1176,7 @@ export function AssetsPage({
           icon={Handshake}
         />
         <KpiCard
+          dense
           title="Defekt / Wartung"
           value={isInitialLoading && assets.length === 0 ? '—' : String(attentionCount)}
           trend={`${formatRatio(attentionCount, assets.length)}% des Bestands`}
@@ -1180,35 +1185,35 @@ export function AssetsPage({
         />
       </div>
 
-      <article className="surface-card animate-fade-up space-y-4">
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]">
+      <article className="surface-card animate-fade-up space-y-3 p-3 md:p-4">
+        <div className="grid gap-2.5 lg:grid-cols-[minmax(0,2.2fr)_repeat(4,minmax(0,1fr))]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Suche nach Asset, Inventarnummer, Seriennummer..."
-              className="field-input h-11 w-full pl-9"
+              className="field-input h-10 w-full pl-9"
             />
           </div>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input h-11">
+          <select value={category} onChange={(event) => setCategory(event.target.value)} className="field-input h-10">
             {categories.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input h-11">
+          <select value={location} onChange={(event) => setLocation(event.target.value)} className="field-input h-10">
             {locations.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
-          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input h-11">
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className="field-input h-10">
             {statuses.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
           <button
             type="button"
-            className="btn-secondary h-11"
+            className="btn-secondary h-10"
             onClick={() => {
               void openByQrOrTag();
             }}
@@ -1218,7 +1223,7 @@ export function AssetsPage({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <ToggleSwitch checked={onlyAvailable} onChange={setOnlyAvailable} label="Nur verfügbare" />
           <ToggleSwitch checked={onlyBroken} onChange={setOnlyBroken} label="Nur defekte" />
           <ToggleSwitch
@@ -1230,13 +1235,13 @@ export function AssetsPage({
             <span className="text-sm text-ink-muted">
               {isInitialLoading && assets.length === 0 ? 'Lädt …' : `${filteredAssets.length} Geräte`}
             </span>
-            <button type="button" className="btn-secondary h-11 px-3" onClick={resetFilters}>
+            <button type="button" className="btn-secondary h-9 px-3 text-xs" onClick={resetFilters}>
               <RefreshCcw className="h-4 w-4" />
               Reset
             </button>
             <button
               type="button"
-              className="btn-secondary h-11 px-3"
+              className="btn-secondary h-9 px-3 text-xs"
               onClick={() => setShowTechnicalColumns((prev) => !prev)}
             >
               <Filter className="h-4 w-4" />
@@ -1283,26 +1288,22 @@ export function AssetsPage({
 
         <div className="grid gap-4">
           <div className={`${isMobile ? 'hidden' : 'hidden lg:block'}`}>
-            <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
-              <table className="w-full min-w-[960px] border-collapse text-sm table-fixed">
-            <colgroup>
-              {canManageAssets ? <col style={{ width: '56px' }} /> : null}
-              <col style={{ width: '30%' }} />
-              <col style={{ width: '16%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '19%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '9%' }} />
-            </colgroup>
+            <div className="soft-scrollbar relative max-h-[70vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+              {/* Spaltenbreiten leben auf den th-Zellen (table-fixed nutzt die
+                  erste Zeile): das frühere colgroup summierte 100% + 56px
+                  Checkbox-Spalte und erzwang so IMMER horizontalen Scroll.
+                  Die Asset-Spalte ohne Breite nimmt den Rest auf; "Letzter
+                  Scan" erscheint erst ab 2xl (>=1536px). */}
+              <table className="w-full min-w-[840px] border-collapse text-sm table-fixed">
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
-                {canManageAssets ? <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3"> </th> : null}
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Asset / Inventarnummer</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Kategorie</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Status</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Zugewiesen / Projekt</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Standort</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Letzter Scan</th>
+                {canManageAssets ? <th className="sticky top-0 z-20 w-11 border-b border-line bg-surface-2 px-3 py-2.5"> </th> : null}
+                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-2.5">Asset / Inventarnummer</th>
+                <th className="sticky top-0 z-20 w-[14%] border-b border-line bg-surface-2 px-3 py-2.5">Kategorie</th>
+                <th className="sticky top-0 z-20 w-[12%] border-b border-line bg-surface-2 px-3 py-2.5">Status</th>
+                <th className="sticky top-0 z-20 w-[18%] border-b border-line bg-surface-2 px-3 py-2.5">Zugewiesen / Projekt</th>
+                <th className="sticky top-0 z-20 w-[12%] border-b border-line bg-surface-2 px-3 py-2.5">Standort</th>
+                <th className="sticky top-0 z-20 hidden border-b border-line bg-surface-2 px-3 py-2.5 2xl:table-cell 2xl:w-[10%]">Letzter Scan</th>
               </tr>
             </thead>
             <tbody>
@@ -1320,7 +1321,7 @@ export function AssetsPage({
                   onTouchCancel={clearLongPressTimer}
                 >
                   {canManageAssets ? (
-                    <td className="px-3 py-3 align-middle" onClick={(event) => event.stopPropagation()}>
+                    <td className="px-3 py-2 align-middle" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(asset.id)}
@@ -1331,8 +1332,8 @@ export function AssetsPage({
                       />
                     </td>
                   ) : null}
-                  <td className="px-3 py-3 align-middle">
-                    <div className="flex min-h-16 items-center gap-4">
+                  <td className="px-3 py-2 align-middle">
+                    <div className="flex min-h-12 items-center gap-3">
                       <div
                         className="shrink-0"
                         onMouseEnter={(event) => handleThumbnailHoverEnter(asset, event)}
@@ -1341,11 +1342,11 @@ export function AssetsPage({
                         <AssetImage
                           asset={asset}
                           categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
-                          size="md"
+                          size="sm"
                           className="cursor-zoom-in"
                         />
                       </div>
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 space-y-0.5">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <p className="max-w-[280px] cursor-default truncate font-semibold text-ink" title={asset.name}>
                             {asset.name}
@@ -1366,12 +1367,14 @@ export function AssetsPage({
                             </span>
                           ) : null}
                         </div>
-                        <p className="text-xs text-ink-faint">{asset.tagNumber}</p>
-                        <p className="text-xs text-ink-muted">{asset.serialNumber}</p>
+                        <p className="truncate text-xs text-ink-faint">
+                          {asset.tagNumber}
+                          {asset.serialNumber ? <span className="text-ink-muted"> · {asset.serialNumber}</span> : null}
+                        </p>
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3 align-middle text-ink-muted">
+                  <td className="px-3 py-2 align-middle text-ink-muted">
                     {asset.category === 'Zuordnung erforderlich' && canManageAssets ? (
                       <select
                         defaultValue=""
@@ -1390,21 +1393,21 @@ export function AssetsPage({
                       <span className="inline-block max-w-[140px] truncate align-bottom" title={asset.category}>{asset.category}</span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-3 pr-6 align-middle">
+                  <td className="whitespace-nowrap px-3 py-2 align-middle">
                     <StatusBadge value={asset.status} />
                   </td>
-                  <td className="px-3 py-3 align-middle">
+                  <td className="px-3 py-2 align-middle">
                     <div className="max-w-[220px]">
                       <p className="truncate text-sm font-medium text-ink" title={asset.assignedTo}>{asset.assignedTo}</p>
                       <p className="truncate text-xs text-ink-faint">{asset.nextReservation !== '-' ? asset.nextReservation : 'Kein Projekt aktiv'}</p>
                     </div>
                   </td>
-                  <td className="px-3 py-3 align-middle">
-                    <div className="text-sm text-ink">{asset.location}</div>
+                  <td className="px-3 py-2 align-middle">
+                    <div className="truncate text-sm text-ink" title={asset.location}>{asset.location}</div>
                   </td>
-                  <td className="px-3 py-3 align-middle">
+                  <td className="hidden px-3 py-2 align-middle 2xl:table-cell">
                     <div className="flex items-center gap-2 text-sm text-ink">
-                      <span>{asset.lastCheckout}</span>
+                      <span className="truncate">{asset.lastCheckout}</span>
                     </div>
                   </td>
                 </tr>
