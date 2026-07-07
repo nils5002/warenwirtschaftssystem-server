@@ -1,9 +1,11 @@
 import {
+  ArrowUpRight,
   Boxes,
   Eye,
   Filter,
   Handshake,
   PackageSearch,
+  Pencil,
   Plus,
   QrCode,
   RefreshCcw,
@@ -25,7 +27,8 @@ import { resolveCategoryDefaultImageUrl } from '../categories';
 import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
 import { StatusBadge } from '../components/StatusBadge';
-import { PageHeader, ToggleSwitch } from '../../ui';
+import { ContextMenu, PageHeader, ToggleSwitch } from '../../ui';
+import type { ContextMenuItem } from '../../ui';
 import type { AppPage, Asset, CategoryItem } from '../types';
 
 type AssetsPageProps = {
@@ -203,6 +206,14 @@ export function AssetsPage({
   const [onlyBroken, setOnlyBroken] = useState(false);
   const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
+  // Rechtsklick-/Long-Press-Kontextmenü auf Tabellenzeilen.
+  const [contextMenu, setContextMenu] = useState<{ assetId: string; x: number; y: number } | null>(null);
+  // Kleines QR-Modal aus dem Kontextmenü (Anzeigen/Drucken/Download).
+  const [qrAssetId, setQrAssetId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  // Nach einem Long-Press soll der anschließende Click die Zeile nicht
+  // zusätzlich auswählen/abwählen.
+  const suppressNextRowClickRef = useRef(false);
   // Verzögerte Produktbild-Vorschau per Hover (nur Desktop/Maus).
   const [hoverPreview, setHoverPreview] = useState<{ asset: Asset; left: number; top: number } | null>(null);
   const hoverOpenTimerRef = useRef<number | null>(null);
@@ -300,6 +311,8 @@ export function AssetsPage({
   );
 
   const quickViewAsset = assets.find((asset) => asset.id === quickViewId) ?? null;
+  const contextMenuAsset = contextMenu ? assets.find((asset) => asset.id === contextMenu.assetId) ?? null : null;
+  const qrAsset = assets.find((asset) => asset.id === qrAssetId) ?? null;
   const quickViewCategoryImageUrl = quickViewAsset
     ? resolveCategoryDefaultImageUrl(quickViewAsset.category, backendCategories)
     : null;
@@ -441,6 +454,97 @@ export function AssetsPage({
       return;
     }
     setQuickViewId(match.id);
+  };
+
+  // --- Zeilen-Kontextmenü (Rechtsklick / Long-Press) -------------------------
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => clearLongPressTimer(), []);
+
+  const handleRowContextMenu = (asset: Asset, event: React.MouseEvent) => {
+    // Natives Browser-Menü im Tabellenbereich unterdrücken.
+    event.preventDefault();
+    clearLongPressTimer();
+    setContextMenu({ assetId: asset.id, x: event.clientX, y: event.clientY });
+  };
+
+  // Touch-Fallback: Long-Press (~500 ms) öffnet das Menü an der Fingerposition.
+  // Android feuert zusätzlich contextmenu, iOS Safari nicht — daher beides.
+  const handleRowTouchStart = (asset: Asset, event: React.TouchEvent) => {
+    if (event.touches.length !== 1) return;
+    const touch = event.touches[0];
+    const x = touch.clientX;
+    const y = touch.clientY;
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      suppressNextRowClickRef.current = true;
+      setContextMenu({ assetId: asset.id, x, y });
+    }, 500);
+  };
+
+  // Linksklick wählt die Zeile aus und befüllt das Detailpanel rechts;
+  // erneuter Klick hebt die Auswahl wieder auf.
+  const handleRowClick = (asset: Asset) => {
+    if (suppressNextRowClickRef.current) {
+      suppressNextRowClickRef.current = false;
+      return;
+    }
+    setQuickViewId((current) => (current === asset.id ? null : asset.id));
+  };
+
+  // Defektmeldung aus dem Kontextmenü: nutzt den bestehenden Wartungs-Flow
+  // (onCreateMaintenance), der das Asset fachlich korrekt sperrt.
+  const reportDefect = async (asset: Asset) => {
+    const issue = await prompt({
+      title: 'Defekt melden',
+      message: `Was ist an "${asset.name}" (${asset.tagNumber}) defekt?`,
+      placeholder: 'z. B. Display flackert, Akku lädt nicht ...',
+      submitLabel: 'Defekt melden',
+    });
+    if (!issue?.trim()) return;
+    onCreateMaintenance({ assetName: asset.name, issue: issue.trim(), comment: '' });
+    await alert({
+      title: 'Defekt gemeldet',
+      message: `Für "${asset.name}" wurde eine Defektmeldung erstellt. Das Gerät ist gesperrt, bis der Fall erledigt ist.`,
+    });
+  };
+
+  // Nur Aktionen anbieten, die der Nutzer vorher auch ausführen durfte:
+  // Admin/Bearbeiten/Löschen bleiben an canManageAssets gebunden.
+  const buildContextMenuItems = (asset: Asset): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [
+      { key: 'detail', label: 'Details öffnen', icon: ArrowUpRight, onSelect: () => onOpenDetail(asset.id) },
+      { key: 'quickview', label: 'Schnellansicht', icon: Eye, onSelect: () => setQuickViewId(asset.id) },
+      { key: 'qr', label: 'QR-Code anzeigen', icon: QrCode, onSelect: () => setQrAssetId(asset.id) },
+      { key: 'defect', label: 'Defekt melden', icon: TriangleAlert, onSelect: () => void reportDefect(asset) },
+    ];
+    if (canManageAssets) {
+      items.push(
+        {
+          key: 'edit',
+          label: 'Bearbeiten',
+          icon: Pencil,
+          separatorBefore: true,
+          onSelect: () => onOpenDetail(asset.id),
+        },
+        { key: 'admin', label: 'Admin-Aktionen', icon: Settings2, onSelect: () => openAdminActions(asset) },
+        {
+          key: 'delete',
+          label: 'Löschen',
+          icon: Trash2,
+          tone: 'danger',
+          separatorBefore: true,
+          onSelect: () => void runAdminDeleteAsset(asset),
+        },
+      );
+    }
+    return items;
   };
 
   const toggleSelected = (assetId: string, rowIndex: number, withRange = false) => {
@@ -1024,7 +1128,7 @@ export function AssetsPage({
       <PageHeader
         kicker="Inventar"
         title="Gerätebestand & Verfügbarkeit"
-        subtitle="Bestand filtern, Zustand prüfen und Aktionen direkt ausführen."
+        subtitle="Bestand filtern, Zustand prüfen — Aktionen per Rechtsklick auf eine Zeile."
         actions={
           <>
             {canManageAssets ? (
@@ -1180,16 +1284,15 @@ export function AssetsPage({
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className={`${isMobile ? 'hidden' : 'hidden lg:block'}`}>
             <div className="soft-scrollbar relative max-h-[68vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
-              <table className="w-full min-w-[1120px] border-collapse text-sm table-fixed">
+              <table className="w-full min-w-[960px] border-collapse text-sm table-fixed">
             <colgroup>
               {canManageAssets ? <col style={{ width: '56px' }} /> : null}
-              <col style={{ width: '28%' }} />
+              <col style={{ width: '30%' }} />
               <col style={{ width: '16%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '18%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '10%' }} />
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '9%' }} />
             </colgroup>
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
@@ -1200,19 +1303,24 @@ export function AssetsPage({
                 <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Zugewiesen / Projekt</th>
                 <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Standort</th>
                 <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3">Letzter Scan</th>
-                <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-3 text-right">Aktionen</th>
               </tr>
             </thead>
             <tbody>
               {filteredAssets.map((asset, rowIndex) => (
                 <Fragment key={asset.id}>
                 <tr
-                  className={`border-b border-line/70 text-ink transition hover:bg-surface-2/75 ${
-                    quickViewId === asset.id ? 'bg-primary/8' : ''
+                  className={`cursor-pointer border-b border-line/70 text-ink transition hover:bg-surface-2/75 ${
+                    quickViewId === asset.id ? 'bg-primary/8' : contextMenuAsset?.id === asset.id ? 'bg-surface-2/75' : ''
                   } ${showTechnicalColumns ? '' : 'last:border-0'}`}
+                  onClick={() => handleRowClick(asset)}
+                  onContextMenu={(event) => handleRowContextMenu(asset, event)}
+                  onTouchStart={(event) => handleRowTouchStart(asset, event)}
+                  onTouchEnd={clearLongPressTimer}
+                  onTouchMove={clearLongPressTimer}
+                  onTouchCancel={clearLongPressTimer}
                 >
                   {canManageAssets ? (
-                    <td className="px-3 py-3 align-middle">
+                    <td className="px-3 py-3 align-middle" onClick={(event) => event.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.includes(asset.id)}
@@ -1268,6 +1376,7 @@ export function AssetsPage({
                       <select
                         defaultValue=""
                         className="field-input h-10"
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
                           if (e.target.value) onAdminUpdateAsset(asset.id, { category: e.target.value });
                         }}
@@ -1298,26 +1407,13 @@ export function AssetsPage({
                       <span>{asset.lastCheckout}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-3 align-middle text-right">
-                    <div className="flex flex-nowrap items-center justify-end gap-2 whitespace-nowrap">
-                      <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => setQuickViewId(asset.id)}>
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
-                      {canManageAssets ? (
-                        <button type="button" className="btn-secondary shrink-0 px-2 py-1 text-xs" onClick={() => openAdminActions(asset)}>
-                          <Settings2 className="h-3.5 w-3.5" />
-                          <span>Admin</span>
-                        </button>
-                      ) : null}
-                      <button type="button" className="btn-primary shrink-0 px-2.5 py-1 text-xs" onClick={() => onOpenDetail(asset.id)}>
-                        Detail
-                      </button>
-                    </div>
-                  </td>
                 </tr>
                 {showTechnicalColumns ? (
-                  <tr className="border-b border-line/70 bg-surface-2/60">
-                    <td colSpan={canManageAssets ? 8 : 7} className="px-3 pb-3 pt-1">
+                  <tr
+                    className="border-b border-line/70 bg-surface-2/60"
+                    onContextMenu={(event) => handleRowContextMenu(asset, event)}
+                  >
+                    <td colSpan={canManageAssets ? 7 : 6} className="px-3 pb-3 pt-1">
                       <div className="grid gap-x-6 gap-y-1.5 text-xs text-ink-muted sm:grid-cols-2 lg:grid-cols-3">
                         <div className="flex min-w-0 gap-2">
                           <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">Modell</span>
@@ -1458,7 +1554,8 @@ export function AssetsPage({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Detailpanel</p>
                 <h3 className="mt-2 text-lg font-semibold text-ink">Gerät auswählen</h3>
                 <p className="mt-2 text-sm text-ink-muted">
-                  Öffne eine Schnellansicht aus der Tabelle, um Stammdaten, Verfügbarkeit und QR-Details rechts anzuzeigen.
+                  Klicke eine Zeile in der Tabelle an, um Stammdaten, Verfügbarkeit und QR-Details rechts anzuzeigen.
+                  Rechtsklick (oder langes Drücken) öffnet alle Aktionen.
                 </p>
                 {selectedAssets.length > 0 ? (
                   <div className="mt-4 rounded-2xl border border-line bg-surface-2 p-4">
@@ -1533,6 +1630,48 @@ export function AssetsPage({
             document.body,
           )
         : null}
+
+      {/* Zeilen-Kontextmenü: Aktionen rollenbasiert, schließt bei Auswahl,
+          Klick außerhalb, Escape oder Scroll. */}
+      {contextMenu && contextMenuAsset ? (
+        <ContextMenu
+          position={{ x: contextMenu.x, y: contextMenu.y }}
+          title={contextMenuAsset.name}
+          subtitle={contextMenuAsset.tagNumber}
+          items={buildContextMenuItems(contextMenuAsset)}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
+
+      {/* QR-Modal aus dem Kontextmenü: nutzt die bestehende AssetQrCard
+          (inkl. Download/Druck), kein neuer Backend-Request. */}
+      {qrAsset ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/55 p-4"
+          onClick={() => setQrAssetId(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-line bg-surface p-4 shadow-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">QR-Code</p>
+                <h3 className="truncate text-lg font-semibold text-ink" title={qrAsset.name}>{qrAsset.name}</h3>
+                <p className="text-xs text-ink-muted">Inventarnummer {qrAsset.tagNumber}</p>
+              </div>
+              <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={() => setQrAssetId(null)}>
+                Schließen
+              </button>
+            </div>
+            <AssetQrCard
+              qrValue={getAssetQrCode(qrAsset)}
+              assetName={qrAsset.name}
+              tagNumber={qrAsset.tagNumber}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {canManageAssets && adminActionAsset && adminActionForm ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-3 sm:items-center">
