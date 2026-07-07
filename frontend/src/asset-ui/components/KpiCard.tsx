@@ -11,6 +11,10 @@ type KpiCardProps = {
   // aber nicht klickbar (fehlende Berechtigung) — ohne Fehlermeldung.
   onClick?: () => void;
   disabled?: boolean;
+  // Kompakte Statistik-Leiste statt großer Banner-Karte (z. B. Inventar auf
+  // 14-Zoll-Laptops): weniger Padding, kleineres Icon, Sub-Text nur auf
+  // sehr großen Breiten. Dashboard & Co. bleiben unverändert.
+  dense?: boolean;
 };
 
 // MetricCard-Look nach Mockup: Icon in weich getöntem Quadrat, Uppercase-
@@ -35,9 +39,23 @@ const toneMap: Record<KpiCardProps['tone'], { box: string; label: string }> = {
   },
 };
 
-export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabled = false }: KpiCardProps) {
+export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabled = false, dense = false }: KpiCardProps) {
   const tones = toneMap[tone];
-  const inner = (
+  const pad = dense ? 'p-3' : 'p-4 md:p-4';
+  const inner = dense ? (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tones.box}`}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className={`truncate text-[10px] font-bold uppercase tracking-[0.12em] ${tones.label}`}>{title}</p>
+        <div className="flex items-baseline gap-2">
+          <p className="text-2xl font-semibold leading-tight tracking-tight text-ink">{value}</p>
+          <p className="hidden truncate text-[11px] font-medium text-ink-faint 2xl:block">{trend}</p>
+        </div>
+      </div>
+    </div>
+  ) : (
     <div className="flex items-start gap-3.5">
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tones.box}`}>
         <Icon className="h-5 w-5" />
@@ -57,7 +75,7 @@ export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabl
       <button
         type="button"
         onClick={onClick}
-        className="surface-card group w-full cursor-pointer p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:p-4"
+        className={`surface-card group w-full cursor-pointer ${pad} text-left transition duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
       >
         {inner}
       </button>
@@ -68,11 +86,11 @@ export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabl
   // gedimmt, kein Pointer, kein Hover-Lift, Tooltip statt Fehlermeldung.
   if (onClick && disabled) {
     return (
-      <div aria-disabled="true" title="Keine Berechtigung" className="surface-card cursor-not-allowed p-4 opacity-60 md:p-4">
+      <div aria-disabled="true" title="Keine Berechtigung" className={`surface-card cursor-not-allowed ${pad} opacity-60`}>
         {inner}
       </div>
     );
   }
 
-  return <article className="surface-card p-4 md:p-4">{inner}</article>;
+  return <article className={`surface-card ${pad}`}>{inner}</article>;
 }

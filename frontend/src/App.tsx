@@ -175,7 +175,9 @@ function App() {
         stats={sidebarStats}
       />
 
-      <div className={`relative ${isMobile ? '' : 'md:pl-72'}`}>
+      {/* Muss zur responsiven Sidebar-Breite passen (Sidebar.tsx):
+          md–2xl 240px, ab 2xl 264px. */}
+      <div className={`relative ${isMobile ? '' : 'md:pl-60 2xl:pl-[264px]'}`}>
         <Topbar
           search={controller.search}
           onSearch={controller.setSearch}

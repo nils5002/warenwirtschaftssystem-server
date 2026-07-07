@@ -61,6 +61,11 @@
 body {
   margin: 0;
   min-height: 100vh;
+  /* Horizontaler Scroll darf nie über die ganze App laufen — breite Inhalte
+     (z. B. Tabellen) scrollen in ihren eigenen overflow-x-auto-Containern.
+     'clip' statt 'hidden', damit body kein Scroll-Container wird und
+     position:sticky (Topbar, Tabellen-Header) intakt bleibt. */
+  overflow-x: clip;
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   color: var(--ui-text);
   /* Radial-Highlights deutlich gedämpft: nur ein sehr leiser kühler
