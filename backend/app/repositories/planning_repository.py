@@ -1546,6 +1546,42 @@ def _iter_blocking_dates(start_date: date, end_date: date, buffer_days: int | No
     return dates
 
 
+def planning_loan_return_dates(
+    db: Session, planning_external_id: str | None
+) -> tuple[date, date] | None:
+    """Rückgabedaten für die Ausgabe eines Geräts AUF eine Planung (F1).
+
+    Liefert ``(expected_return_date, display_return_date)``:
+
+    * ``expected_return_date`` = letzter blockierter Tag =
+      ``_blocking_end_exclusive(...) - 1 Tag`` — Parität zum Handover-Pfad
+      (``handover_service._transfer_one``). Das Gerät blockiert damit exakt
+      die Belegungstage der Planung (Enddatum exklusiv) inkl. Rückgabe-Puffer
+      und zählt ab dem Rückgabetag wieder als freier Bestand — genau wie der
+      geplante Bedarf selbst. So entsteht kein Phantom-Konflikt für eine
+      Folgeplanung, die am Rückgabetag startet.
+    * ``display_return_date`` = fachlicher Rückgabetag für die Anzeige
+      (``next_return``): der Tag, an dem das Gerät zurückerwartet wird
+      (Enddatum der Planung; bei Eintagesplanungen der Einsatztag selbst;
+      mit Rückgabe-Puffer entsprechend später).
+
+    ``None``, wenn die Planung nicht existiert oder keine Daten hat — der
+    Aufrufer fällt dann auf das bisherige Verhalten zurück.
+    """
+    ext_id = str(planning_external_id or "").strip()
+    if not ext_id:
+        return None
+    planning = db.scalar(select(PlanningRecord).where(PlanningRecord.external_id == ext_id))
+    if planning is None or planning.start_date is None or planning.end_date is None:
+        return None
+    block_end = _blocking_end_exclusive(
+        planning.start_date, planning.end_date, getattr(planning, "return_buffer_days", 0)
+    )
+    expected_return = block_end - timedelta(days=1)
+    display_return = max(planning.end_date, expected_return)
+    return expected_return, display_return
+
+
 def _availability_state(requested_qty: int, remaining_qty: int) -> str:
     after_request = remaining_qty - requested_qty
     if after_request < 0:

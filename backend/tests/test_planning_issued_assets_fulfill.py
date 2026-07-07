@@ -56,12 +56,22 @@ def _create_switches(client: TestClient, suffix: str, count: int) -> list[dict]:
     return created
 
 
-def _checkout(client: TestClient, asset: dict, *, planning_id: str | None, next_return: str) -> dict:
+def _checkout(
+    client: TestClient,
+    asset: dict,
+    *,
+    planning_id: str | None,
+    next_return: str,
+    expected_return_date: str | None = None,
+) -> dict:
     payload = dict(asset)
     payload["status"] = "Verliehen"
     payload["assignedTo"] = "- · Testprojekt"
     payload["nextReturn"] = next_return
     payload["assignedPlanningId"] = planning_id
+    # F1: ein explizit gesetztes expectedReturnDate ist eine bewusste manuelle
+    # Wahl und hat Vorrang vor der automatischen Planungs-Bindung.
+    payload["expectedReturnDate"] = expected_return_date
     res = client.post("/api/wms/assets", headers=_headers(client, "Admin"), json=payload)
     assert res.status_code == 200, res.text
     return res.json()
@@ -214,7 +224,17 @@ def test_after_return_date_asset_back_in_pool_not_double_counted() -> None:
     day = date.today() + timedelta(days=20)
     planning = _create_switch_planning(client, suffix, "Y", day, qty=2)
     # Rückgabe VOR dem Planungstag -> Gerät ist am Planungstag wieder verfügbar.
-    _checkout(client, switches[0], planning_id=planning, next_return=(day - timedelta(days=5)).isoformat())
+    # Seit F1 bindet ein Planungs-Checkout das Datum automatisch an die Planung;
+    # die frühe Rückgabe ist daher nur noch als BEWUSSTE manuelle Wahl möglich
+    # (explizites expectedReturnDate) — genau so wird sie hier simuliert.
+    early_return = (day - timedelta(days=5)).isoformat()
+    _checkout(
+        client,
+        switches[0],
+        planning_id=planning,
+        next_return=early_return,
+        expected_return_date=early_return,
+    )
 
     item = _switch_item(client, planning, suffix, "Y")
     assert item["usableStock"] == 2, item             # beide wieder im Pool

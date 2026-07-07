@@ -470,6 +470,24 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
     # Checkin (-> Verfuegbar) wird die Sperre wieder aufgehoben. So bleibt die
     # Planungs-Verfügbarkeit konsistent, ohne dass die UI angepasst werden muss.
     if payload["status"] == "Verliehen" and payload["ownership_type"] == "owned":
+        # F1: Ausgabe AUF EINE PLANUNG bindet das Rückgabedatum an die Planung
+        # (Parität zum Handover-Pfad) statt an den Frontend-Default "heute+2".
+        # Greift nur beim Checkout-ÜBERGANG (nicht bei späteren Edits eines
+        # bereits verliehenen Geräts) und nur, wenn die UI KEIN strukturiertes
+        # expectedReturnDate mitgeschickt hat — ein explizit gesendetes Datum
+        # ist eine bewusste manuelle Wahl und hat Vorrang.
+        if (
+            previous_status != "Verliehen"
+            and payload["expected_return_date"] is None
+            and payload["assigned_planning_id"]
+        ):
+            planning_dates = planning_repository.planning_loan_return_dates(
+                db, payload["assigned_planning_id"]
+            )
+            if planning_dates is not None:
+                planning_expected_return, planning_display_return = planning_dates
+                payload["expected_return_date"] = planning_expected_return
+                payload["next_return"] = planning_display_return.isoformat()
         if payload["expected_return_date"] is None:
             payload["expected_return_date"] = planning_repository._parse_loose_date(
                 item.nextReturn
