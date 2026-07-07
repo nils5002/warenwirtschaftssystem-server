@@ -63,6 +63,10 @@ type CheckoutPayload = {
   // aktiven Planung entspricht; bei frei getipptem Projekt null/undefined).
   planningId?: string | null;
   dueDate: string;
+  // F1: true = der Nutzer hat das Rückgabedatum bewusst manuell geändert.
+  // Nur dann wird es strukturiert als expectedReturnDate mitgesendet; ohne
+  // Flag bindet der Server das Datum bei Planungs-Checkout an die Planung.
+  dueDateIsManual?: boolean;
   note: string;
 };
 type CheckinPayload = {
@@ -868,6 +872,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     noteHint?: string,
     projectHint?: string,
     planningIdHint?: string | null,
+    dueDateIsManualHint?: boolean,
   ) => {
     const asset = assets.find((item) => item.id === assetId);
     if (!asset) return;
@@ -899,6 +904,11 @@ export function useWmsController(options: UseWmsControllerOptions) {
     ].filter(Boolean);
     const assignedToValue =
       project && recipient === '-' ? `- · ${project}` : recipient !== '-' && project ? `${recipient} · ${project}` : recipient;
+    // F1: nur ein BEWUSST manuell gesetztes Datum strukturiert mitsenden —
+    // der Server respektiert ein explizites expectedReturnDate. Ohne manuelle
+    // Wahl bleibt es null, und der Server bindet das Rückgabedatum bei einem
+    // Planungs-Checkout an das Enddatum der Planung (statt "heute+2").
+    const isoDue = /^\d{4}-\d{2}-\d{2}$/.test(due.trim()) ? due.trim() : null;
     const updated: Asset = {
       ...asset,
       status: 'Verliehen',
@@ -906,6 +916,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       nextReturn: due,
       lastCheckout: new Date().toLocaleDateString('de-DE'),
       notes: metadataLines.length ? `${asset.notes}\n${metadataLines.join('\n')}`.trim() : asset.notes,
+      expectedReturnDate: dueDateIsManualHint && isoDue ? isoDue : null,
       // Schritt B: konkrete Planungs-Zuordnung mitgeben, falls ein echtes
       // Planungsprojekt gewählt wurde (sonst null = keine Verknüpfung).
       assignedPlanningId: planningIdHint ?? null,
@@ -1452,6 +1463,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
       payload.note,
       payload.projectName,
       payload.planningId ?? null,
+      payload.dueDateIsManual ?? false,
     );
   };
 

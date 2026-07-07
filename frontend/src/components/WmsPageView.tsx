@@ -141,7 +141,11 @@ type WmsPageViewProps = {
     assetId: string;
     assignee: string;
     projectName?: string;
+    // Schritt B: eindeutige Planungs-ID zum gewählten Projekt (sonst null).
+    planningId?: string | null;
     dueDate: string;
+    // F1: true = Rückgabedatum bewusst manuell geändert.
+    dueDateIsManual?: boolean;
     note: string;
   }) => Promise<void>;
   onCheckinFromForm: (payload: {

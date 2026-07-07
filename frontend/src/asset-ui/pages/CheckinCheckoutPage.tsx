@@ -49,6 +49,9 @@ type CheckinCheckoutPageProps = {
     projectName?: string;
     planningId?: string | null;
     dueDate: string;
+    // F1: true = Rückgabedatum wurde bewusst manuell geändert (sonst bindet
+    // der Server es bei Planungs-Checkout an das Enddatum der Planung).
+    dueDateIsManual?: boolean;
     note: string;
   }) => Promise<void>;
   onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => Promise<void>;
@@ -135,6 +138,9 @@ export function CheckinCheckoutPage({
   const [checkoutAssignee, setCheckoutAssignee] = useState('');
   const [checkoutProject, setCheckoutProject] = useState('');
   const [checkoutDueDate, setCheckoutDueDate] = useState(plusTwoDays);
+  // F1: merkt sich, ob der Nutzer das Rückgabedatum bewusst manuell geändert
+  // hat. Ohne manuelle Änderung folgt das Feld der gewählten Planung.
+  const [checkoutDueDateIsManual, setCheckoutDueDateIsManual] = useState(false);
   const [checkoutNote, setCheckoutNote] = useState('');
   const [checkoutScan, setCheckoutScan] = useState('');
 
@@ -299,6 +305,31 @@ export function CheckinCheckoutPage({
     }
     return map;
   }, [planningProjects]);
+
+  // F1: eindeutige Planung zum aktuell gewählten Checkout-Projekt (falls
+  // vorhanden). Deren Enddatum ist der fachliche Rückgabetag und belegt das
+  // Rückgabedatum-Feld vor, solange der Nutzer es nicht manuell ändert.
+  const checkoutPlanningId = planningIdByOption.get(checkoutProject.trim()) ?? null;
+  const checkoutPlanningEndDate = useMemo(() => {
+    if (!checkoutPlanningId) return null;
+    const planning = planningProjects.find((item) => item.id === checkoutPlanningId);
+    const endDate = (planning?.endDate ?? '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : null;
+  }, [checkoutPlanningId, planningProjects]);
+
+  const prevCheckoutPlanningIdRef = useRef<string | null>(checkoutPlanningId);
+  useEffect(() => {
+    const planningChanged = prevCheckoutPlanningIdRef.current !== checkoutPlanningId;
+    prevCheckoutPlanningIdRef.current = checkoutPlanningId;
+    if (planningChanged) {
+      // Planungswechsel setzt eine manuelle Wahl zurück — das Datum soll der
+      // NEUEN Planung folgen, nicht der Eingabe für die alte.
+      setCheckoutDueDateIsManual(false);
+    } else if (checkoutDueDateIsManual) {
+      return;
+    }
+    setCheckoutDueDate(checkoutPlanningEndDate ?? plusTwoDays);
+  }, [checkoutPlanningId, checkoutPlanningEndDate, checkoutDueDateIsManual, plusTwoDays]);
 
   const checkoutProjectOptions = useMemo(() => {
     const options = [...projectOptions];
@@ -640,6 +671,7 @@ export function CheckinCheckoutPage({
           projectName: normalizedProject,
           planningId: normalizedPlanningId,
           dueDate: checkoutDueDate,
+          dueDateIsManual: checkoutDueDateIsManual,
           note: normalizedNote,
         });
         successIds.add(entry.assetId);
@@ -1206,8 +1238,20 @@ export function CheckinCheckoutPage({
                     className="field-input"
                     value={checkoutDueDate}
                     disabled={isAnyBusy}
-                    onChange={(event) => setCheckoutDueDate(event.target.value)}
+                    onChange={(event) => {
+                      setCheckoutDueDate(event.target.value);
+                      // F1: bewusste manuelle Änderung — Feld folgt ab jetzt
+                      // nicht mehr automatisch der gewählten Planung.
+                      setCheckoutDueDateIsManual(true);
+                    }}
                   />
+                  <span className="text-xs text-slate-500">
+                    {checkoutPlanningId
+                      ? checkoutDueDateIsManual
+                        ? 'Manuell geändert — Standard wäre der Rückgabetag der Planung.'
+                        : 'Automatisch aus der Planung übernommen (Rückgabetag = Enddatum).'
+                      : 'Ohne Planungsbezug: Standard ist heute + 2 Tage.'}
+                  </span>
                 </label>
                 <label className="field">
                   Empfänger (optional)

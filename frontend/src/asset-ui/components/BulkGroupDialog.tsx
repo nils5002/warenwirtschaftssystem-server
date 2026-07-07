@@ -1,5 +1,5 @@
 import { Handshake, PackageCheck, Undo2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { LoadingButton } from '../../components/loading';
 import {
@@ -45,6 +45,9 @@ export function BulkGroupDialog({
   const [project, setProject] = useState<string>(defaultProject?.trim() || '');
   const [assignee, setAssignee] = useState<string>('');
   const [dueDate, setDueDate] = useState<string>(() => toIsoDate(new Date(Date.now() + 2 * 86400000)));
+  // F1: Rückgabedatum folgt der gewählten Planung, solange es der Nutzer
+  // nicht bewusst manuell ändert (kein stiller "heute+2"-Default bei Planung).
+  const [dueDateIsManual, setDueDateIsManual] = useState(false);
   const [note, setNote] = useState<string>('');
   const [plannings, setPlannings] = useState<PlanningListItem[]>([]);
   const [busy, setBusy] = useState(false);
@@ -110,6 +113,32 @@ export function BulkGroupDialog({
     () => [...new Set((users ?? []).filter((u) => u.status === 'Aktiv').map((u) => u.name))],
     [users],
   );
+
+  // F1: Enddatum der eindeutig gewählten Planung als Vorbelegung des
+  // Rückgabedatums (fachlicher Rückgabetag); manuelle Änderung hat Vorrang.
+  const selectedPlanningId = planningIdByOption.get(project.trim()) ?? null;
+  const selectedPlanningEndDate = useMemo(() => {
+    if (!selectedPlanningId) return null;
+    const planning = plannings.find((item) => item.id === selectedPlanningId);
+    const endDate = (planning?.endDate ?? '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : null;
+  }, [selectedPlanningId, plannings]);
+
+  const prevPlanningIdRef = useRef<string | null>(selectedPlanningId);
+  useEffect(() => {
+    const planningChanged = prevPlanningIdRef.current !== selectedPlanningId;
+    prevPlanningIdRef.current = selectedPlanningId;
+    if (planningChanged) {
+      setDueDateIsManual(false);
+    } else if (dueDateIsManual) {
+      return;
+    }
+    if (selectedPlanningEndDate) {
+      setDueDate(selectedPlanningEndDate);
+    } else if (planningChanged) {
+      setDueDate(toIsoDate(new Date(Date.now() + 2 * 86400000)));
+    }
+  }, [selectedPlanningId, selectedPlanningEndDate, dueDateIsManual]);
 
   const maxForMode = mode === 'checkout' ? liveGroup.availableCount : liveGroup.loanedCount;
   const parsedQty = Number.parseInt(quantity, 10);
@@ -290,8 +319,18 @@ export function BulkGroupDialog({
                 className="field-input h-12 text-base"
                 value={dueDate}
                 disabled={busy}
-                onChange={(event) => setDueDate(event.target.value)}
+                onChange={(event) => {
+                  setDueDate(event.target.value);
+                  setDueDateIsManual(true);
+                }}
               />
+              <span className="text-xs text-slate-500">
+                {selectedPlanningId
+                  ? dueDateIsManual
+                    ? 'Manuell geändert — Standard wäre der Rückgabetag der Planung.'
+                    : 'Automatisch aus der Planung übernommen (Rückgabetag = Enddatum).'
+                  : 'Ohne Planungsbezug: Standard ist heute + 2 Tage.'}
+              </span>
             </label>
           </>
         ) : null}
