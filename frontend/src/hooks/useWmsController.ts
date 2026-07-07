@@ -21,6 +21,10 @@ import {
   isBackendUnreachableError,
   isWmsApiError,
   listCategories as listCategoriesRequest,
+  approveUser as approveUserRequest,
+  rejectUser as rejectUserRequest,
+  lockUser as lockUserRequest,
+  unlockUser as unlockUserRequest,
   deleteUsersBulk,
   fetchWmsOverview,
   getApiAccessContext,
@@ -1292,6 +1296,38 @@ export function useWmsController(options: UseWmsControllerOptions) {
     }
   };
 
+  // Freigeben/Ablehnen/Sperren/Entsperren (Security-Paket „supman"):
+  // dedizierte Backend-Aktionen mit optimistischem Status-Update; bei Fehlern
+  // (z. B. 409-Schutzregeln) wird der Serverstand neu geladen.
+  const adminSetUserAccountStatus = async (
+    userId: string,
+    action: 'approve' | 'reject' | 'lock' | 'unlock',
+  ) => {
+    const target = users.find((user) => user.id === userId);
+    const requestByAction = {
+      approve: approveUserRequest,
+      reject: rejectUserRequest,
+      lock: lockUserRequest,
+      unlock: unlockUserRequest,
+    } as const;
+    const activityByAction = {
+      approve: 'Benutzer freigegeben',
+      reject: 'Benutzer abgelehnt',
+      lock: 'Benutzer gesperrt',
+      unlock: 'Benutzer entsperrt',
+    } as const;
+    try {
+      const updated = await requestByAction[action](userId);
+      setUsers((prev) => prev.map((item) => (item.id === userId ? updated : item)));
+      await addActivity(activityByAction[action], `${target?.name ?? userId}`);
+      return updated;
+    } catch (error) {
+      await loadWms();
+      if (error instanceof Error) throw error;
+      throw new Error('Aktion konnte nicht ausgeführt werden.');
+    }
+  };
+
   const adminResetUserPassword = async (
     userId: string,
     payload: { newPassword?: string; generateTemporary?: boolean },
@@ -1479,6 +1515,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     updateMaintenanceStatus,
     inviteUser,
     editUser,
+    adminSetUserAccountStatus,
     adminResetUserPassword,
     adminDeleteUser,
     adminBulkDeleteUsers,

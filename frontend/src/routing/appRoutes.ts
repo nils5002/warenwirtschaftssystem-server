@@ -17,6 +17,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   updateNotes: '/update-notizen',
   rolesPermissions: '/rollen-rechte',
   telecomPass: '/telekompass',
+  securityLogs: '/sicherheit-protokolle',
   assetDetail: '/inventar',
 };
 
@@ -72,6 +73,10 @@ const PATH_ALIASES: Record<string, AppPage> = {
 
   '/telekompass': 'telecomPass',
   '/telecom-pass': 'telecomPass',
+
+  '/sicherheit-protokolle': 'securityLogs',
+  '/sicherheit': 'securityLogs',
+  '/security-logs': 'securityLogs',
 };
 
 export function normalizePathname(pathname: string): string {

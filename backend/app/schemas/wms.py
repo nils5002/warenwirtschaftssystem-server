@@ -29,7 +29,7 @@ MaintenanceStatus = Literal[
     "Abgeschlossen",
 ]
 UserRole = Literal["Admin", "Projektmanager", "Mitarbeiter"]
-UserStatus = Literal["Aktiv", "Inaktiv", "Wartet auf Freigabe"]
+UserStatus = Literal["Aktiv", "Inaktiv", "Wartet auf Freigabe", "Abgelehnt", "Gesperrt"]
 
 # Bestandsart eines Assets. owned = Eigenbestand (Default für Bestandsdaten),
 # rented/borrowed/external = Fremdbestand mit zeitlich befristeter
@@ -263,6 +263,7 @@ class UserItem(BaseModel):
     lastActive: str
     status: UserStatus
     createdAt: Optional[str] = None
+    lastLoginAt: Optional[str] = None
     department: Optional[str] = None
     location: Optional[str] = None
 

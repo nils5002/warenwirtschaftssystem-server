@@ -210,6 +210,23 @@ class UserRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="Aktiv")
     department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # --- Security-/Login-Metadaten (Security-Paket „supman") ---
+    # Alle nullable bzw. mit Default 0, damit Bestandsdaten und alte Backups
+    # ohne diese Felder unverändert funktionieren. "Registriert am" ist das
+    # vorhandene created_at (TimestampMixin) — bewusst keine neue Spalte.
+    failed_login_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Temporäre Brute-Force-Sperre (läuft automatisch ab). NICHT zu verwechseln
+    # mit dem administrativen Status "Gesperrt" (manuell, bis zum Entsperren).
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_login_user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class PlanningRecord(TimestampMixin, Base):
@@ -539,6 +556,49 @@ class SystemSettingRecord(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     key: Mapped[str] = mapped_column(String(120), unique=True, nullable=False, index=True)
     value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class SecurityEventRecord(TimestampMixin, Base):
+    """Persistentes Security-/Auth-Audit-Log (Vorfall „supman").
+
+    Eine Zeile je sicherheitsrelevantem Ereignis (Login, Registrierung,
+    Admin-Aktion an Benutzern, Backup-Export/-Import, ...). Zweck:
+    Nachvollziehbarkeit — wer hat wann von wo was versucht/getan.
+
+    Bewusst NIEMALS gespeichert: Passwörter, Passwort-Hashes, Tokens,
+    Cookies, Authorization-Header. ``entered_identifier`` ist nur die
+    normalisierte E-Mail-/Benutzername-Eingabe, ``meta_json`` enthält
+    ausschließlich unkritische Zusatzinfos (z. B. Grund-Codes).
+
+    Diese Tabelle wird absichtlich NICHT in den Backup-Export aufgenommen:
+    das Forensik-Log soll einen (destruktiven) Restore überleben und nicht
+    von ihm überschrieben werden.
+    """
+
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, default="info")
+    success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    user_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Normalisierte Eingabe (E-Mail/Benutzername) — auch bei unbekanntem Konto.
+    entered_identifier: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # external_id des ausführenden Admins bei Admin-Aktionen.
+    actor_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    forwarded_for: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    http_method: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    origin: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    referer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Sicherer Grund-Code, z. B. invalid_password / inactive_user / unknown_user
+    # / rate_limited — nie die Fehlermeldung selbst.
+    reason_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class TelecomPassBookingRecord(Base):

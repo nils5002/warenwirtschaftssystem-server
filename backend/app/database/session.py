@@ -149,6 +149,18 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Telekompass: kumulierte Buchungsanzahl je Asset. NOT NULL DEFAULT 0 →
     # bestehende Geräte starten bei 0, kein Datenmigrationsbedarf.
     ("assets", "telecom_pass_booking_count_total", "INTEGER NOT NULL DEFAULT 0"),
+    # Security-Paket „supman": Login-Metadaten + persistente Brute-Force-Sperre
+    # + Freigabe-/Ablehnungs-Spur. Alle nullable bzw. DEFAULT 0 → Bestandsdaten
+    # und alte Backups verhalten sich unverändert.
+    ("users", "failed_login_count", "INTEGER NOT NULL DEFAULT 0"),
+    ("users", "locked_until", "DATETIME"),
+    ("users", "last_login_at", "DATETIME"),
+    ("users", "last_login_attempt_at", "DATETIME"),
+    ("users", "last_login_ip", "VARCHAR(64)"),
+    ("users", "last_login_user_agent", "VARCHAR(255)"),
+    ("users", "approved_at", "DATETIME"),
+    ("users", "approved_by", "VARCHAR(64)"),
+    ("users", "rejected_at", "DATETIME"),
 )
 
 

@@ -133,32 +133,51 @@ login_rate_limiter = RateLimiter(
     window_seconds=10 * 60,
     block_seconds=15 * 60,
 )
+# Zweiter, rein konto-basierter Login-Limiter (Schluessel = normalisierte
+# E-Mail OHNE IP). Greift auch dann, wenn ein Angreifer die IP-Komponente des
+# kombinierten Schluessels per rotierendem X-Forwarded-For umgeht. Bewusst
+# lockerer als das IP-Limit, damit ein Angreifer einen legitimen Nutzer nicht
+# leicht per Dauerfeuer aussperren kann (DoS auf ein Konto).
+account_login_rate_limiter = RateLimiter(
+    max_attempts=15,
+    window_seconds=15 * 60,
+    block_seconds=15 * 60,
+)
 # Registrierung: max. 5 Versuche pro IP in 30 Minuten, danach 30 Minuten Sperre.
 register_rate_limiter = RateLimiter(
     max_attempts=5,
     window_seconds=30 * 60,
     block_seconds=30 * 60,
 )
+# Mobile-Token-Refresh: großzügiges IP-Limit gegen Durchprobieren von
+# Refresh-Tokens (die Tokens selbst sind signiert und lang).
+refresh_rate_limiter = RateLimiter(
+    max_attempts=60,
+    window_seconds=10 * 60,
+    block_seconds=10 * 60,
+)
 
 
 def client_ip(request: Request) -> str:
-    """Ermittelt die Client-IP fuer das Rate-Limiting.
+    """Ermittelt die Client-IP fuer Rate-Limiting und Security-Logging.
 
-    Die App laeuft hinter einem Reverse-Proxy (Nginx Proxy Manager /
-    Cloudflare). ``request.client.host`` waere damit die Proxy-IP und alle
-    Nutzer landeten im selben Bucket. Deshalb wird der erste Eintrag aus
-    ``X-Forwarded-For`` (urspruenglicher Client) bevorzugt, mit Fallback auf
-    ``request.client.host``.
-
-    Hinweis: ``X-Forwarded-For`` ist grundsaetzlich faelschbar. Beim Login
-    enthaelt der Schluessel zusaetzlich die E-Mail, sodass das Limit pro Konto
-    auch bei rotierender IP greift.
+    ``X-Forwarded-For`` wird NUR ausgewertet, wenn ``TRUST_PROXY_HEADERS``
+    gesetzt ist (Betrieb hinter Cloudflare/NPM — dort ist der Header vom
+    Proxy gesetzt und ``request.client.host`` waere die Proxy-IP). Ohne
+    vertrauenswuerdigen Proxy ist der Header client-kontrolliert: ein
+    Angreifer koennte pro Request eine neue Fake-IP schicken und bekaeme
+    fuer jeden Rate-Limit-Schluessel mit IP-Anteil unbegrenzt neue Buckets.
+    Als zweites Netz existiert deshalb zusaetzlich der rein konto-basierte
+    ``account_login_rate_limiter`` (ohne IP im Schluessel).
     """
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        first = forwarded.split(",")[0].strip()
-        if first:
-            return first
+    from ..config.settings import get_settings
+
+    if get_settings().trust_proxy_headers:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
     client = request.client
     if client and client.host:
         return client.host

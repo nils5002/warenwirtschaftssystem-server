@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from ..database.session import get_db
 from ..routes.dependencies import AccessContext, get_access_context, require_permission
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
 from ..services import backup_service
+from ..services import security_event_service as sec
 
 router = APIRouter(prefix="/api/wms/backup", tags=["WMS Backup"])
 logger = logging.getLogger("cloud_web.backup")
@@ -19,6 +20,7 @@ logger = logging.getLogger("cloud_web.backup")
 
 @router.get("/export", response_model=WarehouseBackupPayload)
 def export_backup(
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> JSONResponse:
@@ -30,11 +32,18 @@ def export_backup(
     body = json.dumps(content, ensure_ascii=False, indent=2)
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
     logger.info("Backup-Export erzeugt (user_id=%s)", context.user_id)
+    # Audit: das Backup enthält u. a. Passwort-Hashes aller Benutzer — jeder
+    # Export soll nachvollziehbar sein (Security-Paket „supman").
+    sec.record_event(
+        db, sec.BACKUP_EXPORTED, request=request, success=True,
+        actor_id=context.user_id, severity="warning",
+    )
     return JSONResponse(content=json.loads(body), headers=headers)
 
 
 @router.post("/import", response_model=BackupImportResponse)
 async def import_backup(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
@@ -66,6 +75,13 @@ async def import_backup(
         result.imported.get("assets"),
         result.imported.get("users"),
         result.imported.get("plannings"),
+    )
+    # Audit: Import ist destruktiv (Wipe-and-Replace inkl. Benutzertabelle) —
+    # kritisches Ereignis, immer nachvollziehbar halten.
+    sec.record_event(
+        db, sec.BACKUP_IMPORTED, request=request, success=True,
+        actor_id=context.user_id, severity="critical",
+        meta={"fileName": file.filename, "users": result.imported.get("users")},
     )
     return result
 

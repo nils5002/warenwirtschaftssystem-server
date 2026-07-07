@@ -1,11 +1,19 @@
-import { KeyRound, Shield, Trash2, UserPlus, Users2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { KeyRound, Lock, LockOpen, Shield, ShieldAlert, Trash2, UserPlus, UserRoundCheck, UserRoundX, Users2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { StatusBadge } from '../components/StatusBadge';
 import { KpiCard } from '../components/KpiCard';
 import { PageHeader } from '../../ui';
-import type { ActivityItem, Asset, UserItem } from '../types';
+import {
+  fetchRegistrationSetting,
+  fetchUserSecurityInfo,
+  revokeUserSessions,
+  updateRegistrationSetting,
+} from '../../services/wmsApi';
+import type { ActivityItem, Asset, UserItem, UserSecurityInfo } from '../types';
+
+type UserStatusAction = 'approve' | 'reject' | 'lock' | 'unlock';
 
 type BulkDeleteResult = {
   deletedCount: number;
@@ -43,6 +51,7 @@ export function UsersPage({
   onInviteUser,
   onEditUser,
   onResetUserPassword,
+  onSetUserAccountStatus,
   onDeleteUser,
   onBulkDeleteUsers,
 }: {
@@ -72,6 +81,7 @@ export function UsersPage({
     userId: string,
     payload: { newPassword?: string; generateTemporary?: boolean },
   ) => Promise<{ temporaryPassword?: string | null }>;
+  onSetUserAccountStatus: (userId: string, action: UserStatusAction) => Promise<UserItem>;
   onDeleteUser: (id: string) => Promise<void>;
   onBulkDeleteUsers: (ids: string[]) => Promise<BulkDeleteResult>;
 }) {
@@ -85,12 +95,38 @@ export function UsersPage({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  // Sicherheitsdetails-Modal (on-demand geladen) + Statusaktionen + Registrierung.
+  const [securityUser, setSecurityUser] = useState<UserItem | null>(null);
+  const [securityInfo, setSecurityInfo] = useState<UserSecurityInfo | null>(null);
+  const [securityLoading, setSecurityLoading] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [revokingSessions, setRevokingSessions] = useState(false);
+  const [statusActionUserId, setStatusActionUserId] = useState<string | null>(null);
+  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
+  const [registrationSaving, setRegistrationSaving] = useState(false);
   const userInForm = form.id ? users.find((user) => user.id === form.id) : undefined;
 
   const adminCount = users.filter((user) => user.role === 'Admin').length;
   const activeAdminCount = users.filter((user) => user.role === 'Admin' && user.status === 'Aktiv').length;
   const activeCount = users.filter((user) => user.status === 'Aktiv').length;
+  const pendingCount = users.filter((user) => user.status === 'Wartet auf Freigabe').length;
   const loanedAssets = assets.filter((asset) => asset.status === 'Verliehen' && asset.assignedTo !== '-');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const setting = await fetchRegistrationSetting();
+        if (!cancelled) setRegistrationEnabled(setting.enabled);
+      } catch {
+        // Setting nicht ladbar (z. B. fehlendes Recht) — Schalter ausblenden.
+        if (!cancelled) setRegistrationEnabled(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const userIdsWithLoans = useMemo(() => {
     const result = new Set<string>();
@@ -384,6 +420,93 @@ export function UsersPage({
     }
   };
 
+  const performStatusAction = async (user: UserItem, action: UserStatusAction) => {
+    setActionError(null);
+    if (action === 'reject') {
+      const accepted = await confirm({
+        title: 'Registrierung ablehnen?',
+        message: `${user.name} wird abgelehnt und kann sich nicht anmelden. Der Eintrag bleibt zur Nachvollziehbarkeit erhalten.`,
+        confirmLabel: 'Ablehnen',
+        cancelLabel: 'Abbrechen',
+        tone: 'danger',
+      });
+      if (!accepted) return;
+    }
+    if (action === 'lock') {
+      const accepted = await confirm({
+        title: 'Benutzer sperren?',
+        message: `${user.name} wird gesperrt. Laufende Sitzungen werden sofort beendet.`,
+        confirmLabel: 'Sperren',
+        cancelLabel: 'Abbrechen',
+        tone: 'danger',
+      });
+      if (!accepted) return;
+    }
+    setStatusActionUserId(user.id);
+    try {
+      await onSetUserAccountStatus(user.id, action);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Aktion konnte nicht ausgeführt werden.');
+    } finally {
+      setStatusActionUserId(null);
+    }
+  };
+
+  const openSecurityDetails = async (user: UserItem) => {
+    setSecurityUser(user);
+    setSecurityInfo(null);
+    setSecurityError(null);
+    setSecurityLoading(true);
+    try {
+      setSecurityInfo(await fetchUserSecurityInfo(user.id));
+    } catch (error) {
+      setSecurityError(
+        error instanceof Error ? error.message : 'Sicherheitsdetails konnten nicht geladen werden.',
+      );
+    } finally {
+      setSecurityLoading(false);
+    }
+  };
+
+  const revokeSessions = async (user: UserItem) => {
+    const accepted = await confirm({
+      title: 'Sitzungen widerrufen?',
+      message: `Alle aktiven Anmeldungen von ${user.name} werden sofort beendet.`,
+      confirmLabel: 'Sitzungen widerrufen',
+      cancelLabel: 'Abbrechen',
+      tone: 'danger',
+    });
+    if (!accepted) return;
+    setRevokingSessions(true);
+    try {
+      await revokeUserSessions(user.id);
+      await alert({
+        title: 'Sitzungen widerrufen',
+        message: `${user.name} ist jetzt überall abgemeldet.`,
+      });
+    } catch (error) {
+      setSecurityError(error instanceof Error ? error.message : 'Sitzungen konnten nicht widerrufen werden.');
+    } finally {
+      setRevokingSessions(false);
+    }
+  };
+
+  const toggleRegistration = async () => {
+    if (registrationEnabled === null || registrationSaving) return;
+    setRegistrationSaving(true);
+    setActionError(null);
+    try {
+      const result = await updateRegistrationSetting(!registrationEnabled);
+      setRegistrationEnabled(result.enabled);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : 'Registrierungs-Einstellung konnte nicht gespeichert werden.',
+      );
+    } finally {
+      setRegistrationSaving(false);
+    }
+  };
+
   return (
     <section className="space-y-5">
       <PageHeader
@@ -391,10 +514,24 @@ export function UsersPage({
         title="Teamzugriff"
         subtitle="Klare Rollen für Admin, Projektmanager und Mitarbeiter mit nachvollziehbarem Aktivitätsstatus."
         actions={
-          <button className="btn-primary w-full sm:w-auto" onClick={openCreate}>
-            <UserPlus className="h-4 w-4" />
-            Benutzer anlegen
-          </button>
+          <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
+            {registrationEnabled !== null ? (
+              <LoadingButton
+                type="button"
+                className={`min-h-9 px-3 py-1.5 text-xs ${registrationEnabled ? 'btn-secondary border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'btn-secondary'}`}
+                isLoading={registrationSaving}
+                loadingText="Speichert ..."
+                onClick={() => void toggleRegistration()}
+                title="Steuert, ob sich neue Benutzer über die Login-Seite registrieren können. Neue Konten warten immer auf Admin-Freigabe."
+              >
+                {registrationEnabled ? 'Registrierung: An' : 'Registrierung: Aus'}
+              </LoadingButton>
+            ) : null}
+            <button className="btn-primary w-full sm:w-auto" onClick={openCreate}>
+              <UserPlus className="h-4 w-4" />
+              Benutzer anlegen
+            </button>
+          </div>
         }
       />
 
@@ -402,10 +539,26 @@ export function UsersPage({
         <KpiCard title="Gesamt" value={String(users.length)} trend="Alle registrierten Benutzer" tone="neutral" icon={Users2} />
         <KpiCard title="Aktive Nutzer" value={String(activeCount)} trend="Aktuell freigeschaltet" tone="positive" icon={Shield} />
         <KpiCard title="Admins" value={String(adminCount)} trend={`${activeAdminCount} aktiv`} tone="neutral" icon={KeyRound} />
-        <KpiCard title="Ausgeliehene Geräte" value={String(loanedAssets.length)} trend="Geräte mit Benutzerzuordnung" tone="warning" icon={Trash2} />
+        <KpiCard
+          title="Wartet auf Freigabe"
+          value={String(pendingCount)}
+          trend={pendingCount > 0 ? 'Bitte prüfen und freigeben/ablehnen' : 'Keine offenen Registrierungen'}
+          tone={pendingCount > 0 ? 'warning' : 'neutral'}
+          icon={UserRoundCheck}
+        />
       </div>
 
       <article className="surface-card animate-fade-up">
+        {pendingCount > 0 ? (
+          <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {pendingCount === 1
+                ? 'Ein Benutzer wartet auf Freigabe. Bitte prüfen: Freigeben oder Ablehnen.'
+                : `${pendingCount} Benutzer warten auf Freigabe. Bitte prüfen: Freigeben oder Ablehnen.`}
+            </span>
+          </div>
+        ) : null}
         {actionError ? (
           <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             {actionError}
@@ -461,7 +614,7 @@ export function UsersPage({
                 <th className="px-3 py-2">E-Mail</th>
                 <th className="px-3 py-2">Rolle</th>
                 <th className="px-3 py-2">Abteilung / Standort</th>
-                <th className="px-3 py-2">Letzte Aktivität</th>
+                <th className="px-3 py-2">Letzter Login</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">Aktion</th>
               </tr>
@@ -499,12 +652,77 @@ export function UsersPage({
                     </span>
                   </td>
                   <td className="px-3 py-3 text-xs text-slate-600">{(user.department || '-') + ' / ' + (user.location || '-')}</td>
-                  <td className="px-3 py-3">{user.lastActive}</td>
+                  <td className="px-3 py-3" title={`Letzte Aktivität: ${user.lastActive}`}>
+                    {user.lastLoginAt || user.lastActive}
+                  </td>
                   <td className="px-3 py-3">
                     <StatusBadge value={user.status} />
                   </td>
                   <td className="rounded-r-xl px-3 py-3 text-right">
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                      {user.status === 'Wartet auf Freigabe' ? (
+                        <>
+                          <LoadingButton
+                            type="button"
+                            className="btn-secondary border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100"
+                            onClick={() => void performStatusAction(user, 'approve')}
+                            isLoading={statusActionUserId === user.id}
+                            loadingText="..."
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <UserRoundCheck className="h-3.5 w-3.5" />
+                              Freigeben
+                            </span>
+                          </LoadingButton>
+                          <LoadingButton
+                            type="button"
+                            className="btn-secondary border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100"
+                            onClick={() => void performStatusAction(user, 'reject')}
+                            isLoading={statusActionUserId === user.id}
+                            loadingText="..."
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <UserRoundX className="h-3.5 w-3.5" />
+                              Ablehnen
+                            </span>
+                          </LoadingButton>
+                        </>
+                      ) : user.status === 'Gesperrt' ? (
+                        <LoadingButton
+                          type="button"
+                          className="btn-secondary px-2.5 py-1.5 text-xs"
+                          onClick={() => void performStatusAction(user, 'unlock')}
+                          isLoading={statusActionUserId === user.id}
+                          loadingText="..."
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <LockOpen className="h-3.5 w-3.5" />
+                            Entsperren
+                          </span>
+                        </LoadingButton>
+                      ) : user.status === 'Aktiv' && user.id !== currentUserId ? (
+                        <LoadingButton
+                          type="button"
+                          className="btn-secondary px-2.5 py-1.5 text-xs"
+                          onClick={() => void performStatusAction(user, 'lock')}
+                          isLoading={statusActionUserId === user.id}
+                          loadingText="..."
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <Lock className="h-3.5 w-3.5" />
+                            Sperren
+                          </span>
+                        </LoadingButton>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="btn-secondary px-2 py-1.5 text-xs"
+                        title="Sicherheitsdetails anzeigen"
+                        aria-label={`Sicherheitsdetails von ${user.name}`}
+                        onClick={() => void openSecurityDetails(user)}
+                      >
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                      </button>
                       <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
                         Bearbeiten
                       </button>
@@ -566,10 +784,54 @@ export function UsersPage({
                 {user.role}
               </div>
               <p className="mt-2 text-xs text-slate-500">{(user.department || '-') + ' / ' + (user.location || '-')}</p>
-              <p className="mt-2 text-xs text-slate-500">Letzte Aktivität: {user.lastActive}</p>
-              <button type="button" className="btn-secondary mt-3 px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
-                Bearbeiten
-              </button>
+              <p className="mt-2 text-xs text-slate-500">Letzter Login: {user.lastLoginAt || user.lastActive}</p>
+              {user.status === 'Wartet auf Freigabe' ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <LoadingButton
+                    type="button"
+                    className="btn-secondary border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs text-emerald-700 hover:bg-emerald-100"
+                    onClick={() => void performStatusAction(user, 'approve')}
+                    isLoading={statusActionUserId === user.id}
+                    loadingText="..."
+                  >
+                    Freigeben
+                  </LoadingButton>
+                  <LoadingButton
+                    type="button"
+                    className="btn-secondary border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100"
+                    onClick={() => void performStatusAction(user, 'reject')}
+                    isLoading={statusActionUserId === user.id}
+                    loadingText="..."
+                  >
+                    Ablehnen
+                  </LoadingButton>
+                </div>
+              ) : user.status === 'Gesperrt' ? (
+                <LoadingButton
+                  type="button"
+                  className="btn-secondary mt-3 px-2.5 py-1.5 text-xs"
+                  onClick={() => void performStatusAction(user, 'unlock')}
+                  isLoading={statusActionUserId === user.id}
+                  loadingText="..."
+                >
+                  Entsperren
+                </LoadingButton>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary px-2.5 py-1.5 text-xs"
+                  onClick={() => void openSecurityDetails(user)}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                    Sicherheitsdetails
+                  </span>
+                </button>
+                <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
+                  Bearbeiten
+                </button>
+              </div>
               <LoadingButton
                 type="button"
                 className="btn-secondary mt-2 border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -710,6 +972,9 @@ export function UsersPage({
                     >
                       <option value="Aktiv">Aktiv</option>
                       <option value="Inaktiv">Inaktiv</option>
+                      <option value="Wartet auf Freigabe">Wartet auf Freigabe</option>
+                      <option value="Gesperrt">Gesperrt</option>
+                      <option value="Abgelehnt">Abgelehnt</option>
                     </select>
                   </label>
                 </div>
@@ -739,6 +1004,31 @@ export function UsersPage({
             </div>
 
             <div className="sticky bottom-0 mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pt-3">
+              {form.id && userInForm && userInForm.id !== currentUserId ? (
+                userInForm.status === 'Gesperrt' ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => void performStatusAction(userInForm, 'unlock')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <LockOpen className="h-4 w-4" />
+                      Entsperren
+                    </span>
+                  </button>
+                ) : userInForm.status === 'Aktiv' ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => void performStatusAction(userInForm, 'lock')}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <Lock className="h-4 w-4" />
+                      Sperren
+                    </span>
+                  </button>
+                ) : null
+              ) : null}
               {form.id && userInForm ? (
                 <button
                   type="button"
@@ -759,6 +1049,89 @@ export function UsersPage({
               <LoadingButton type="button" className="btn-primary" onClick={() => void submit()} isLoading={saving} loadingText="Speichern ...">
                 Speichern
               </LoadingButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {securityUser ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/55 p-3 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setSecurityUser(null)}
+        >
+          <div
+            className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Sicherheitsdetails</p>
+                <h3 className="text-lg font-semibold text-slate-900">{securityUser.name}</h3>
+                <div className="mt-1">
+                  <StatusBadge value={securityUser.status} />
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost px-2 py-1 text-xs"
+                onClick={() => setSecurityUser(null)}
+                aria-label="Schließen"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {securityError ? (
+              <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                {securityError}
+              </div>
+            ) : null}
+            {securityLoading ? (
+              <InlineLoadingState message="Sicherheitsdetails werden geladen ..." />
+            ) : securityInfo ? (
+              <dl className="divide-y divide-slate-100 text-sm">
+                {[
+                  ['Registriert am', securityInfo.createdAt],
+                  ['Letzter Login', securityInfo.lastLoginAt],
+                  ['Letzter Login-Versuch', securityInfo.lastLoginAttemptAt],
+                  ['Letzte IP (gekürzt)', securityInfo.lastLoginIp],
+                  ['Browser', securityInfo.lastLoginUserAgent],
+                  ['Fehlversuche in Folge', String(securityInfo.failedLoginCount)],
+                  ['Temporär gesperrt bis', securityInfo.lockedUntil],
+                  ['Freigegeben am', securityInfo.approvedAt],
+                  ['Freigegeben von', securityInfo.approvedBy],
+                  ['Abgelehnt am', securityInfo.rejectedAt],
+                ]
+                  .filter(([, value]) => Boolean(value))
+                  .map(([label, value]) => (
+                    <div key={label as string} className="grid grid-cols-[10rem_1fr] gap-2 py-1.5">
+                      <dt className="text-slate-500">{label}</dt>
+                      <dd className="break-all text-slate-800">{value}</dd>
+                    </div>
+                  ))}
+              </dl>
+            ) : null}
+            {securityInfo && !securityInfo.lastLoginAt ? (
+              <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                Dieser Benutzer hat sich noch nie angemeldet.
+              </p>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-3">
+              <LoadingButton
+                type="button"
+                className="btn-secondary border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                isLoading={revokingSessions}
+                loadingText="Widerruft ..."
+                onClick={() => void revokeSessions(securityUser)}
+              >
+                Sitzungen widerrufen
+              </LoadingButton>
+              <button type="button" className="btn-secondary" onClick={() => setSecurityUser(null)}>
+                Schließen
+              </button>
             </div>
           </div>
         </div>

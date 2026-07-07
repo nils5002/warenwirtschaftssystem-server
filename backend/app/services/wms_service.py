@@ -293,6 +293,26 @@ class WmsService:
         return wms_repository.delete_user(db, user_id, actor_user_id=actor_user_id)
 
     @staticmethod
+    def approve_user(db: Session, user_id: str, actor_user_id: str | None = None) -> UserItem:
+        return wms_repository.approve_user(db, user_id, actor_user_id=actor_user_id)
+
+    @staticmethod
+    def reject_user(db: Session, user_id: str, actor_user_id: str | None = None) -> UserItem:
+        return wms_repository.reject_user(db, user_id, actor_user_id=actor_user_id)
+
+    @staticmethod
+    def lock_user(db: Session, user_id: str, actor_user_id: str | None = None) -> UserItem:
+        return wms_repository.lock_user(db, user_id, actor_user_id=actor_user_id)
+
+    @staticmethod
+    def unlock_user(db: Session, user_id: str, actor_user_id: str | None = None) -> UserItem:
+        return wms_repository.unlock_user(db, user_id, actor_user_id=actor_user_id)
+
+    @staticmethod
+    def get_user_security_info(db: Session, user_id: str):
+        return wms_repository.get_user_security_info(db, user_id)
+
+    @staticmethod
     def bulk_delete_users(
         db: Session,
         user_ids: list[str],

@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     openai_base_url: str | None = None
     auth_token_secret: str = "change-me-in-production"
     allow_legacy_header_auth: bool = False
+    # X-Forwarded-For nur auswerten, wenn die App nachweislich hinter einem
+    # vertrauenswürdigen Reverse-Proxy (Cloudflare/NPM) läuft. Default aus:
+    # ohne Proxy ist der Header client-kontrolliert und würde Rate-Limits
+    # (rotierende Fake-IPs) und Security-Logs verfälschen.
+    trust_proxy_headers: bool = False
+    # Aufbewahrung der Security-Events in Tagen (personenbezogene Daten wie
+    # IP/User-Agent bewusst zeitlich begrenzt). Cleanup läuft beim App-Start.
+    security_event_retention_days: int = 90
     initial_admin_email: str | None = None
     initial_admin_password: str | None = None
     initial_admin_name: str | None = None

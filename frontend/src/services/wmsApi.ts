@@ -10,7 +10,10 @@ import type {
   LocationItem,
   MaintenanceItem,
   ReservationItem,
+  SecurityEventItem,
+  SecuritySummary,
   UserItem,
+  UserSecurityInfo,
 } from '../asset-ui/types';
 
 const rawBase = (import.meta.env.VITE_API_BASE as string | undefined)?.trim();
@@ -71,6 +74,9 @@ export type AuthRegisterPayload = {
   name: string;
   email: string;
   password: string;
+  // Honeypot-Feld (für Menschen unsichtbar, bleibt leer). Füllt ein Bot es
+  // aus, verwirft das Backend die Registrierung still.
+  website?: string;
 };
 
 export type AuthRegisterResponse = {
@@ -1151,6 +1157,92 @@ export type BulkUserDeleteResponse = {
 
 export function deleteUsersBulk(userIds: string[]): Promise<BulkUserDeleteResponse> {
   return postJson<BulkUserDeleteResponse>('/api/wms/users/bulk-delete', { userIds });
+}
+
+// --- Sicherheit & Protokolle (Security-Paket „supman") ----------------------
+
+export function approveUser(userId: string): Promise<UserItem> {
+  return postJson<UserItem>(`/api/wms/users/${userId}/approve`, {});
+}
+
+export function rejectUser(userId: string): Promise<UserItem> {
+  return postJson<UserItem>(`/api/wms/users/${userId}/reject`, {});
+}
+
+export function lockUser(userId: string): Promise<UserItem> {
+  return postJson<UserItem>(`/api/wms/users/${userId}/lock`, {});
+}
+
+export function unlockUser(userId: string): Promise<UserItem> {
+  return postJson<UserItem>(`/api/wms/users/${userId}/unlock`, {});
+}
+
+export function revokeUserSessions(userId: string): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/api/wms/users/${userId}/revoke-sessions`, {});
+}
+
+export async function fetchUserSecurityInfo(userId: string): Promise<UserSecurityInfo> {
+  const response = await apiFetch(`/api/wms/users/${userId}/security`);
+  return parseResponse<UserSecurityInfo>(response);
+}
+
+export type SecurityEventFilters = {
+  type?: string;
+  user?: string;
+  ip?: string;
+  severity?: string;
+  success?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function securityEventQuery(filters: SecurityEventFilters): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+      params.set(key, `${value}`);
+    }
+  }
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
+export async function listSecurityEvents(
+  filters: SecurityEventFilters = {},
+): Promise<{ items: SecurityEventItem[]; total: number }> {
+  const response = await apiFetch(`/api/wms/admin/security-events${securityEventQuery(filters)}`);
+  return parseResponse<{ items: SecurityEventItem[]; total: number }>(response);
+}
+
+export async function fetchSecuritySummary(since?: string): Promise<SecuritySummary> {
+  const query = since ? `?since=${encodeURIComponent(since)}` : '';
+  const response = await apiFetch(`/api/wms/admin/security-events/summary${query}`);
+  return parseResponse<SecuritySummary>(response);
+}
+
+export async function downloadSecurityEventsCsv(
+  filters: SecurityEventFilters = {},
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await apiFetch(`/api/wms/admin/security-events/export${securityEventQuery(filters)}`);
+  if (!response.ok) {
+    throw new WmsApiError(response.status, '', `WMS API Fehler (${response.status})`);
+  }
+  const contentDisposition = response.headers.get('content-disposition') || '';
+  const fileNameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(contentDisposition);
+  const fallback = `sicherheitsprotokoll-${new Date().toISOString().slice(0, 10)}.csv`;
+  const fileName = decodeURIComponent(fileNameMatch?.[1] || fallback);
+  return { blob: await response.blob(), fileName };
+}
+
+export async function fetchRegistrationSetting(): Promise<{ enabled: boolean }> {
+  const response = await apiFetch('/api/wms/admin/settings/registration');
+  return parseResponse<{ enabled: boolean }>(response);
+}
+
+export function updateRegistrationSetting(enabled: boolean): Promise<{ enabled: boolean }> {
+  return putJson<{ enabled: boolean }>('/api/wms/admin/settings/registration', { enabled });
 }
 
 export function upsertActivity(activity: ActivityItem): Promise<ActivityItem> {

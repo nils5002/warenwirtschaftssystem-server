@@ -28,6 +28,7 @@ from ..database.models import (
 )
 from ..domain.categories import normalize_category
 from . import category_repository, planning_repository
+from ..schemas.security import UserSecurityInfo
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
@@ -45,7 +46,7 @@ from ..services.auth_service import (
     normalize_role_for_db,
     role_to_app_role,
 )
-from ..services import product_image_service
+from ..services import product_image_service, security_event_service
 
 logger = logging.getLogger("cloud_web.wms")
 
@@ -104,6 +105,12 @@ def _normalize_user_status(value: str | None) -> str:
         return "Aktiv"
     if raw in {"wartet auf freigabe", "pending", "freigabe ausstehend"}:
         return "Wartet auf Freigabe"
+    # Security-Paket „supman": eigene Endzustände statt Kollaps auf "Inaktiv" —
+    # wichtig auch für den Backup-Roundtrip (Status übersteht Export/Import).
+    if raw in {"abgelehnt", "rejected"}:
+        return "Abgelehnt"
+    if raw in {"gesperrt", "locked"}:
+        return "Gesperrt"
     return "Inaktiv"
 
 
@@ -255,8 +262,11 @@ def _user_to_schema(record: UserRecord) -> UserItem:
     normalized_status = _normalize_user_status(record.status)
     if record.is_active:
         status = "Aktiv"
-    elif normalized_status == "Wartet auf Freigabe":
-        status = "Wartet auf Freigabe"
+    elif normalized_status in {"Wartet auf Freigabe", "Abgelehnt", "Gesperrt"}:
+        # Nicht-aktive Sonderzustände sichtbar lassen (statt Kollaps auf
+        # "Inaktiv") — der supman-Fall soll in der UI als das erkennbar
+        # sein, was er ist.
+        status = normalized_status
     else:
         status = "Inaktiv"
     return UserItem(
@@ -267,6 +277,7 @@ def _user_to_schema(record: UserRecord) -> UserItem:
         lastActive=record.last_active,
         status=status,
         createdAt=record.created_at.strftime("%d.%m.%Y %H:%M") if record.created_at else None,
+        lastLoginAt=record.last_login_at.strftime("%d.%m.%Y %H:%M") if record.last_login_at else None,
         department=record.department,
         location=record.location,
     )
@@ -1101,6 +1112,89 @@ def reset_user_password(
     record.token_version = int(record.token_version or 0) + 1
     db.commit()
     return temporary_password
+
+
+def _get_user_or_404(db: Session, external_id: str) -> UserRecord:
+    record = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden.")
+    return record
+
+
+def approve_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> UserItem:
+    """Freigeben: Status auf Aktiv + Freigabe-Spur (wer/wann)."""
+    record = _get_user_or_404(db, external_id)
+    item = update_user(db, external_id, status="Aktiv", actor_user_id=actor_user_id)
+    record.approved_at = datetime.now(UTC)
+    record.approved_by = (actor_user_id or "").strip() or None
+    record.rejected_at = None
+    db.commit()
+    return item
+
+
+def reject_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> UserItem:
+    """Ablehnen: nur aus "Wartet auf Freigabe" heraus erlaubt (409 sonst),
+    damit die Aktion nicht als Abkürzung zum Stilllegen aktiver Konten dient.
+    Bewusst kein Hard-Delete: Der Datensatz bleibt als Beleg erhalten und
+    eine erneute Registrierung derselben E-Mail fällt als Duplikat auf.
+    """
+    record = _get_user_or_404(db, external_id)
+    if _normalize_user_status(record.status) != "Wartet auf Freigabe":
+        raise HTTPException(
+            status_code=409,
+            detail="Nur Benutzer mit Status 'Wartet auf Freigabe' können abgelehnt werden.",
+        )
+    item = update_user(db, external_id, status="Abgelehnt", actor_user_id=actor_user_id)
+    record.rejected_at = datetime.now(UTC)
+    db.commit()
+    return item
+
+
+def lock_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> UserItem:
+    """Administratives Sperren (Status "Gesperrt", bis zum manuellen Entsperren).
+
+    ``update_user`` setzt is_active=False und bumpt die token_version —
+    laufende Sitzungen des Benutzers sind damit sofort ungültig.
+    """
+    _get_user_or_404(db, external_id)
+    return update_user(db, external_id, status="Gesperrt", actor_user_id=actor_user_id)
+
+
+def unlock_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> UserItem:
+    """Entsperren: zurück auf Aktiv + temporäre Brute-Force-Sperre aufheben."""
+    record = _get_user_or_404(db, external_id)
+    item = update_user(db, external_id, status="Aktiv", actor_user_id=actor_user_id)
+    record.failed_login_count = 0
+    record.locked_until = None
+    db.commit()
+    return item
+
+
+def get_user_security_info(db: Session, external_id: str) -> UserSecurityInfo:
+    """Sicherheitsdetails eines Benutzers für das Admin-Modal.
+
+    IP und User-Agent werden nur gekürzt ausgeliefert (Datenschutz) — die
+    vollständigen Werte bleiben in der DB.
+    """
+    record = _get_user_or_404(db, external_id)
+
+    def _fmt(value):
+        return value.strftime("%d.%m.%Y %H:%M") if value else None
+
+    return UserSecurityInfo(
+        userId=record.external_id,
+        status=_user_to_schema(record).status,
+        createdAt=_fmt(record.created_at),
+        lastLoginAt=_fmt(record.last_login_at),
+        lastLoginAttemptAt=_fmt(record.last_login_attempt_at),
+        lastLoginIp=security_event_service.shorten_ip(record.last_login_ip),
+        lastLoginUserAgent=security_event_service.shorten_user_agent(record.last_login_user_agent),
+        failedLoginCount=int(record.failed_login_count or 0),
+        lockedUntil=_fmt(record.locked_until),
+        approvedAt=_fmt(record.approved_at),
+        approvedBy=record.approved_by,
+        rejectedAt=_fmt(record.rejected_at),
+    )
 
 
 def get_overview(db: Session) -> WmsOverviewResponse:

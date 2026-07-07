@@ -115,6 +115,16 @@ def require_permission(context: AccessContext, db: Session, permission_key: str)
 
     granted = role_permission_repository.permissions_for_role(db, context.role)
     if permission_key not in granted:
+        # Audit (Security-Paket „supman"): abgelehnte Admin-/Rechte-Zugriffe
+        # nachvollziehbar machen. Ohne Request-Objekt hier — Benutzer, Rolle
+        # und angefragtes Recht reichen für die Bewertung.
+        from ..services import security_event_service as sec
+
+        sec.record_event(
+            db, sec.ADMIN_ACTION_DENIED, severity="warning",
+            user_id=context.user_id, reason="missing_permission",
+            meta={"permission": permission_key, "role": context.role},
+        )
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Aktion.")
 
 

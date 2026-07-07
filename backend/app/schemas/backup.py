@@ -29,6 +29,18 @@ class BackupUser(BaseModel):
     department: str | None = None
     location: str | None = None
     passwordHash: str | None = None
+    # Security-Paket „supman": Login-/Freigabe-Metadaten. Alle optional mit
+    # Defaults, damit ALTE Backups ohne diese Felder unverändert importierbar
+    # bleiben und neue Backups den Zustand über einen Restore retten.
+    failedLoginCount: int = 0
+    lockedUntil: datetime | None = None
+    lastLoginAt: datetime | None = None
+    lastLoginAttemptAt: datetime | None = None
+    lastLoginIp: str | None = None
+    lastLoginUserAgent: str | None = None
+    approvedAt: datetime | None = None
+    approvedBy: str | None = None
+    rejectedAt: datetime | None = None
 
 
 class BackupAsset(BaseModel):
