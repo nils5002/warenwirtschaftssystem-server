@@ -35,6 +35,9 @@ class AuthRegisterRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=120)
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
+    # Honeypot: unsichtbares Formularfeld. Menschen lassen es leer — füllt ein
+    # Bot es aus, wird die Registrierung still verworfen (generische Antwort).
+    website: str | None = Field(default=None, max_length=255)
 
 
 class AuthRegisterResponse(BaseModel):

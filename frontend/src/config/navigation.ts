@@ -10,6 +10,7 @@ import {
   ScanLine,
   Printer,
   Shapes,
+  ShieldAlert,
   ShieldCheck,
   Signal,
   Sparkles,
@@ -124,6 +125,13 @@ export const navigation: NavItem[] = [
     icon: KeyRound,
     group: 'administration',
     hint: 'Berechtigungen pflegen',
+  },
+  {
+    key: 'securityLogs',
+    label: 'Sicherheit & Protokolle',
+    icon: ShieldAlert,
+    group: 'administration',
+    hint: 'Anmeldungen & Sicherheitsereignisse',
   },
   {
     key: 'telecomPass',

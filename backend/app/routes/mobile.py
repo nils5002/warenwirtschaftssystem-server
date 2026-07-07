@@ -48,9 +48,11 @@ from ..schemas.wms import (
     QrGroupCheckinPayload,
     QrGroupCheckoutPayload,
 )
+from ..services import security_event_service as sec
 from ..services.auth_service import (
     AUTH_REFRESH_TOKEN_EXPIRY_SECONDS,
     AUTH_TOKEN_EXPIRY_SECONDS,
+    AccountTemporarilyLockedError,
     authenticate_refresh_token,
     authenticate_token,
     authenticate_user,
@@ -60,7 +62,13 @@ from ..services.auth_service import (
 )
 from ..services.label_audit_service import resolve_asset_by_scan
 from ..services.planning_service import PlanningService
-from ..services.rate_limiter import client_ip, login_rate_limiter, too_many_requests
+from ..services.rate_limiter import (
+    account_login_rate_limiter,
+    client_ip,
+    login_rate_limiter,
+    refresh_rate_limiter,
+    too_many_requests,
+)
 from ..services.role_service import RoleService
 from ..services.wms_service import WmsService
 from .dependencies import (
@@ -154,17 +162,50 @@ def mobile_login(
     """Login für die App: gibt Access- + Refresh-Token zurück (kein Cookie)."""
     email = payload.email.strip().lower()
     rate_key = f"{client_ip(request)}|{email}"
+    account_key = f"acct|{email}"
     blocked = login_rate_limiter.is_blocked(rate_key)
-    if blocked.limited:
-        raise too_many_requests(blocked.retry_after)
+    account_blocked = account_login_rate_limiter.is_blocked(account_key)
+    if blocked.limited or account_blocked.limited:
+        sec.record_event(
+            db, sec.LOGIN_RATE_LIMITED, request=request, severity="warning",
+            identifier=email, reason="rate_limited",
+        )
+        raise too_many_requests(max(blocked.retry_after, account_blocked.retry_after))
     try:
         user, token_version = authenticate_user(db, payload.email, payload.password)
+    except AccountTemporarilyLockedError as exc:
+        sec.record_event(
+            db, sec.LOGIN_BLOCKED_LOCKED, request=request, severity="warning",
+            identifier=email, reason="locked",
+        )
+        if exc.just_locked:
+            sec.record_event(
+                db, sec.SUSPICIOUS_ACTIVITY_DETECTED, request=request, severity="critical",
+                identifier=email, reason="failed_login_threshold",
+            )
+        raise
     except HTTPException as exc:
         # Nur echte Fehlversuche (401) zaehlen — analog zum Web-Login.
         if exc.status_code == 401:
             login_rate_limiter.record_attempt(rate_key)
+            account_login_rate_limiter.record_attempt(account_key)
+            sec.record_event(
+                db, sec.LOGIN_FAILED, request=request, severity="warning",
+                identifier=email, reason="invalid_credentials",
+            )
+        elif exc.status_code == 403:
+            sec.record_event(
+                db, sec.LOGIN_BLOCKED_INACTIVE, request=request, severity="warning",
+                identifier=email, reason="inactive_user",
+            )
         raise
     login_rate_limiter.reset(rate_key)
+    account_login_rate_limiter.reset(account_key)
+    sec.note_login_success(db, user.userId, request)
+    sec.record_event(
+        db, sec.LOGIN_SUCCESS, request=request, success=True,
+        user_id=user.userId, identifier=email,
+    )
     access = issue_access_token(user, token_version=token_version, expires_in=AUTH_TOKEN_EXPIRY_SECONDS)
     refresh = issue_refresh_token(user, token_version=token_version)
     return MobileTokenResponse(
@@ -179,10 +220,21 @@ def mobile_login(
 @router.post("/auth/refresh", response_model=MobileTokenResponse)
 def mobile_refresh(
     payload: MobileRefreshRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> MobileTokenResponse:
     """Erneuert den Access-Token gegen einen gültigen Refresh-Token (Rotation)."""
-    user, token_version = authenticate_refresh_token(db, payload.refreshToken)
+    # Grobes IP-Limit gegen Durchprobieren von Refresh-Tokens (die Tokens sind
+    # signiert und lang — das Limit ist nur ein zusätzliches Netz).
+    refresh_key = f"refresh:{client_ip(request)}"
+    blocked = refresh_rate_limiter.is_blocked(refresh_key)
+    if blocked.limited:
+        raise too_many_requests(blocked.retry_after)
+    try:
+        user, token_version = authenticate_refresh_token(db, payload.refreshToken)
+    except HTTPException:
+        refresh_rate_limiter.record_attempt(refresh_key)
+        raise
     access = issue_access_token(user, token_version=token_version, expires_in=AUTH_TOKEN_EXPIRY_SECONDS)
     # Rotation: bei jedem Refresh wird ein frischer Refresh-Token ausgegeben.
     refresh = issue_refresh_token(user, token_version=token_version)
@@ -207,12 +259,16 @@ def mobile_me(request: Request, db: Session = Depends(get_db)) -> AuthUserInfo:
 
 @router.post("/auth/logout", response_model=MobileLogoutResponse)
 def mobile_logout(
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> MobileLogoutResponse:
     """Widerruft alle Tokens des Nutzers (Access + Refresh) über token_version."""
     if context.user_id:
         invalidate_sessions(db, context.user_id)
+        sec.record_event(
+            db, sec.LOGOUT, request=request, success=True, user_id=context.user_id,
+        )
     return MobileLogoutResponse(ok=True)
 
 

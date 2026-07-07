@@ -243,6 +243,17 @@ def create_app() -> FastAPI:
                 # einer kontrollierten 401/403 vom Login-Endpoint. Fehler
                 # wird ausführlich geloggt; Operator kann nachsteuern.
                 logger.exception("Passwort-Initialisierung fehlgeschlagen — App startet trotzdem")
+        # Security-Event-Retention: personenbezogene Daten (IP/User-Agent)
+        # zeitlich begrenzen. Einmalig beim Start — kein eigener Scheduler.
+        with SessionLocal() as db:
+            try:
+                from .services import security_event_service
+
+                security_event_service.cleanup_old_events(
+                    db, settings.security_event_retention_days
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Security-Event-Cleanup fehlgeschlagen — App startet trotzdem")
 
     def _recache_product_images_once() -> None:
         # Lazy-Import vermeidet Import-Zyklen beim Modul-Load.

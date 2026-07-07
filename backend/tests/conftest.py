@@ -15,8 +15,15 @@ os.environ.setdefault("OVERVIEW_CACHE_TTL_SECONDS", "0")
 # fuer Datensaetze mit Bild-URL anstossen.
 os.environ.setdefault("PRODUCT_IMAGE_RECACHE_ON_STARTUP", "0")
 
+# X-Forwarded-For in Tests als vertrauenswuerdig behandeln: die Rate-Limit-
+# Tests isolieren sich gegenseitig ueber eindeutige XFF-Werte (simulierter
+# Proxy). Das Default-Verhalten (Header ignorieren) wird gezielt in
+# test_security_events.py geprueft.
+os.environ.setdefault("TRUST_PROXY_HEADERS", "1")
+
 from app.database.session import SessionLocal, init_db
 from app.repositories import category_repository, role_permission_repository
+from app.services import security_event_service
 from app.services.auth_service import ensure_initial_admin, ensure_user_passwords
 
 
@@ -39,3 +46,32 @@ def _bootstrap_database() -> None:
             ensure_user_passwords(db)
         except Exception:
             db.rollback()
+        # Registrierung ist produktiv per Default AUS (Security-Paket
+        # "supman"). Die bestehenden Auth-/Rate-Limit-Tests setzen einen
+        # offenen Registrierungs-Endpunkt voraus — daher hier einschalten.
+        # Das Default-AUS-Verhalten prueft test_security_events.py explizit.
+        security_event_service.set_registration_enabled(db, True)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_rate_limiters():
+    """Rate-Limiter-State pro Test zuruecksetzen.
+
+    Ohne XFF-Header teilen sich alle TestClient-Requests die IP "testclient" —
+    Registrierungs-/Login-Versuche verschiedener Tests wuerden sonst im selben
+    Bucket landen und die Suite reihenfolgeabhaengig machen. Die Rate-Limit-
+    Tests selbst arbeiten innerhalb EINES Tests und bleiben aussagekraeftig.
+    """
+    from app.services.rate_limiter import (
+        account_login_rate_limiter,
+        login_rate_limiter,
+        refresh_rate_limiter,
+        register_rate_limiter,
+    )
+
+    limiters = (login_rate_limiter, account_login_rate_limiter, register_rate_limiter, refresh_rate_limiter)
+    for limiter in limiters:
+        limiter.reset_all()
+    yield
+    for limiter in limiters:
+        limiter.reset_all()

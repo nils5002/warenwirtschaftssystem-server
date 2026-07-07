@@ -7,6 +7,7 @@ import hmac
 import importlib
 import json
 import logging
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Optional
@@ -466,10 +467,29 @@ def ensure_initial_admin(db: Session) -> None:
     logger.info("Initialer Admin aus ENV angelegt: %s", email)
 
 
-def register_user(db: Session, name: str, email: str, password: str) -> None:
+# Pragmatische E-Mail-Formatprüfung (bewusst keine RFC-Vollvalidierung und
+# keine neue Dependency wie email-validator): blockt offensichtlichen Unsinn
+# wie den Vorfall-Benutzernamen "supman" ohne @/Domain. Gilt NUR für die
+# Selbst-Registrierung — Login und Admin-Pflege bleiben unangetastet, damit
+# Bestandskonten und alte Backups weiter funktionieren.
+_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]{2,}$")
+
+
+def is_valid_email(value: str) -> bool:
+    return bool(_EMAIL_PATTERN.match(value.strip().lower()))
+
+
+def register_user(db: Session, name: str, email: str, password: str) -> str:
+    """Legt ein wartendes Konto an. Liefert das Ergebnis als Code zurück
+    ("created" | "duplicate"), damit die Route das passende Security-Event
+    schreiben kann — die HTTP-Antwort bleibt in beiden Fällen identisch
+    (Anti-Enumeration).
+    """
     normalized_email = email.strip().lower()
     if not normalized_email:
         raise HTTPException(status_code=400, detail="E-Mail ist erforderlich.")
+    if not is_valid_email(normalized_email):
+        raise HTTPException(status_code=400, detail="Bitte eine gültige E-Mail-Adresse angeben.")
     if not name.strip():
         raise HTTPException(status_code=400, detail="Name ist erforderlich.")
     if not password.strip():
@@ -481,7 +501,7 @@ def register_user(db: Session, name: str, email: str, password: str) -> None:
         # Erfolgsmeldung wie bei einer echten Neuregistrierung — es wird
         # bewusst kein zweites Konto angelegt.
         logger.info("Registrierung ignoriert: E-Mail bereits vergeben")
-        return
+        return "duplicate"
 
     user = UserRecord(
         external_id=f"usr-{secrets.token_hex(6)}",
@@ -495,6 +515,43 @@ def register_user(db: Session, name: str, email: str, password: str) -> None:
     )
     db.add(user)
     db.commit()
+    return "created"
+
+
+# Persistente Brute-Force-Sperre (überlebt Prozess-Neustarts, anders als die
+# In-Memory-Rate-Limiter): nach so vielen Fehlversuchen in Folge wird das
+# Konto für die Sperrdauer blockiert. Bewusst oberhalb der In-Memory-Limits,
+# damit normale Tippfehler nie hierher führen.
+FAILED_LOGIN_LOCK_THRESHOLD = 10
+FAILED_LOGIN_LOCK_SECONDS = 15 * 60
+
+
+class AccountTemporarilyLockedError(HTTPException):
+    """Konto wegen zu vieler Fehlversuche temporär gesperrt (429, generisch).
+
+    ``just_locked`` = True auf genau dem Versuch, der die Sperre ausgelöst
+    hat — die Route schreibt dann zusätzlich ein suspicious-Event.
+    """
+
+    def __init__(self, retry_after: int, *, just_locked: bool = False) -> None:
+        headers = {"Retry-After": str(retry_after)} if retry_after > 0 else None
+        # Gleiche generische Meldung wie der Rate-Limiter: verrät nicht,
+        # ob das Konto existiert.
+        super().__init__(
+            status_code=429,
+            detail="Zu viele Versuche. Bitte später erneut versuchen.",
+            headers=headers,
+        )
+        self.just_locked = just_locked
+
+
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    """SQLite liefert DateTime-Spalten naiv zurück — für Vergleiche auf UTC heben."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
 
 
 def authenticate_user(db: Session, email: str, password: str) -> tuple[AuthUserInfo, int]:
@@ -509,6 +566,19 @@ def authenticate_user(db: Session, email: str, password: str) -> tuple[AuthUserI
         logger.warning("Login fehlgeschlagen (leere E-Mail)")
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     user = db.scalar(select(UserRecord).where(UserRecord.email.ilike(needle)))
+    now = datetime.now(UTC)
+
+    # Temporäre Brute-Force-Sperre VOR der Passwortprüfung: generische 429
+    # (identisch zum Rate-Limiter) verrät weder Konto-Existenz noch
+    # Passwort-Korrektheit und spart die Hash-Berechnung.
+    if user is not None:
+        locked_until = _as_aware_utc(user.locked_until)
+        if locked_until is not None and locked_until > now:
+            retry_after = max(1, int((locked_until - now).total_seconds()))
+            logger.warning("Login geblockt: Konto temporär gesperrt (user_id=%s)", user.external_id)
+            raise AccountTemporarilyLockedError(retry_after)
+        user.last_login_attempt_at = now
+
     # Account-Enumeration vermeiden: unbekannte E-Mail und falsches Passwort
     # liefern dieselbe 401-Antwort. Erst NACH erfolgreicher Passwortprüfung
     # darf sich ein abweichender Zustand (Konto nicht freigegeben) zeigen.
@@ -516,11 +586,22 @@ def authenticate_user(db: Session, email: str, password: str) -> tuple[AuthUserI
         if user is None:
             logger.warning("Login fehlgeschlagen: Benutzer unbekannt")
         else:
+            user.failed_login_count = int(user.failed_login_count or 0) + 1
+            just_locked = user.failed_login_count >= FAILED_LOGIN_LOCK_THRESHOLD
+            if just_locked:
+                user.locked_until = now + timedelta(seconds=FAILED_LOGIN_LOCK_SECONDS)
+                user.failed_login_count = 0
+            db.commit()
             logger.warning("Login fehlgeschlagen: Passwort ungueltig (user_id=%s)", user.external_id)
+            if just_locked:
+                raise AccountTemporarilyLockedError(FAILED_LOGIN_LOCK_SECONDS, just_locked=True)
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
     if not user.is_active:
+        db.commit()
         logger.warning("Login abgelehnt: Konto inaktiv (user_id=%s)", user.external_id)
         raise HTTPException(status_code=403, detail="Dein Konto wurde noch nicht freigegeben.")
+    user.failed_login_count = 0
+    user.locked_until = None
     user.last_active = datetime.now(UTC).strftime("%d.%m.%Y %H:%M")
     db.commit()
     logger.info("Login erfolgreich (user_id=%s, role=%s)", user.external_id, user.role)

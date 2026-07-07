@@ -14,6 +14,7 @@ import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
+import { SecurityLogsPage } from '../asset-ui/pages/SecurityLogsPage';
 import { TelecomPassSettingsPage } from '../asset-ui/pages/TelecomPassSettingsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
 import type {
@@ -110,6 +111,10 @@ type WmsPageViewProps = {
     userId: string,
     payload: { newPassword?: string; generateTemporary?: boolean },
   ) => Promise<{ temporaryPassword?: string | null }>;
+  onSetUserAccountStatus: (
+    userId: string,
+    action: 'approve' | 'reject' | 'lock' | 'unlock',
+  ) => Promise<UserItem>;
   onDeleteUser: (id: string) => Promise<void>;
   onBulkDeleteUsers: (ids: string[]) => Promise<{
     deletedCount: number;
@@ -201,6 +206,7 @@ export function WmsPageView({
   onInviteUser,
   onEditUser,
   onResetUserPassword,
+  onSetUserAccountStatus,
   onDeleteUser,
   onBulkDeleteUsers,
   onOpenLocationInventory,
@@ -494,6 +500,11 @@ export function WmsPageView({
         return <div className="surface-card p-6 text-sm text-slate-600">Rollen &amp; Rechte nur für Admin / Techniker.</div>;
       }
       return <RolesPermissionsPage />;
+    case 'securityLogs':
+      if (!isAdmin) {
+        return <div className="surface-card p-6 text-sm text-slate-600">Sicherheit &amp; Protokolle nur für Admin / Techniker.</div>;
+      }
+      return <SecurityLogsPage />;
     case 'telecomPass':
       if (!isAdmin) {
         return <div className="surface-card p-6 text-sm text-slate-600">Telekompass-Einstellungen nur für Admin / Techniker.</div>;
@@ -513,6 +524,7 @@ export function WmsPageView({
           onInviteUser={(payload) => onInviteUser(payload)}
           onEditUser={(payload) => onEditUser(payload)}
           onResetUserPassword={(userId, payload) => onResetUserPassword(userId, payload)}
+          onSetUserAccountStatus={(userId, action) => onSetUserAccountStatus(userId, action)}
           onDeleteUser={(id) => onDeleteUser(id)}
           onBulkDeleteUsers={(ids) => onBulkDeleteUsers(ids)}
         />

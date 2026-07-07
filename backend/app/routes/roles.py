@@ -11,7 +11,7 @@ keine Hardware-, Planungs-, Defekt- oder Benutzerdaten.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
@@ -22,6 +22,7 @@ from ..schemas.roles import (
     RolePermissionsUpdatePayload,
     RolesResponse,
 )
+from ..services import security_event_service as sec
 from ..services.role_service import RoleService
 
 router = APIRouter(prefix="/api/wms/admin", tags=["WMS Roles & Permissions"])
@@ -49,8 +50,17 @@ def list_roles(
 def update_role_permissions(
     role_key: str,
     payload: RolePermissionsUpdatePayload,
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> RolePermissionsItem:
     require_permission(context, db, "roles.manage")
-    return RoleService.update_role_permissions(db, role_key, payload.permissions)
+    result = RoleService.update_role_permissions(db, role_key, payload.permissions)
+    # Audit: Rechteänderungen sind sicherheitsrelevant (wer hat welcher Rolle
+    # welche Rechte gegeben) — Security-Paket „supman".
+    sec.record_event(
+        db, sec.PERMISSION_CHANGED, request=request, success=True,
+        actor_id=context.user_id,
+        meta={"roleKey": role_key, "permissions": sorted(payload.permissions or [])},
+    )
+    return result

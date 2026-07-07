@@ -33,6 +33,7 @@ from ..repositories import category_repository, role_permission_repository
 from ..repositories.wms_repository import (
     _normalize_asset_status,
     _normalize_maintenance_status,
+    _normalize_user_status,
 )
 from ..repositories.planning_repository import _normalize_status as _normalize_planning_status
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
@@ -98,6 +99,19 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "department": item.department,
                     "location": item.location,
                     "passwordHash": item.password_hash,
+                    # Security-Paket „supman": Login-/Freigabe-Metadaten mitnehmen,
+                    # damit sie einen Restore überleben. (Security-Events selbst
+                    # werden bewusst NICHT exportiert — das Forensik-Log soll vom
+                    # destruktiven Import unberührt bleiben.)
+                    "failedLoginCount": int(item.failed_login_count or 0),
+                    "lockedUntil": item.locked_until,
+                    "lastLoginAt": item.last_login_at,
+                    "lastLoginAttemptAt": item.last_login_attempt_at,
+                    "lastLoginIp": item.last_login_ip,
+                    "lastLoginUserAgent": item.last_login_user_agent,
+                    "approvedAt": item.approved_at,
+                    "approvedBy": item.approved_by,
+                    "rejectedAt": item.rejected_at,
                 }
                 for item in users
             ],
@@ -361,6 +375,11 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             )
 
         for item in payload.users:
+            # Status normalisieren und is_active daraus ableiten. Ohne das
+            # würde der Model-Default (is_active=True) greifen und ein
+            # Restore hätte wartende/gesperrte Konten stillschweigend
+            # AKTIVIERT (Login möglich) — genau der supman-Fall.
+            normalized_status = _normalize_user_status(item.status)
             db.add(
                 UserRecord(
                     external_id=item.id,
@@ -368,10 +387,20 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     email=item.email,
                     role=item.role,
                     last_active=item.lastActive,
-                    status=item.status,
+                    status=normalized_status,
+                    is_active=normalized_status == "Aktiv",
                     department=item.department,
                     location=item.location,
                     password_hash=item.passwordHash or hash_password(f"restore-{item.id}"),
+                    failed_login_count=int(item.failedLoginCount or 0),
+                    locked_until=item.lockedUntil,
+                    last_login_at=item.lastLoginAt,
+                    last_login_attempt_at=item.lastLoginAttemptAt,
+                    last_login_ip=item.lastLoginIp,
+                    last_login_user_agent=item.lastLoginUserAgent,
+                    approved_at=item.approvedAt,
+                    approved_by=item.approvedBy,
+                    rejected_at=item.rejectedAt,
                 )
             )
 

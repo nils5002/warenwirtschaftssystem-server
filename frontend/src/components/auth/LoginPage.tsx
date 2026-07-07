@@ -3,8 +3,12 @@ import { useState } from 'react';
 
 type LoginPageProps = {
   onLogin: (payload: { email: string; password: string }) => Promise<void>;
-  onRegister: (payload: { name: string; email: string; password: string }) => Promise<string | void>;
+  onRegister: (payload: { name: string; email: string; password: string; website?: string }) => Promise<string | void>;
 };
+
+// Einfache Formatprüfung (Backend validiert erneut): verhindert Registrierungen
+// ohne echte E-Mail-Adresse wie den Vorfall-Benutzernamen "supman".
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 
 type AuthMode = 'login' | 'register';
 
@@ -17,6 +21,8 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Honeypot: für Menschen unsichtbares Feld — nur Bots füllen es aus.
+  const [website, setWebsite] = useState('');
 
   const isRegister = mode === 'register';
 
@@ -33,6 +39,10 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
         setError('Bitte Namen eingeben.');
         return;
       }
+      if (!EMAIL_PATTERN.test(email.trim().toLowerCase())) {
+        setError('Bitte eine gültige E-Mail-Adresse eingeben.');
+        return;
+      }
       if (password.length < 8) {
         setError('Passwort muss mindestens 8 Zeichen haben.');
         return;
@@ -46,7 +56,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
     setBusy(true);
     try {
       if (isRegister) {
-        const message = await onRegister({ name: name.trim(), email: email.trim(), password });
+        const message = await onRegister({ name: name.trim(), email: email.trim(), password, website });
         setNotice(message ?? 'Registrierung erfolgreich.');
         setMode('login');
         setPassword('');
@@ -163,6 +173,22 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                     autoComplete="new-password"
                   />
                 </label>
+              ) : null}
+              {isRegister ? (
+                // Honeypot gegen Bots: unsichtbar und nicht fokussierbar —
+                // echte Nutzer lassen das Feld leer.
+                <div aria-hidden="true" className="absolute -left-[9999px] top-0 h-0 w-0 overflow-hidden">
+                  <label>
+                    Website
+                    <input
+                      type="text"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={website}
+                      onChange={(event) => setWebsite(event.target.value)}
+                    />
+                  </label>
+                </div>
               ) : null}
 
               {error ? (

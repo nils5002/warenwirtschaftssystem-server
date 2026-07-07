@@ -34,7 +34,8 @@ export type AppPage =
   | 'users'
   | 'updateNotes'
   | 'rolesPermissions'
-  | 'telecomPass';
+  | 'telecomPass'
+  | 'securityLogs';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 
@@ -207,15 +208,68 @@ export type LocationItem = {
   manager: string;
 };
 
+export type UserStatus =
+  | 'Aktiv'
+  | 'Inaktiv'
+  | 'Wartet auf Freigabe'
+  | 'Abgelehnt'
+  | 'Gesperrt';
+
 export type UserItem = {
   id: string;
   name: string;
   email: string;
   role: 'Admin' | 'Projektmanager' | 'Mitarbeiter' | 'Junior';
   lastActive: string;
-  status: 'Aktiv' | 'Inaktiv';
+  status: UserStatus;
+  createdAt?: string | null;
+  lastLoginAt?: string | null;
   department?: string;
   location?: string;
+};
+
+// Sicherheitsdetails eines Benutzers (Admin-Modal, on-demand geladen).
+export type UserSecurityInfo = {
+  userId: string;
+  status: string;
+  createdAt?: string | null;
+  lastLoginAt?: string | null;
+  lastLoginAttemptAt?: string | null;
+  lastLoginIp?: string | null;
+  lastLoginUserAgent?: string | null;
+  failedLoginCount: number;
+  lockedUntil?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  rejectedAt?: string | null;
+};
+
+// Eintrag im Sicherheitsprotokoll (Admin-Seite „Sicherheit & Protokolle").
+export type SecurityEventItem = {
+  id: number;
+  createdAt: string;
+  eventType: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  success: boolean;
+  userId?: string | null;
+  enteredIdentifier?: string | null;
+  actorId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  method?: string | null;
+  path?: string | null;
+  reasonCode?: string | null;
+  requestId?: string | null;
+  meta?: string | null;
+};
+
+export type SecuritySummary = {
+  totalEvents24h: number;
+  failedLogins24h: number;
+  failedLogins7d: number;
+  pendingUsers: number;
+  lockedUsers: number;
+  newSuspicious: number;
 };
 
 export type CategoryItem = {

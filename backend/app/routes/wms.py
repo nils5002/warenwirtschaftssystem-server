@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
@@ -14,6 +14,9 @@ from ..routes.dependencies import (
 )
 
 logger = logging.getLogger("cloud_web.wms")
+from ..schemas.security import UserSecurityInfo
+from ..services import security_event_service as sec
+from ..services.auth_service import invalidate_sessions
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
@@ -472,27 +475,140 @@ def upsert_user(
 def update_user(
     user_id: str,
     payload: UserUpdatePayload,
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> UserItem:
     require_permission(context, db, "users.manage")
-    return WmsService.update_user(db, user_id, payload, actor_user_id=context.user_id)
+    item = WmsService.update_user(db, user_id, payload, actor_user_id=context.user_id)
+    if payload.role is not None:
+        sec.record_event(
+            db, sec.ROLE_CHANGED, request=request, success=True, user_id=user_id,
+            actor_id=context.user_id, meta={"newRole": item.role},
+        )
+    if payload.status is not None:
+        status_event = {
+            "Aktiv": sec.USER_ACTIVATED,
+            "Gesperrt": sec.USER_LOCKED,
+            "Abgelehnt": sec.REGISTER_REJECTED,
+        }.get(item.status, sec.USER_DEACTIVATED)
+        sec.record_event(
+            db, status_event, request=request, success=True, user_id=user_id,
+            actor_id=context.user_id, meta={"newStatus": item.status},
+        )
+    return item
+
+
+@router.post("/users/{user_id}/approve", response_model=UserItem)
+def approve_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserItem:
+    require_permission(context, db, "users.manage")
+    item = WmsService.approve_user(db, user_id, actor_user_id=context.user_id)
+    sec.record_event(
+        db, sec.USER_ACTIVATED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return item
+
+
+@router.post("/users/{user_id}/reject", response_model=UserItem)
+def reject_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserItem:
+    require_permission(context, db, "users.manage")
+    item = WmsService.reject_user(db, user_id, actor_user_id=context.user_id)
+    sec.record_event(
+        db, sec.REGISTER_REJECTED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return item
+
+
+@router.post("/users/{user_id}/lock", response_model=UserItem)
+def lock_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserItem:
+    require_permission(context, db, "users.manage")
+    item = WmsService.lock_user(db, user_id, actor_user_id=context.user_id)
+    sec.record_event(
+        db, sec.USER_LOCKED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return item
+
+
+@router.post("/users/{user_id}/unlock", response_model=UserItem)
+def unlock_user(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserItem:
+    require_permission(context, db, "users.manage")
+    item = WmsService.unlock_user(db, user_id, actor_user_id=context.user_id)
+    sec.record_event(
+        db, sec.USER_UNLOCKED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return item
+
+
+@router.post("/users/{user_id}/revoke-sessions")
+def revoke_user_sessions(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> dict[str, bool]:
+    require_permission(context, db, "users.manage")
+    invalidate_sessions(db, user_id)
+    sec.record_event(
+        db, sec.SESSION_REVOKED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return {"ok": True}
+
+
+@router.get("/users/{user_id}/security", response_model=UserSecurityInfo)
+def user_security_info(
+    user_id: str,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserSecurityInfo:
+    require_permission(context, db, "users.manage")
+    return WmsService.get_user_security_info(db, user_id)
 
 
 @router.post("/users/{user_id}/reset-password", response_model=UserPasswordResetResponse)
 def reset_user_password(
     user_id: str,
     payload: UserPasswordResetPayload,
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> UserPasswordResetResponse:
     require_permission(context, db, "users.manage")
-    return WmsService.reset_user_password(
+    result = WmsService.reset_user_password(
         db,
         user_id,
         new_password=payload.newPassword,
         generate_temporary=payload.generateTemporary,
     )
+    sec.record_event(
+        db, sec.PASSWORD_RESET_COMPLETED, request=request, success=True, user_id=user_id,
+        actor_id=context.user_id,
+    )
+    return result
 
 
 @router.post("/users/bulk-delete", response_model=BulkUserDeleteResponse)
@@ -508,11 +624,18 @@ def bulk_delete_users(
 @router.delete("/users/{user_id}")
 def delete_user(
     user_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> dict[str, bool]:
     require_permission(context, db, "users.manage")
-    return {"deleted": WmsService.delete_user(db, user_id, actor_user_id=context.user_id)}
+    deleted = WmsService.delete_user(db, user_id, actor_user_id=context.user_id)
+    if deleted:
+        sec.record_event(
+            db, sec.USER_DELETED, request=request, success=True, user_id=user_id,
+            actor_id=context.user_id,
+        )
+    return {"deleted": deleted}
 
 
 @router.get("/activities", response_model=list[ActivityItem])

@@ -139,7 +139,7 @@ function App() {
     setAuthUser(user);
   };
 
-  const handleRegister = async (payload: { name: string; email: string; password: string }) => {
+  const handleRegister = async (payload: { name: string; email: string; password: string; website?: string }) => {
     const response = await register(payload);
     return response.message;
   };
@@ -248,6 +248,7 @@ function App() {
               onInviteUser={controller.inviteUser}
               onEditUser={controller.editUser}
               onResetUserPassword={controller.adminResetUserPassword}
+              onSetUserAccountStatus={controller.adminSetUserAccountStatus}
               onDeleteUser={controller.adminDeleteUser}
               onBulkDeleteUsers={controller.adminBulkDeleteUsers}
               onOpenLocationInventory={controller.openLocationInventory}
