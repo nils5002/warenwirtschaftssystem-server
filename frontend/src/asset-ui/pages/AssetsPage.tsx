@@ -26,6 +26,8 @@ import { AssetQrCard } from '../components/AssetQrCard';
 import { resolveCategoryDefaultImageUrl } from '../categories';
 import { KpiCard } from '../components/KpiCard';
 import { getAssetQrCode } from '../qr';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
+import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { StatusBadge } from '../components/StatusBadge';
 import { ContextMenu, PageHeader, ToggleSwitch } from '../../ui';
 import type { ContextMenuItem } from '../../ui';
@@ -38,11 +40,6 @@ type AssetsPageProps = {
   categories?: CategoryItem[];
   isMobile?: boolean;
   canManageAssets?: boolean;
-  initialSearch?: string;
-  // Statusfilter für einen Deep-Link (z. B. Dashboard-Kachel). Wird einmalig
-  // als Startwert übernommen und über onInitialStatusConsumed wieder geleert.
-  initialStatus?: string;
-  onInitialStatusConsumed?: () => void;
   // True solange der erste Overview-Call noch läuft. Wenn true, zeigt die
   // Seite Skeleton-Platzhalter ("—") in den Statuskacheln an, statt
   // irreführend "0" auszugeben.
@@ -177,9 +174,6 @@ export function AssetsPage({
   categories: backendCategories = [],
   isMobile = false,
   canManageAssets = true,
-  initialSearch,
-  initialStatus,
-  onInitialStatusConsumed,
   isInitialLoading = false,
   onOpenDetail,
   onCreateAsset,
@@ -197,13 +191,22 @@ export function AssetsPage({
   const naturalSort = useMemo(() => new Intl.Collator('de', { numeric: true, sensitivity: 'base' }), []);
   const nameRef = useRef<HTMLInputElement | null>(null);
   const serialRef = useRef<HTMLInputElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
 
-  const [search, setSearch] = useState(initialSearch ?? '');
-  const [category, setCategory] = useState('Alle Kategorien');
-  const [location, setLocation] = useState('Alle Standorte');
-  const [status, setStatus] = useState(initialStatus ?? 'Alle Status');
-  const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [onlyBroken, setOnlyBroken] = useState(false);
+  // Filter/Suche leben in der URL (?q, ?kategorie, ?standort, ?status,
+  // ?verfuegbar, ?defekt): Browser-Zurück, Refresh und Deep-Links (z. B.
+  // Dashboard-Kachel "Verliehen" → /inventar?status=Verliehen) stellen die
+  // Sicht dadurch exakt wieder her. Suche debounced+replace, Filter replace —
+  // Filterklicks fluten die History nicht.
+  const [search, setSearch] = useUrlQueryState('q', '', { debounceMs: 350 });
+  const [category, setCategory] = useUrlQueryState('kategorie', 'Alle Kategorien');
+  const [location, setLocation] = useUrlQueryState('standort', 'Alle Standorte');
+  const [status, setStatus] = useUrlQueryState('status', 'Alle Status');
+  const [onlyAvailable, setOnlyAvailable] = useUrlFlag('verfuegbar');
+  const [onlyBroken, setOnlyBroken] = useUrlFlag('defekt');
+  // Scrollposition der Tabelle über Detail-Besuche hinweg erhalten
+  // (sessionStorage, Key = Pfad+Query; Restaurierung erst nach Datenload).
+  useScrollRestoration(tableScrollRef, { ready: !isInitialLoading && assets.length > 0 });
   const [showTechnicalColumns, setShowTechnicalColumns] = useState(false);
   const [quickViewId, setQuickViewId] = useState<string | null>(null);
   // Rechtsklick-/Long-Press-Kontextmenü auf Tabellenzeilen.
@@ -248,14 +251,6 @@ export function AssetsPage({
     cardPrinterCompatible: true,
     availableForPlanning: true,
   });
-
-  // Deep-Link-Status nur als Startwert nutzen und sofort im Controller leeren,
-  // damit ein späterer regulärer Inventar-Aufruf wieder "Alle Status" zeigt.
-  // Manuelle Statuswechsel des Nutzers bleiben davon unberührt.
-  useEffect(() => {
-    if (initialStatus) onInitialStatusConsumed?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const categories = ['Alle Kategorien', ...new Set(assets.map((asset) => asset.category))];
   const locations = ['Alle Standorte', ...new Set(assets.map((asset) => asset.location))];
@@ -336,10 +331,6 @@ export function AssetsPage({
   const availableCount = assets.filter((asset) => asset.status === 'Verfügbar').length;
   const loanedCount = assets.filter((asset) => asset.status === 'Verliehen').length;
   const attentionCount = assets.filter((asset) => ['Defekt', 'In Wartung'].includes(asset.status)).length;
-
-  useEffect(() => {
-    setSearch(initialSearch ?? '');
-  }, [initialSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1288,7 +1279,10 @@ export function AssetsPage({
 
         <div className="grid gap-4">
           <div className={`${isMobile ? 'hidden' : 'hidden lg:block'}`}>
-            <div className="soft-scrollbar relative max-h-[70vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+            <div
+              ref={tableScrollRef}
+              className="soft-scrollbar relative max-h-[70vh] overflow-y-auto overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm"
+            >
               {/* Spaltenbreiten leben auf den th-Zellen (table-fixed nutzt die
                   erste Zeile): das frühere colgroup summierte 100% + 56px
                   Checkbox-Spalte und erzwang so IMMER horizontalen Scroll.

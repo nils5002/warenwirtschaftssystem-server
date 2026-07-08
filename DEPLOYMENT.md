@@ -76,3 +76,17 @@ Frontend nutzt standardmaessig relative API-URL:
 - `VITE_API_BASE=`
 
 Dadurch funktioniert die App domain-neutral hinter jedem Reverse Proxy.
+
+## SPA-Deep-Links (URL-Routing)
+
+Die App nutzt URL-basiertes Routing mit tiefen Pfaden (z. B. `/inventar/<assetId>`,
+`/einsatzplanung/<planningId>`). Damit Refresh und direkte Links funktionieren,
+muss die Frontend-Auslieferung fuer alle Nicht-`/api`-Pfade die `index.html`
+liefern (SPA-Fallback).
+
+- Aktuelles Setup: Der Frontend-Container laeuft mit `vite preview`
+  (`frontend/Dockerfile`) — dessen SPA-Fallback ist eingebaut, es ist
+  **keine zusaetzliche Konfiguration noetig**.
+- Falls die Auslieferung spaeter auf nginx/statisches Hosting umgestellt wird:
+  SPA-Fallback konfigurieren (nginx: `try_files $uri /index.html;`),
+  `/api` und `/media` weiterhin ans Backend proxien.
