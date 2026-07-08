@@ -10,6 +10,7 @@ import {
   type PlanningListItem,
   type QrGroup,
 } from '../../services/wmsApi';
+import { useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { parseGroupScan, resolveAssetByScan, searchAssets } from '../qr';
 import { AssetMatchPickerDialog } from '../components/AssetMatchPickerDialog';
 import { BulkGroupDialog } from '../components/BulkGroupDialog';
@@ -57,10 +58,6 @@ type CheckinCheckoutPageProps = {
   onCheckin: (payload: { assetId: string; condition: string; projectName?: string }) => Promise<void>;
   onReloadData?: () => Promise<void>;
   // Start-Modus für einen Deep-Link (z. B. Mobile-Kachel „Gerät zurücknehmen“).
-  // Wird einmalig als Startwert übernommen und über onInitialModeConsumed
-  // wieder geleert — analog zu initialStatus in AssetsPage.
-  initialMode?: 'checkout' | 'checkin';
-  onInitialModeConsumed?: () => void;
 };
 
 type Mode = 'checkout' | 'checkin';
@@ -125,13 +122,19 @@ export function CheckinCheckoutPage({
   onCheckout,
   onCheckin,
   onReloadData,
-  initialMode,
-  onInitialModeConsumed,
 }: CheckinCheckoutPageProps) {
   const today = useMemo(() => toIsoDate(new Date()), []);
   const plusTwoDays = useMemo(() => toIsoDate(new Date(Date.now() + 2 * 86400000)), []);
 
-  const [mode, setMode] = useState<Mode>(initialMode ?? 'checkout');
+  // Der Modus lebt in der URL (?modus=ausgabe|ruecknahme, Default ausgabe):
+  // Deep-Links (Mobile-Kachel "Gerät zurücknehmen") und Refresh landen im
+  // richtigen Modus. Tab-Wechsel als replace — Browser-Zurück verlässt die
+  // Seite, statt den Tab zu togglen.
+  const [modeParam, setModeParam] = useUrlQueryState('modus', 'ausgabe');
+  const mode: Mode = modeParam === 'ruecknahme' ? 'checkin' : 'checkout';
+  const setMode = (next: Mode) => {
+    setModeParam(next === 'checkin' ? 'ruecknahme' : 'ausgabe');
+  };
   const [message, setMessage] = useState<FlowMessage | null>(null);
 
   const [checkoutAssetId, setCheckoutAssetId] = useState<string>('');
@@ -172,6 +175,13 @@ export function CheckinCheckoutPage({
   const [planningProjects, setPlanningProjects] = useState<PlanningListItem[]>([]);
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
   const [planningProjectsLoading, setPlanningProjectsLoading] = useState(false);
+  // True, sobald der Planungs-Load einmal durch ist (Erfolg oder Fehler) —
+  // erst dann darf ?projekt aus der URL aufgelöst bzw. überschrieben werden.
+  const [planningProjectsLoaded, setPlanningProjectsLoaded] = useState(false);
+  // Projekt-Deep-Link: ?projekt=<planningId> belegt die Ausgabe-Projektwahl
+  // vor; umgekehrt spiegelt die URL die eindeutig zugeordnete Planung wider.
+  const [projectParam, setProjectParam] = useUrlQueryState('projekt', '');
+  const projectPrefillDoneRef = useRef(false);
   const [scanBusyMode, setScanBusyMode] = useState<Mode | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkinBusy, setCheckinBusy] = useState(false);
@@ -212,14 +222,6 @@ export function CheckinCheckoutPage({
     });
   };
 
-  // Deep-Link-Modus nur als Startwert nutzen und sofort im Controller leeren,
-  // damit ein späterer regulärer Aufruf wieder in der Ausgabe startet.
-  // Manuelle Moduswechsel des Nutzers bleiben davon unberührt.
-  useEffect(() => {
-    if (initialMode) onInitialModeConsumed?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   useEffect(() => {
     void (async () => {
       setPlanningProjectsLoading(true);
@@ -230,6 +232,7 @@ export function CheckinCheckoutPage({
         setPlanningProjects([]);
       } finally {
         setPlanningProjectsLoading(false);
+        setPlanningProjectsLoaded(true);
       }
     })();
   }, []);
@@ -316,6 +319,29 @@ export function CheckinCheckoutPage({
     const endDate = (planning?.endDate ?? '').slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : null;
   }, [checkoutPlanningId, planningProjects]);
+
+  // ?projekt=<planningId> aus der URL einmalig in die Ausgabe-Projektwahl
+  // übernehmen (Deep-Link, z. B. aus der Einsatzplanung heraus). Eine bereits
+  // getroffene manuelle Wahl wird nicht überschrieben.
+  useEffect(() => {
+    if (projectPrefillDoneRef.current || !planningProjectsLoaded) return;
+    projectPrefillDoneRef.current = true;
+    if (!projectParam) return;
+    const planning = planningProjects.find((item) => item.id === projectParam);
+    if (!planning) return;
+    const option = `${planning.customerName} · ${planning.projectName}`;
+    setCheckoutProject((current) => (current.trim() ? current : option));
+    onProjectContextChange(option);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planningProjectsLoaded, planningProjects, projectParam]);
+
+  // Die URL spiegelt die eindeutig zugeordnete Planung der Ausgabe (replace,
+  // keine History-Einträge). Erst nach dem Prefill aktiv, damit der
+  // Deep-Link-Parameter nicht vor dem Auflösen gelöscht wird.
+  useEffect(() => {
+    if (!projectPrefillDoneRef.current) return;
+    setProjectParam(checkoutPlanningId ?? '');
+  }, [checkoutPlanningId, setProjectParam]);
 
   const prevCheckoutPlanningIdRef = useRef<string | null>(checkoutPlanningId);
   useEffect(() => {

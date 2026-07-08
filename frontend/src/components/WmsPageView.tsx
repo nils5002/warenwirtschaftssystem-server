@@ -34,6 +34,9 @@ import type { WmsOverview } from '../services/wmsApi';
 type WmsPageViewProps = {
   activePage: AppPage;
   activeRole: AppRole;
+  // Planungs-ID aus der Detail-Route /einsatzplanung/:planningId — steuert
+  // das URL-gebundene Detail-Modal der Planungsseite.
+  routePlanningId?: string | null;
   // Effektive Rechte-Keys des aktuellen Users (Feature „Rollen & Rechte").
   // Optional: fehlt das Feld (älteres Backend), wird auf die Rollenlogik
   // zurückgefallen, damit z. B. Admins nicht versehentlich Buttons verlieren.
@@ -52,7 +55,6 @@ type WmsPageViewProps = {
   planningSummary: WmsOverview['planningSummary'];
   categories: CategoryItem[];
   selectedAsset: Asset | null;
-  search: string;
   onOpenAssetDetail: (assetId: string) => void;
   onCreateAsset: () => Promise<void>;
   onCreateAssetFromInput: (payload: {
@@ -153,20 +155,14 @@ type WmsPageViewProps = {
     condition: string;
     projectName?: string;
   }) => Promise<void>;
-  onNavigate: (page: AppPage) => void;
+  onNavigate: (page: AppPage, options?: { replace?: boolean }) => void;
   onOpenInventoryWithQuery: (query: string) => void;
-  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff).
+  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff,
+  // navigiert auf /inventar?status=…).
   onOpenInventoryWithStatus: (status: Asset['status'] | null) => void;
-  // Transienter Statusfilter, den AssetsPage beim Mount übernimmt und danach
-  // über onConsumeInventoryStatusFilter wieder leert.
-  inventoryStatusFilter?: Asset['status'] | 'Alle Status' | null;
-  onConsumeInventoryStatusFilter: () => void;
-  // Transienter Start-Modus für die Ein-/Auslagerung (Mobile-Kachel
-  // „Gerät zurücknehmen“). CheckinCheckoutPage übernimmt ihn beim Mount und
-  // leert ihn über onConsumeCheckinCheckoutMode.
-  checkinCheckoutMode?: 'checkout' | 'checkin' | null;
+  // Ein-/Auslagerung im gewünschten Modus öffnen (navigiert auf
+  // /ein-auslagerung?modus=…, z. B. Mobile-Kachel „Gerät zurücknehmen“).
   onOpenCheckinCheckout?: (mode: 'checkout' | 'checkin') => void;
-  onConsumeCheckinCheckoutMode?: () => void;
   isMobile?: boolean;
   // True solange der erste /api/wms/overview-Call noch läuft. Pages
   // verwenden das, um keine 0-Werte als Bestand anzuzeigen.
@@ -176,6 +172,7 @@ type WmsPageViewProps = {
 export function WmsPageView({
   activePage,
   activeRole,
+  routePlanningId = null,
   permissions,
   currentUserId,
   currentUserName,
@@ -191,7 +188,6 @@ export function WmsPageView({
   planningSummary,
   categories,
   selectedAsset,
-  search,
   onOpenAssetDetail,
   onCreateAsset,
   onCreateAssetFromInput,
@@ -227,11 +223,7 @@ export function WmsPageView({
   onNavigate,
   onOpenInventoryWithQuery,
   onOpenInventoryWithStatus,
-  inventoryStatusFilter,
-  onConsumeInventoryStatusFilter,
-  checkinCheckoutMode,
   onOpenCheckinCheckout,
-  onConsumeCheckinCheckoutMode,
   isMobile = false,
   isInitialLoading = false,
 }: WmsPageViewProps) {
@@ -262,6 +254,22 @@ export function WmsPageView({
   // Fallback auf die bisherige Rollenlogik, falls keine Rechte vorliegen.
   const canEditPlanning = can('planning.update', activeRole === 'Admin' || activeRole === 'Projektmanager');
 
+  // Backstop für direkte URL-Aufrufe ohne Berechtigung: Der App-Guard leitet
+  // normalerweise schon zum Dashboard um; greift er einen Frame später, zeigt
+  // dieser Platzhalter eine klare Meldung mit Rückweg statt einer leeren Seite.
+  const renderAccessDenied = (message: string) => (
+    <div className="surface-card space-y-3 p-6">
+      <p className="text-sm text-slate-600">{message}</p>
+      <button
+        type="button"
+        className="btn-secondary"
+        onClick={() => onNavigate('dashboard', { replace: true })}
+      >
+        Zum Dashboard
+      </button>
+    </div>
+  );
+
   switch (activePage) {
     case 'dashboard':
       if (isMobile) {
@@ -289,11 +297,7 @@ export function WmsPageView({
       // sehen die Seite nicht und können sie auch per direktem URL-Aufruf
       // nicht öffnen.
       if (activeRole !== 'Admin' && activeRole !== 'Projektmanager') {
-        return (
-          <div className="surface-card p-6 text-sm text-slate-600">
-            Fremdbestand-Verwaltung nur für Admin / Techniker / Projektmanager.
-          </div>
-        );
+        return renderAccessDenied('Fremdbestand-Verwaltung nur für Admin / Techniker / Projektmanager.');
       }
       return (
         <ExternalPoolPage
@@ -312,9 +316,6 @@ export function WmsPageView({
           isInitialLoading={isInitialLoading}
           onNavigate={onNavigate}
           onOpenDetail={onOpenAssetDetail}
-          initialSearch={search}
-          initialStatus={inventoryStatusFilter ?? undefined}
-          onInitialStatusConsumed={onConsumeInventoryStatusFilter}
           onCreateAsset={() => {
             void onCreateAsset();
           }}
@@ -342,9 +343,49 @@ export function WmsPageView({
           canManageAssets={canUpdateAssets}
         />
       );
-    case 'assetDetail':
+    case 'assetDetail': {
+      if (!selectedAsset) {
+        // Solange die Bestandsdaten noch laden, kein voreiliges "nicht
+        // gefunden" zeigen — Deep-Link/Refresh auf ein Detail käme sonst
+        // kurz als Fehler an (Flackern).
+        if (isInitialLoading) {
+          return (
+            <div className="surface-card p-6 text-sm text-slate-600">Asset wird geladen ...</div>
+          );
+        }
+        return (
+          <div className="surface-card space-y-4 p-6">
+            <div>
+              <h2 className="text-base font-semibold">Asset nicht gefunden</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Unter dieser Adresse ist kein Gerät (mehr) vorhanden — möglicherweise wurde es
+                entfernt oder der Link ist veraltet.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onNavigate('inventory', { replace: true })}
+            >
+              Zum Inventar
+            </button>
+          </div>
+        );
+      }
+      // Zurück-Weg des Details: aus der App geöffnet (history.state-Marker
+      // fromApp) ⇒ echter Back-Schritt; per Deep-Link/Refresh geöffnet ⇒
+      // Ersatz-Navigation zur Liste (kein toter History-Eintrag).
+      const closeAssetDetail = () => {
+        const state = typeof window !== 'undefined' ? (window.history.state as { fromApp?: boolean } | null) : null;
+        if (state?.fromApp) {
+          window.history.back();
+          return;
+        }
+        onNavigate('inventory', { replace: true });
+      };
       return (
         <AssetDetailPage
+          onBack={closeAssetDetail}
           activeRole={activeRole}
           canEditAsset={canUpdateAssets}
           canManageDefects={canManageDefects}
@@ -378,6 +419,7 @@ export function WmsPageView({
           onOpenInventoryWithQuery={onOpenInventoryWithQuery}
         />
       );
+    }
     case 'categories':
       return (
         <CategoriesPage
@@ -405,19 +447,18 @@ export function WmsPageView({
           onOpenInventoryWithQuery={onOpenInventoryWithQuery}
           canEdit={canEditPlanning}
           isMobile={isMobile}
+          routePlanningId={routePlanningId}
         />
       );
     case 'checkinCheckout':
       if (!canOperateCheckout) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Keine Berechtigung für Ein-/Auslagerung.</div>;
+        return renderAccessDenied('Keine Berechtigung für Ein-/Auslagerung.');
       }
       return (
         <CheckinCheckoutPage
           assets={assets}
           users={users}
           isMobile={isMobile}
-          initialMode={checkinCheckoutMode ?? undefined}
-          onInitialModeConsumed={onConsumeCheckinCheckoutMode}
           activeRole={activeRole}
           operatorName={currentUserName}
           projectContext={projectContext}
@@ -429,7 +470,7 @@ export function WmsPageView({
       );
     case 'qrFunctions':
       if (!canUseQrFunctions) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Keine Berechtigung für QR-Buchungen.</div>;
+        return renderAccessDenied('Keine Berechtigung für QR-Buchungen.');
       }
       return (
         <QrFunctionsPage
@@ -452,12 +493,12 @@ export function WmsPageView({
       );
     case 'massPrint':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Massendruck nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Massendruck nur für Admin / Techniker.');
       }
       return <MassPrintPage assets={assets} />;
     case 'labelAudit':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Label-Prüfung nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Label-Prüfung nur für Admin / Techniker.');
       }
       return <LabelAuditPage assets={assets} />;
     case 'tickets':
@@ -479,7 +520,7 @@ export function WmsPageView({
       );
     case 'importExport':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Import/Export nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Import/Export nur für Admin / Techniker.');
       }
       return (
         <ImportExportPage
@@ -491,32 +532,32 @@ export function WmsPageView({
       );
     case 'backup':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Backup nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Backup nur für Admin / Techniker.');
       }
       return <BackupPage onRestored={onReloadData} />;
     case 'updateNotes':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Update-Notizen nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Update-Notizen nur für Admin / Techniker.');
       }
       return <UpdateNotesAdminPage />;
     case 'rolesPermissions':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Rollen &amp; Rechte nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Rollen & Rechte nur für Admin / Techniker.');
       }
       return <RolesPermissionsPage />;
     case 'securityLogs':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Sicherheit &amp; Protokolle nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Sicherheit & Protokolle nur für Admin / Techniker.');
       }
       return <SecurityLogsPage />;
     case 'telecomPass':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Telekompass-Einstellungen nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Telekompass-Einstellungen nur für Admin / Techniker.');
       }
       return <TelecomPassSettingsPage />;
     case 'users':
       if (!isAdmin) {
-        return <div className="surface-card p-6 text-sm text-slate-600">Benutzerverwaltung nur für Admin / Techniker.</div>;
+        return renderAccessDenied('Benutzerverwaltung nur für Admin / Techniker.');
       }
       return (
         <UsersPage

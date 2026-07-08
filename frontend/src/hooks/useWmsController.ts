@@ -44,7 +44,9 @@ import {
   type WmsOverview,
 } from '../services/wmsApi';
 import { useAppDialog } from '../components/dialogs/AppDialogProvider';
-import { canonicalPathForPage, normalizePathname, resolvePageFromPath } from '../routing/appRoutes';
+import { assetDetailPath, canonicalPathForPage, resolveRoute } from '../routing/appRoutes';
+import { buildSearch, navigate, useAppLocation } from '../routing/router';
+import { useUrlQueryState } from './useUrlQueryState';
 import { useTheme } from './useTheme';
 
 type CreateMaintenancePayload = {
@@ -197,23 +199,19 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const { activeRole, isAuthenticated } = options;
   const { theme, toggleTheme } = useTheme();
   const { alert, prompt } = useAppDialog();
-  const [activePage, setActivePageState] = useState<AppPage>(() => {
-    if (typeof window === 'undefined') return 'dashboard';
-    return resolvePageFromPath(window.location.pathname).page;
-  });
+  // Die URL ist die einzige Quelle der Wahrheit für die Navigation: aktive
+  // Seite und Routen-Parameter (assetId/planningId) werden direkt aus der
+  // Location abgeleitet. Browser-Zurück/Vor aktualisiert die Location über
+  // den popstate-Listener des Router-Stores — es gibt keinen separaten
+  // activePage-State mehr, der aus dem Tritt geraten könnte.
+  const location = useAppLocation();
+  const route = useMemo(() => resolveRoute(location.pathname), [location.pathname]);
+  const activePage = route.page;
   const [projectContext, setProjectContextState] = useState<string>(accessContext.projectContext ?? '');
-  const [search, setSearch] = useState('');
-  // Transienter Statusfilter für einen Inventar-Deep-Link (z. B. Klick auf eine
-  // Dashboard-Kachel). Wird von AssetsPage beim Mount übernommen und sofort
-  // wieder geleert (consumeInventoryStatusFilter), damit ein späterer normaler
-  // Inventar-Aufruf den alten Filter nicht erbt.
-  const [inventoryStatusFilter, setInventoryStatusFilter] = useState<Asset['status'] | 'Alle Status' | null>(null);
-  // Transienter Start-Modus für die Ein-/Auslagerung (z. B. Mobile-Kachel
-  // „Gerät zurücknehmen“ → Rücknahme statt Standard-Ausgabe). Wird von
-  // CheckinCheckoutPage beim Mount übernommen und sofort wieder geleert
-  // (consumeCheckinCheckoutMode), damit ein späterer normaler Aufruf der
-  // Seite wieder im Ausgabe-Modus startet.
-  const [checkinCheckoutMode, setCheckinCheckoutMode] = useState<'checkout' | 'checkin' | null>(null);
+  // Globale Suche (Topbar): Auf der Inventarseite ist sie an ?q gebunden
+  // (debounced replace, identisch zum Suchfeld der Seite selbst); auf allen
+  // anderen Seiten navigiert die erste Eingabe zur Inventarseite mit ?q.
+  const [inventorySearch, setInventorySearch] = useUrlQueryState('q', '', { debounceMs: 350 });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -226,7 +224,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
   // Delete die richtige id mitschicken kann. Wird einmal nach Login
   // geladen und nach create/delete neu eingespielt.
   const [categoryRecords, setCategoryRecords] = useState<CategoryItem[]>([]);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  // Das ausgewählte Asset kommt aus der Detail-Route /inventar/:assetId —
+  // damit funktionieren Deep-Links, Refresh und Browser-Zurück auf dem
+  // Asset-Detail ohne zusätzlichen State.
+  const selectedAssetId = route.params.assetId ?? null;
   const [wmsError, setWmsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -249,18 +250,24 @@ export function useWmsController(options: UseWmsControllerOptions) {
   const overviewAbortRef = useRef<AbortController | null>(null);
   const currentOperatorName = getCurrentUser()?.name?.trim() || 'Unbekannt';
 
+  // Signaturgleicher Wrapper um navigate() — alle bestehenden Aufrufer
+  // (Sidebar, Bottom-Nav, onNavigate-Props) bleiben unverändert. Navigiert
+  // immer auf den kanonischen Pfad ohne Query (frische Sicht der Zielseite).
   const setActivePage = useCallback((page: AppPage, options?: { replace?: boolean }) => {
-    setActivePageState(page);
-    if (typeof window === 'undefined') return;
-    const currentPath = normalizePathname(window.location.pathname);
-    const targetPath = canonicalPathForPage(page);
-    if (currentPath === targetPath) return;
-    if (options?.replace) {
-      window.history.replaceState(null, '', targetPath);
-      return;
-    }
-    window.history.pushState(null, '', targetPath);
+    navigate(canonicalPathForPage(page), { replace: options?.replace });
   }, []);
+
+  const search = activePage === 'inventory' ? inventorySearch : '';
+  const setSearch = useCallback(
+    (value: string) => {
+      if (resolveRoute(window.location.pathname).page === 'inventory') {
+        setInventorySearch(value);
+        return;
+      }
+      navigate(`${canonicalPathForPage('inventory')}${buildSearch({ q: value })}`);
+    },
+    [setInventorySearch],
+  );
 
   // loadWms ist als useCallback ausgeführt, damit untergeordnete Komponenten
   // (z. B. PlanningPage) nicht bei jedem Render eine neue Funktionsreferenz
@@ -322,12 +329,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
       setLocations(payload.locations);
       setUsers(normalizedUsers);
       setPlanningSummary(payload.planningSummary ?? null);
-      setSelectedAssetId((current) => {
-        if (current && payload.assets.some((item) => item.id === current)) {
-          return current;
-        }
-        return payload.assets[0]?.id ?? null;
-      });
       setWmsError(null);
       setHasLoadedOnce(true);
       if (import.meta.env.DEV) {
@@ -508,29 +509,34 @@ export function useWmsController(options: UseWmsControllerOptions) {
     };
   }, [isAuthenticated, loadWms]);
 
+  // Alias- und nicht-kanonische Pfade (z. B. /inventory, /planung, unbekannte
+  // Pfade → Dashboard) per replace auf die kanonische URL bringen — Query und
+  // Hash bleiben dabei erhalten. Browser-Zurück/Vor selbst behandelt der
+  // popstate-Listener des Router-Stores.
   useEffect(() => {
     if (typeof window === 'undefined' || !isAuthenticated) return;
+    if (window.location.pathname !== route.canonicalPath) {
+      navigate(`${route.canonicalPath}${location.search}${location.hash}`, { replace: true });
+    }
+  }, [isAuthenticated, route.canonicalPath, location.search, location.hash]);
 
-    const syncFromBrowserPath = () => {
-      const resolved = resolvePageFromPath(window.location.pathname);
-      setActivePageState(resolved.page);
+  const selectedAsset = useMemo(() => {
+    if (!selectedAssetId) return null;
+    return (
+      assets.find((asset) => asset.id === selectedAssetId) ??
+      // Fallback: Seriennummer in der URL akzeptieren — external_ids können
+      // sich bei Re-Import/Reseed ändern, Seriennummern sind stabiler. Ein
+      // Treffer wird unten per replace auf die kanonische id-URL gebracht.
+      assets.find((asset) => asset.serialNumber === selectedAssetId) ??
+      null
+    );
+  }, [assets, selectedAssetId]);
 
-      if (window.location.pathname === resolved.canonicalPath) return;
-      const suffix = `${window.location.search}${window.location.hash}`;
-      window.history.replaceState(null, '', `${resolved.canonicalPath}${suffix}`);
-    };
-
-    syncFromBrowserPath();
-    window.addEventListener('popstate', syncFromBrowserPath);
-    return () => {
-      window.removeEventListener('popstate', syncFromBrowserPath);
-    };
-  }, [isAuthenticated]);
-
-  const selectedAsset = useMemo(
-    () => assets.find((asset) => asset.id === selectedAssetId) ?? null,
-    [assets, selectedAssetId],
-  );
+  useEffect(() => {
+    if (selectedAsset && selectedAssetId && selectedAsset.id !== selectedAssetId) {
+      navigate(assetDetailPath(selectedAsset.id), { replace: true });
+    }
+  }, [selectedAsset, selectedAssetId]);
 
   const categories = useMemo<CategoryItem[]>(() => {
     const fromAssets = new Set<string>();
@@ -651,8 +657,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
   );
 
   const openAssetDetail = (assetId: string) => {
-    setSelectedAssetId(assetId);
-    setActivePage('assetDetail');
+    // Marker fromApp: das Detail wurde aus der App heraus geöffnet — beim
+    // Schließen darf dann history.back() genutzt werden (statt einer
+    // Ersatz-Navigation zur Liste wie bei Deep-Link/Refresh).
+    navigate(assetDetailPath(assetId), { state: { fromApp: true } });
   };
 
   const createId = (prefix: string) => `${prefix}-${Date.now().toString(36)}`;
@@ -710,8 +718,10 @@ export function useWmsController(options: UseWmsControllerOptions) {
       await deleteAsset(assetId);
       await addActivity('Asset gelöscht', `${asset.name} wurde aus dem Bestand entfernt.`, assetId);
       if (selectedAssetId === assetId) {
-        setSelectedAssetId(null);
-        setActivePage('inventory');
+        // replace: die Detail-URL des gelöschten Assets soll nicht als
+        // History-Eintrag zurückbleiben (Back würde sonst auf "nicht
+        // gefunden" führen).
+        setActivePage('inventory', { replace: true });
       }
     } catch {
       setWmsError('Asset konnte nicht gelöscht werden.');
@@ -775,8 +785,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
     };
     const normalizedAsset = { ...newAsset, qrCode: getAssetQrCode(newAsset) };
     setAssets((prev) => [normalizedAsset, ...prev]);
-    setSelectedAssetId(normalizedAsset.id);
-    setActivePage('assetDetail');
+    navigate(assetDetailPath(normalizedAsset.id), { state: { fromApp: true } });
     await addActivity('Asset angelegt', `${normalizedAsset.name} wurde neu angelegt.`, normalizedAsset.id);
     try {
       await upsertAsset(normalizedAsset);
@@ -826,7 +835,6 @@ export function useWmsController(options: UseWmsControllerOptions) {
 
     const normalizedAsset = { ...newAsset, qrCode: getAssetQrCode(newAsset) };
     setAssets((prev) => [normalizedAsset, ...prev]);
-    setSelectedAssetId(normalizedAsset.id);
     await addActivity('Asset angelegt', `${normalizedAsset.name} wurde neu angelegt.`, normalizedAsset.id);
     try {
       await upsertAsset(normalizedAsset);
@@ -1355,42 +1363,32 @@ export function useWmsController(options: UseWmsControllerOptions) {
     }
   };
 
+  // Cross-Page-Navigation läuft über echte URLs (push) — die Zielseite liest
+  // ihre Filter aus den Query-Parametern, Browser-Zurück stellt Ausgangsseite
+  // UND Filter wieder her.
   const openLocationInventory = (name: string) => {
-    setSearch(name);
-    setActivePage('inventory');
+    navigate(`${canonicalPathForPage('inventory')}${buildSearch({ q: name })}`);
   };
 
   const openInventoryWithQuery = (query: string) => {
-    setSearch(query);
-    setActivePage('inventory');
+    navigate(`${canonicalPathForPage('inventory')}${buildSearch({ q: query })}`);
   };
 
-  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff). Die
-  // Freitextsuche wird geleert, damit der Statusfilter eine saubere Sicht zeigt.
+  // Inventar gefiltert auf einen Status öffnen (Dashboard-Schnellzugriff).
   // status === null ⇒ kein Statusfilter (alle Assets).
   const openInventoryWithStatus = (status: Asset['status'] | null) => {
-    setSearch('');
-    setInventoryStatusFilter(status);
-    setActivePage('inventory');
-  };
-
-  // Einmaliges Abräumen nach dem AssetsPage-Mount — verhindert ein Nachwirken
-  // des Filters bei späteren regulären Inventar-Aufrufen.
-  const consumeInventoryStatusFilter = () => {
-    setInventoryStatusFilter(null);
+    navigate(`${canonicalPathForPage('inventory')}${buildSearch({ status })}`);
   };
 
   // Ein-/Auslagerung direkt im gewünschten Modus öffnen (Ausgabe/Rücknahme),
-  // z. B. von der Mobile-Startseite aus.
+  // z. B. von der Mobile-Startseite aus. 'ausgabe' ist der Default und
+  // braucht keinen Query-Parameter.
   const openCheckinCheckout = (mode: 'checkout' | 'checkin') => {
-    setCheckinCheckoutMode(mode);
-    setActivePage('checkinCheckout');
-  };
-
-  // Einmaliges Abräumen nach dem CheckinCheckoutPage-Mount — analog zu
-  // consumeInventoryStatusFilter.
-  const consumeCheckinCheckoutMode = () => {
-    setCheckinCheckoutMode(null);
+    navigate(
+      `${canonicalPathForPage('checkinCheckout')}${buildSearch({
+        modus: mode === 'checkin' ? 'ruecknahme' : null,
+      })}`,
+    );
   };
 
   const editLocation = async (name: string) => {
@@ -1485,15 +1483,14 @@ export function useWmsController(options: UseWmsControllerOptions) {
     isInitialLoading: !hasLoadedOnce,
     wmsError,
     activePage,
+    // Planungs-ID aus der Detail-Route /einsatzplanung/:planningId (steuert
+    // das Detail-Modal der Planungsseite).
+    routePlanningId: route.params.planningId ?? null,
     setActivePage,
     search,
     setSearch,
-    inventoryStatusFilter,
     openInventoryWithStatus,
-    consumeInventoryStatusFilter,
-    checkinCheckoutMode,
     openCheckinCheckout,
-    consumeCheckinCheckoutMode,
     mobileSidebarOpen,
     setMobileSidebarOpen,
     selectedAsset,

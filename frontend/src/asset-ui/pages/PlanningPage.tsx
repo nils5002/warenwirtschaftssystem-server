@@ -39,6 +39,10 @@ import {
   type PlanningUpsertPayload,
   type WmsOverview,
 } from '../../services/wmsApi';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
+import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
+import { canonicalPathForPage, planningDetailPath, resolveRoute } from '../../routing/appRoutes';
+import { navigate } from '../../routing/router';
 import { categoryOptionsFromRecords, normalizeKnownCategory } from '../categories';
 import { conflictSeverityRank, conflictSeverityVisual } from './conflictSeverityVisuals';
 import {
@@ -61,6 +65,9 @@ type PlanningPageProps = {
   onOpenInventoryWithQuery: (query: string) => void;
   canEdit?: boolean;
   isMobile?: boolean;
+  // Planungs-ID aus der Detail-Route /einsatzplanung/:planningId — steuert
+  // das Detail-Modal (Deep-Link, Refresh, Browser-Zurück/Vor).
+  routePlanningId?: string | null;
 };
 
 type EditablePlanning = {
@@ -561,6 +568,7 @@ export function PlanningPage({
   onOpenInventoryWithQuery,
   canEdit = true,
   isMobile = false,
+  routePlanningId = null,
 }: PlanningPageProps) {
   const { alert, confirm } = useAppDialog();
   const [plannings, setPlannings] = useState<Awaited<ReturnType<typeof listPlannings>>>([]);
@@ -577,9 +585,18 @@ export function PlanningPage({
   const [busyState, setBusyState] = useState<BusyState>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [listSearch, setListSearch] = useState('');
-  const [listStatus, setListStatus] = useState<'Alle' | PlanningStatus>('Alle');
-  const [conflictFilterActive, setConflictFilterActive] = useState(false);
+  // Listen-Filter leben in der URL (?q, ?status, ?konflikte) — Browser-Zurück
+  // aus dem Detail und Refresh stellen die gefilterte Liste wieder her.
+  const [listSearch, setListSearch] = useUrlQueryState('q', '', { debounceMs: 350 });
+  const [listStatusParam, setListStatus] = useUrlQueryState('status', 'Alle');
+  const listStatus: 'Alle' | PlanningStatus = (STATUS_OPTIONS as string[]).includes(listStatusParam)
+    ? (listStatusParam as PlanningStatus)
+    : 'Alle';
+  const [conflictFilterActive, setConflictFilterActive] = useUrlFlag('konflikte');
+  const listScrollRef = useRef<HTMLDivElement | null>(null);
+  // Scrollposition der Planungsliste erhalten (z. B. nach Modal-Besuchen
+  // oder Browser-Zurück); Restaurierung erst, wenn die Liste geladen ist.
+  useScrollRestoration(listScrollRef, { ready: plannings.length > 0 });
   const [createOpen, setCreateOpen] = useState(false);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [editorInitial, setEditorInitial] = useState<EditablePlanning | null>(null);
@@ -1370,6 +1387,12 @@ export function PlanningPage({
     setSelectedId(planningId);
     if (options?.showModal ?? true) {
       setDetailModalOpen(true);
+      // Detail-URL setzen (push mit plModal-Marker): Browser-Zurück schließt
+      // das Modal, Refresh/Deep-Link öffnet es wieder. Kein Push, wenn die
+      // URL das Detail schon trägt (z. B. Reload nach Statuswechsel).
+      if (resolveRoute(window.location.pathname).params.planningId !== planningId) {
+        navigate(planningDetailPath(planningId), { state: { plModal: true } });
+      }
     }
     setDetailLoading(true);
     if (!options?.silentBusy) setBusyState('open');
@@ -1579,6 +1602,21 @@ export function PlanningPage({
     return JSON.stringify(editor) !== JSON.stringify(editorInitial);
   }, [editor, editorInitial]);
 
+  // Detail-State hart zurücksetzen — ohne Rückfrage und ohne Navigation.
+  // Wird vom Browser-Zurück (popstate) und als gemeinsamer Kern der
+  // UI-Schließwege genutzt.
+  const resetDetailState = () => {
+    setDetailModalOpen(false);
+    setHandoverEditorKey(null);
+    setHandoverSnapshot({});
+    setEditor(null);
+    setEditorInitial(null);
+    setAvailability(null);
+    setAssignedAssets(null);
+    setHandoverStatus(null);
+    setSelectedId('');
+  };
+
   const closeDetailModal = async () => {
     if (!detailModalOpen) return;
     if (canEdit && isEditorDirty) {
@@ -1591,15 +1629,17 @@ export function PlanningPage({
       });
       if (!accepted) return;
     }
-    setDetailModalOpen(false);
-    setHandoverEditorKey(null);
-    setHandoverSnapshot({});
-    setEditor(null);
-    setEditorInitial(null);
-    setAvailability(null);
-    setAssignedAssets(null);
-    setHandoverStatus(null);
-    setSelectedId('');
+    resetDetailState();
+    // URL zurück auf die Liste: aus der App geöffnet (plModal-Marker) ⇒
+    // echter Back-Schritt; per Deep-Link/Refresh geöffnet ⇒ replace zur
+    // Liste, damit kein toter History-Eintrag entsteht.
+    const historyState =
+      typeof window !== 'undefined' ? (window.history.state as { plModal?: boolean } | null) : null;
+    if (historyState?.plModal) {
+      window.history.back();
+    } else if (resolveRoute(window.location.pathname).params.planningId) {
+      navigate(canonicalPathForPage('planning'), { replace: true });
+    }
   };
 
   useEffect(() => {
@@ -1611,6 +1651,23 @@ export function PlanningPage({
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
   }, [detailModalOpen, saving, closeDetailModal]);
+
+  // URL ⇄ Modal synchron halten: Eine Detail-URL (Deep-Link, Refresh,
+  // Browser-Vor/Zurück) öffnet das Modal für genau diese Planung; fällt die
+  // URL auf die Liste zurück (Browser-Zurück), schließt das Modal hart —
+  // bewusst ohne Verwerfen-Rückfrage, die gilt nur für UI-Schließwege.
+  useEffect(() => {
+    if (routePlanningId) {
+      if (!detailModalOpen || selectedId !== routePlanningId) {
+        void openPlanning(routePlanningId);
+      }
+      return;
+    }
+    if (detailModalOpen) {
+      resetDetailState();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routePlanningId]);
 
   const createNewPlanning = async () => {
     if (!createForm.customerName.trim() || !createForm.projectName.trim()) {
@@ -2194,6 +2251,7 @@ export function PlanningPage({
           ) : null}
 
           <div
+            ref={listScrollRef}
             className="soft-scrollbar mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1"
             onClick={(event) => {
               if (event.target === event.currentTarget && !detailModalOpen) {

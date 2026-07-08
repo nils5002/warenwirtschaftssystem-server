@@ -11,6 +11,7 @@ import type { AppPage } from './asset-ui/types';
 import { useWmsController } from './hooks/useWmsController';
 import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
+import { navigate } from './routing/router';
 import {
   fetchAuthMe,
   login,
@@ -20,6 +21,10 @@ import {
   type AuthUser,
 } from './services/wmsApi';
 
+// sessionStorage-Key für den Deep-Link, der einen ausgeloggten Nutzer auf die
+// Login-Seite geführt hat — nach erfolgreichem Login geht es dorthin zurück.
+const POST_LOGIN_REDIRECT_KEY = 'wms.postLoginRedirect';
+
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   // authBooting bleibt true, bis per GET /api/auth/me geklaert ist, ob ein
@@ -27,6 +32,9 @@ function App() {
   // Cookie fuer JavaScript unsichtbar ist, ist dieser Server-Roundtrip beim
   // Start unvermeidbar — der lokale Auth-Status kann nicht vorab feststehen.
   const [authBooting, setAuthBooting] = useState<boolean>(true);
+  // Einmalige Meldung nach einem Guard-Redirect (z. B. Mitarbeiter öffnet
+  // /benutzer per Deep-Link) — statt einer weißen Seite oder stillem Sprung.
+  const [accessNotice, setAccessNotice] = useState<string | null>(null);
 
   const activeRole = authUser?.role ?? 'Mitarbeiter';
   const isAuthenticated = !!authUser;
@@ -90,13 +98,30 @@ function App() {
   }, [authUser?.permissions, activeRole]);
 
   useEffect(() => {
+    // Nur für authentifizierte Sitzungen prüfen: Während des Auth-Boots ist
+    // die Rolle noch der Mitarbeiter-Fallback — der Guard würde sonst einen
+    // Admin-Deep-Link (z. B. /benutzer) zerstören, bevor der
+    // Post-Login-Redirect ihn sichern kann.
+    if (authBooting || !isAuthenticated) {
+      return;
+    }
     if (controller.activePage === 'assetDetail') {
       return;
     }
     if (!visibleNavigation.some((item) => item.key === controller.activePage)) {
-      controller.setActivePage('dashboard');
+      // replace: die verbotene URL darf nicht als History-Eintrag bestehen
+      // bleiben — Back soll nicht wieder auf die gesperrte Seite führen.
+      setAccessNotice('Kein Zugriff auf diesen Bereich — Sie wurden zum Dashboard weitergeleitet.');
+      controller.setActivePage('dashboard', { replace: true });
     }
-  }, [controller.activePage, controller.setActivePage, visibleNavigation]);
+  }, [authBooting, isAuthenticated, controller.activePage, controller.setActivePage, visibleNavigation]);
+
+  // Zugriffs-Hinweis nach ein paar Sekunden automatisch ausblenden.
+  useEffect(() => {
+    if (!accessNotice) return;
+    const timer = window.setTimeout(() => setAccessNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [accessNotice]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || authBooting) return;
@@ -104,13 +129,40 @@ function App() {
 
     if (!isAuthenticated) {
       if (currentPath !== '/login') {
-        window.history.replaceState(null, '', '/login');
+        // Deep-Link merken (inkl. Query/Hash), damit der Nutzer nach dem
+        // Login wieder dort landet, wo er hinwollte — z. B. bei einem
+        // geteilten Link auf ein Asset-Detail.
+        if (currentPath !== '/') {
+          try {
+            sessionStorage.setItem(
+              POST_LOGIN_REDIRECT_KEY,
+              `${window.location.pathname}${window.location.search}${window.location.hash}`,
+            );
+          } catch {
+            // Storage nicht verfügbar (z. B. blockiert) — Redirect entfällt.
+          }
+        }
+        navigate('/login', { replace: true });
       }
       return;
     }
 
+    let redirect: string | null = null;
+    try {
+      redirect = sessionStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+    } catch {
+      redirect = null;
+    }
+    // Nur app-interne Pfade akzeptieren ("/..."), keine protokoll-relativen
+    // URLs ("//host") — verhindert Redirects aus manipuliertem Storage.
+    if (redirect && /^\/(?!\/)/.test(redirect)) {
+      navigate(redirect, { replace: true });
+      return;
+    }
+
     if (currentPath === '/login' || currentPath === '/') {
-      window.history.replaceState(null, '', '/dashboard');
+      navigate('/dashboard', { replace: true });
     }
   }, [authBooting, isAuthenticated]);
 
@@ -146,8 +198,17 @@ function App() {
 
   const handleLogout = async () => {
     // Serverseitig invalidieren (token_version erhöhen) und das Auth-Cookie
-    // löschen — danach den lokalen Auth-Status verwerfen.
+    // löschen — danach den lokalen Auth-Status verwerfen. Bewusster Logout:
+    // kein Rücksprung-Deep-Link für den nächsten Login merken.
+    try {
+      sessionStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+    } catch {
+      // Storage nicht verfügbar — unkritisch.
+    }
     await logout();
+    // Erst zur Login-URL wechseln, dann den Auth-State verwerfen — sonst
+    // würde der Auth-Effekt die aktuelle Seite als Rücksprungziel speichern.
+    navigate('/login', { replace: true });
     setAuthUser(null);
   };
 
@@ -213,8 +274,14 @@ function App() {
                 {controller.wmsError}
               </div>
             ) : null}
+            {accessNotice ? (
+              <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                {accessNotice}
+              </div>
+            ) : null}
             <WmsPageView
               activePage={controller.activePage}
+              routePlanningId={controller.routePlanningId}
               permissions={authUser.permissions}
               currentUserId={authUser.userId}
               currentUserName={authUser.name}
@@ -230,7 +297,6 @@ function App() {
               users={controller.users}
               planningSummary={controller.planningSummary}
               selectedAsset={controller.selectedAsset}
-              search={controller.search}
               isInitialLoading={controller.isInitialLoading}
               onOpenAssetDetail={controller.openAssetDetail}
               onCreateAsset={controller.createAsset}
@@ -267,11 +333,7 @@ function App() {
               onNavigate={controller.setActivePage}
               onOpenInventoryWithQuery={controller.openInventoryWithQuery}
               onOpenInventoryWithStatus={controller.openInventoryWithStatus}
-              inventoryStatusFilter={controller.inventoryStatusFilter}
-              onConsumeInventoryStatusFilter={controller.consumeInventoryStatusFilter}
-              checkinCheckoutMode={controller.checkinCheckoutMode}
               onOpenCheckinCheckout={controller.openCheckinCheckout}
-              onConsumeCheckinCheckoutMode={controller.consumeCheckinCheckoutMode}
               activeRole={activeRole}
               isMobile={isMobile}
             />

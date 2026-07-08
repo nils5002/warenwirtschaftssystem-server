@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarClock, ClipboardList, PenSquare, RotateCcw, ShieldCheck, Signal, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { resolveCategoryDefaultImageUrl } from '../categories';
 import { AssetEditModal } from '../components/AssetEditModal';
@@ -22,6 +22,9 @@ function trimActivityAssetPrefix(detail: string, assetName: string): string {
 
 type AssetDetailPageProps = {
   activeRole: AppRole;
+  // Zurück zur Inventarliste: aus der App geöffnet ⇒ history.back(),
+  // per Deep-Link/Refresh geöffnet ⇒ Ersatz-Navigation (siehe WmsPageView).
+  onBack?: () => void;
   // Rechte-gesteuerte Sichtbarkeit der Aktionsbuttons (Feature „Rollen & Rechte").
   // Default true → ältere Aufrufer/Backends verhalten sich wie bisher.
   canEditAsset?: boolean;
@@ -43,6 +46,7 @@ type AssetDetailPageProps = {
 };
 
 export function AssetDetailPage({
+  onBack,
   canEditAsset = true,
   canManageDefects = true,
   canReportDefects = true,
@@ -108,6 +112,16 @@ export function AssetDetailPage({
 
   return (
     <section className="space-y-5">
+      {onBack ? (
+        <button
+          type="button"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-ink"
+          onClick={onBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Zurück zum Inventar
+        </button>
+      ) : null}
       <PageHeader
         kicker="Asset-Detailseite"
         title={asset.name}
