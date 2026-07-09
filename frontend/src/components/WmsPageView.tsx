@@ -11,6 +11,7 @@ import { MaintenancePage } from '../asset-ui/pages/MaintenancePage';
 import { LabelAuditPage } from '../asset-ui/pages/LabelAuditPage';
 import { MassPrintPage } from '../asset-ui/pages/MassPrintPage';
 import { MobileDashboardPage } from '../asset-ui/pages/MobileDashboardPage';
+import { PlanningDetailPage } from '../asset-ui/pages/PlanningDetailPage';
 import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
@@ -437,6 +438,24 @@ export function WmsPageView({
         />
       );
     case 'planning':
+      // Detail-Route /einsatzplanung/:planningId rendert die vollwertige
+      // Detailseite mit Tabs; ohne ID die Cockpit-Liste.
+      if (routePlanningId) {
+        return (
+          <PlanningDetailPage
+            planningId={routePlanningId}
+            categories={categories}
+            users={users}
+            assets={assets}
+            canEdit={canEditPlanning}
+            canOperateCheckout={canOperateCheckout}
+            isMobile={isMobile}
+            onCheckoutFromForm={onCheckoutFromForm}
+            onCheckinFromForm={onCheckinFromForm}
+            onReloadData={onReloadData}
+          />
+        );
+      }
       return (
         <PlanningPage
           assets={assets}
@@ -447,7 +466,6 @@ export function WmsPageView({
           onOpenInventoryWithQuery={onOpenInventoryWithQuery}
           canEdit={canEditPlanning}
           isMobile={isMobile}
-          routePlanningId={routePlanningId}
         />
       );
     case 'checkinCheckout':

@@ -46,7 +46,7 @@ from ..services.auth_service import (
     normalize_role_for_db,
     role_to_app_role,
 )
-from ..services import product_image_service, security_event_service
+from ..services import planning_event_service, product_image_service, security_event_service
 
 logger = logging.getLogger("cloud_web.wms")
 
@@ -400,6 +400,12 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
     stmt = select(AssetRecord).where(AssetRecord.external_id == item.id)
     record = db.scalar(stmt)
     previous_status = _normalize_asset_status(record.status) if record else None
+    # Planungsbezug VOR dem Überschreiben sichern: beim Checkin wird
+    # assigned_planning_id unten geleert — für das Rückgabe-Event der Planung
+    # brauchen wir den Vorzustand.
+    previous_assigned_planning_id = (
+        getattr(record, "assigned_planning_id", None) if record else None
+    )
     payload = {
         "name": item.name,
         "category": category_repository.normalize_category_for_db(db, item.category),
@@ -562,6 +568,30 @@ def upsert_asset(db: Session, item: AssetItem, *, actor_user_id: str | None = No
                 asset_external_id=record.external_id,
             )
         )
+        # Planungs-Historie (Detailseite): Ausgabe/Rückgabe je Planung
+        # protokollieren. Beim Checkout steht die Ziel-Planung im Payload,
+        # beim Checkin nur noch im Vorzustand (oben gesichert). Event hängt
+        # sich an den Fach-Commit unten an (commit=False).
+        event_planning_id = (
+            payload.get("assigned_planning_id")
+            if next_status == "Verliehen"
+            else previous_assigned_planning_id
+        )
+        if event_planning_id:
+            planning_event_service.add_event(
+                db,
+                event_planning_id,
+                planning_event_service.EVENT_ISSUE_RECORDED
+                if next_status == "Verliehen"
+                else planning_event_service.EVENT_RETURN_RECORDED,
+                actor_id=operator_user_id,
+                payload={
+                    "assetId": record.external_id,
+                    "assetName": record.name,
+                    "tagNumber": record.tag_number,
+                    "categoryKey": payload.get("category") or record.category,
+                },
+            )
     db.commit()
     db.refresh(record)
     return _asset_to_schema(record, category_repository.active_category_names(db))

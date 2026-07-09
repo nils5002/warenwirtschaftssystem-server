@@ -1407,6 +1407,39 @@ export async function getPlanningAssignedAssets(planningId: string): Promise<Pla
   return parseResponse<PlanningAssignedAssetsResponse>(response);
 }
 
+// --- Planungs-Historie (Audit-Log je Planung, Detailseite) ---
+
+export type PlanningEventType =
+  | "planning_created"
+  | "status_changed"
+  | "timeframe_changed"
+  | "position_added"
+  | "position_removed"
+  | "quantity_changed"
+  | "note_added"
+  | "issue_recorded"
+  | "return_recorded";
+
+export type PlanningEventItem = {
+  id: number;
+  eventType: PlanningEventType | string;
+  actorId?: string | null;
+  actorName?: string | null;
+  // ISO-8601 UTC (mit "Z") — im Client in Lokalzeit formatieren.
+  createdAt: string;
+  payload?: Record<string, unknown> | null;
+};
+
+export async function listPlanningEvents(planningId: string): Promise<PlanningEventItem[]> {
+  const response = await apiFetch(`/api/wms/planning/${planningId}/events`);
+  const body = await parseResponse<{ events: PlanningEventItem[] }>(response);
+  return body.events ?? [];
+}
+
+export function addPlanningNote(planningId: string, text: string): Promise<PlanningEventItem> {
+  return postJson<PlanningEventItem>(`/api/wms/planning/${planningId}/events/note`, { text });
+}
+
 // --- Automatische Projektübergabe (Asset-Handover A→B) ---
 export type HandoverCategoryState =
   | "not_applicable"
