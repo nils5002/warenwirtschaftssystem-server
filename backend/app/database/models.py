@@ -601,6 +601,28 @@ class SecurityEventRecord(TimestampMixin, Base):
     meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class PlanningEventRecord(TimestampMixin, Base):
+    """Fachliches Audit-Log je Planung (Historie-Tab der Planungs-Detailseite).
+
+    Eine Zeile je Ereignis: Planung erstellt, Status/Zeitraum/Menge geändert,
+    Position hinzugefügt/entfernt, Notiz hinzugefügt, Ausgabe/Rückgabe erfasst.
+    ``payload_json`` trägt die strukturierten Details (alt/neu-Werte,
+    Kategorie, Inventarnummer, Notiztext) — keine Secrets. Verweist wie üblich
+    nur über ``planning_external_id`` (kein harter FK). Im Gegensatz zu
+    ``security_events`` sind das Geschäftsdaten; bestehende Planungen starten
+    mit leerer Historie (kein Backfill).
+    """
+
+    __tablename__ = "planning_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    planning_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # external_id des ausführenden Benutzers (None bei System-Vorgängen).
+    actor_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class TelecomPassBookingRecord(Base):
     """Verlaufseintrag der Telekompass-Erfassung bei einer LTE-Router-Rückgabe.
 

@@ -17,12 +17,15 @@ from ..schemas.handover import (
 from ..schemas.planning import (
     PlanningAssignedAssetsResponse,
     PlanningAvailabilityResponse,
+    PlanningEventListResponse,
+    PlanningEventItem,
     PlanningListItem,
+    PlanningNotePayload,
     PlanningResponse,
     PlanningStatusUpdatePayload,
     PlanningUpsertPayload,
 )
-from ..services import handover_service
+from ..services import handover_service, planning_event_service
 from ..services.planning_service import PlanningService
 
 router = APIRouter(prefix="/api/wms/planning", tags=["Planning"])
@@ -83,6 +86,13 @@ def create_planning(
     if context.role == "projektmanager" and context.user_id:
         payload.projectManagerUserId = context.user_id
     result = PlanningService.create_planning(db, payload)
+    planning_event_service.record_event(
+        db,
+        result.id,
+        planning_event_service.EVENT_PLANNING_CREATED,
+        actor_id=context.user_id,
+        payload={"status": result.status, "startDate": str(result.startDate), "endDate": str(result.endDate)},
+    )
     logger.info("Planung gespeichert (neu, planning_id=%s, user_id=%s)", result.id, context.user_id)
     return result
 
@@ -119,6 +129,12 @@ def update_planning(
     # explizit sendet — bei Bedarf kann es über das Formular gewechselt
     # werden, aber Speichern alleine löst keinen Eigentümerwechsel aus.
     result = PlanningService.update_planning(db, planning_id, payload)
+    planning_event_service.record_events(
+        db,
+        planning_id,
+        planning_event_service.diff_planning_update(existing, result),
+        actor_id=context.user_id,
+    )
     logger.info("Planung gespeichert (update, planning_id=%s, user_id=%s)", planning_id, context.user_id)
     return result
 
@@ -136,7 +152,14 @@ def update_planning_post(
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
     _ensure_planning_write_access(context, existing)
     # Wie bei PUT: kein implizites Überschreiben des projectManagerUserId.
-    return PlanningService.update_planning(db, planning_id, payload)
+    result = PlanningService.update_planning(db, planning_id, payload)
+    planning_event_service.record_events(
+        db,
+        planning_id,
+        planning_event_service.diff_planning_update(existing, result),
+        actor_id=context.user_id,
+    )
+    return result
 
 
 @router.post("/{planning_id}/duplicate", response_model=PlanningResponse)
@@ -153,6 +176,18 @@ def duplicate_planning(
     duplicated = PlanningService.duplicate_planning(db, planning_id)
     if duplicated is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    planning_event_service.record_event(
+        db,
+        duplicated.id,
+        planning_event_service.EVENT_PLANNING_CREATED,
+        actor_id=context.user_id,
+        payload={
+            "status": duplicated.status,
+            "startDate": str(duplicated.startDate),
+            "endDate": str(duplicated.endDate),
+            "duplicatedFrom": planning_id,
+        },
+    )
     if context.role == "projektmanager" and context.user_id:
         update_payload = PlanningUpsertPayload(
             id=duplicated.id,
@@ -207,6 +242,14 @@ def update_planning_status(
     updated = PlanningService.update_status(db, planning_id, payload.status)
     if updated is None:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    if str(existing.status) != str(updated.status):
+        planning_event_service.record_event(
+            db,
+            planning_id,
+            planning_event_service.EVENT_STATUS_CHANGED,
+            actor_id=context.user_id,
+            payload={"old": existing.status, "new": updated.status},
+        )
     return updated
 
 
@@ -304,4 +347,50 @@ def delete_planning(
     deleted = PlanningService.delete_planning(db, planning_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    # Historie der gelöschten Planung mit abräumen (kein verwaistes Log).
+    planning_event_service.delete_events(db, planning_id)
     return {"deleted": True}
+
+
+@router.get("/{planning_id}/events", response_model=PlanningEventListResponse)
+def list_planning_events(
+    planning_id: str,
+    limit: int = Query(default=300, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> PlanningEventListResponse:
+    _ensure_planning_read_access(context)
+    existing = PlanningService.get_planning(db, planning_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    return PlanningEventListResponse(
+        events=planning_event_service.list_events(db, planning_id, limit=limit)
+    )
+
+
+@router.post("/{planning_id}/events/note", response_model=PlanningEventItem)
+def add_planning_note(
+    planning_id: str,
+    payload: PlanningNotePayload,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> PlanningEventItem:
+    require_roles(context, "admin", "projektmanager")
+    existing = PlanningService.get_planning(db, planning_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Planung nicht gefunden")
+    _ensure_planning_write_access(context, existing)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Notiz darf nicht leer sein.")
+    planning_event_service.record_event(
+        db,
+        planning_id,
+        planning_event_service.EVENT_NOTE_ADDED,
+        actor_id=context.user_id,
+        payload={"text": text[:1000]},
+    )
+    events = planning_event_service.list_events(db, planning_id, limit=1)
+    if not events:
+        raise HTTPException(status_code=500, detail="Notiz konnte nicht gespeichert werden.")
+    return events[0]

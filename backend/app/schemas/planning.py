@@ -365,3 +365,23 @@ class PlanningAssignedAssetsResponse(BaseModel):
     differenceTotal: int
     categories: list[PlanningAssignedCategory] = Field(default_factory=list)
     assets: list[PlanningAssignedAsset] = Field(default_factory=list)
+
+
+class PlanningEventItem(BaseModel):
+    """Ein Eintrag des Planungs-Audit-Logs (Historie-Tab)."""
+
+    id: int
+    eventType: str
+    actorId: str | None = None
+    actorName: str | None = None
+    # ISO-8601 UTC (mit "Z") — der Client formatiert in Lokalzeit.
+    createdAt: str
+    payload: dict | None = None
+
+
+class PlanningEventListResponse(BaseModel):
+    events: list[PlanningEventItem] = Field(default_factory=list)
+
+
+class PlanningNotePayload(BaseModel):
+    text: str
