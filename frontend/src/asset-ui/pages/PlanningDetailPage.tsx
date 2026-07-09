@@ -1064,9 +1064,15 @@ export function PlanningDetailPage({
         </div>
       </div>
 
-      {/* Sticky Dirty-Leiste */}
+      {/* Sticky Dirty-Leiste — mobil oberhalb der Bottom-Navigation (die ist
+          an isMobile gekoppelt, nicht an einen CSS-Breakpoint), sonst verdeckt
+          die Navigation die Speichern-/Verwerfen-Buttons. */}
       {dirty && canEdit ? (
-        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+        <div
+          className={`fixed inset-x-0 z-30 flex justify-center px-4 ${
+            isMobile ? 'bottom-[calc(4.75rem+env(safe-area-inset-bottom))]' : 'bottom-4'
+          }`}
+        >
           <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2.5 shadow-panel">
             <span className="text-sm text-ink">Ungespeicherte Änderungen</span>
             <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={discard} disabled={saving}>

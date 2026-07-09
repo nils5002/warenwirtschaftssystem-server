@@ -40,8 +40,60 @@ const AVAILABILITY_VISUALS: Record<
   unbekannt: { dot: 'bg-slate-400', text: 'text-ink-muted', label: 'Nach Speichern geprüft' },
 };
 
-// Tab „Hardware": EINE konsolidierte Tabelle ersetzt die drei alten Sektionen
-// (Positions-Editor, Geplant-vs-Ausgegeben-Kacheln, Availability-Übersicht).
+// Verfügbarkeits-Detailblock — im Desktop-Popover und in der Mobile-Karte
+// identisch, daher einmal zentral.
+function CapacityDetails({
+  capacity,
+  state,
+  onOpenConflicts,
+}: {
+  capacity: CapacityRow | undefined;
+  state: CapacityRow['state'];
+  onOpenConflicts: () => void;
+}) {
+  return (
+    <>
+      {capacity && capacity.free !== null ? (
+        <dl className="space-y-1 text-ink">
+          <div className="flex justify-between">
+            <dt className="text-ink-muted">Frei im Zeitraum</dt>
+            <dd className="tabular-nums">{capacity.free}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt className="text-ink-muted">Bedarf</dt>
+            <dd className="tabular-nums">{capacity.demand}</dd>
+          </div>
+          <div className="flex justify-between font-semibold">
+            <dt className="text-ink-muted">Puffer</dt>
+            <dd className={`tabular-nums ${capacity.buffer !== null && capacity.buffer < 0 ? 'text-rose-600 dark:text-rose-300' : ''}`}>
+              {capacity.buffer !== null && capacity.buffer >= 0 ? `+${capacity.buffer}` : capacity.buffer}
+            </dd>
+          </div>
+        </dl>
+      ) : (
+        <p className="text-ink-muted">
+          Diese Position wird nach dem Speichern gegen den Bestand geprüft.
+        </p>
+      )}
+      {state === 'konflikt' ? (
+        <button
+          type="button"
+          className="mt-2 text-[11px] font-medium text-[#00b9e1] underline-offset-2 hover:underline"
+          onClick={onOpenConflicts}
+        >
+          Zum Konflikte-Tab
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+// Tab „Hardware": EINE konsolidierte Bedarfsliste. Ab md als Tabelle, unter md
+// als gestapelte Kartenliste. WICHTIG: Die Tabelle darf auf schmalen Viewports
+// nicht gerendert werden (nur per CSS versteckt reicht: display:none entfernt
+// die Box) — mobile Browser (v. a. iOS Safari) weiten sonst den Layout-Viewport
+// auf die 720px-Tabellen-Box auf und "zoomen" die ganze Seite raus, selbst wenn
+// die Tabelle in einem overflow-x-auto-Container steckt.
 export function HardwareTab({
   items,
   categoryOptions,
@@ -56,11 +108,48 @@ export function HardwareTab({
   onRemoveItem,
   onOpenConflicts,
 }: HardwareTabProps) {
-  // Index der Zeile, deren Verfügbarkeits-Popover offen ist.
+  // Index der Zeile, deren Verfügbarkeits-Details offen sind (Desktop: Popover,
+  // Mobile: Inline-Block in der Karte).
   const [popoverIndex, setPopoverIndex] = useState<number | null>(null);
 
   const totalQty = items.reduce((sum, item) => sum + Math.max(0, Number(item.qty) || 0), 0);
   const usedCategories = new Set(items.map((item) => normalizeCategory(item.categoryKey)));
+  const categoryCount = items.filter((item) => item.categoryKey).length;
+
+  // Abgeleitete Anzeige-Werte je Position — von Tabelle UND Kartenliste genutzt.
+  const rows = items.map((item, index) => {
+    const normalized = normalizeCategory(item.categoryKey);
+    const capacity = item.categoryKey ? capacityByCategory.get(normalized) : undefined;
+    const state = capacity?.state ?? 'unbekannt';
+    const issued = issuedByCategory.get(normalized) ?? 0;
+    const qty = Math.max(0, Number(item.qty) || 0);
+    const progress = qty > 0 ? Math.min(1, issued / qty) : 0;
+    return { item, index, capacity, state, visual: AVAILABILITY_VISUALS[state], issued, qty, progress };
+  });
+
+  const categorySelect = (index: number, className: string) => (
+    <select
+      className={className}
+      value=""
+      onChange={(event) => onChangeItem(index, { categoryKey: event.target.value })}
+    >
+      <option value="" disabled>
+        Kategorie wählen …
+      </option>
+      {categoryOptions
+        .filter((option) => !usedCategories.has(normalizeCategory(option)))
+        .map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+    </select>
+  );
+
+  const availabilityLabel = (row: (typeof rows)[number]) =>
+    row.state === 'konflikt' && row.capacity?.buffer != null
+      ? `Fehlen ${Math.abs(row.capacity.buffer)}`
+      : row.visual.label;
 
   return (
     <div className="space-y-3">
@@ -74,7 +163,100 @@ export function HardwareTab({
         ) : null}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-line">
+      {/* Mobile (< md): Kartenliste statt Tabelle. text-base auf den Feldern
+          verhindert zusätzlich den iOS-Fokus-Zoom (< 16px Schriftgröße). */}
+      <div className="space-y-2 md:hidden">
+        {rows.length === 0 ? (
+          <p className="rounded-xl border border-line px-3 py-6 text-center text-xs text-ink-muted">
+            Noch keine Positionen — über „+ Position“ den Bedarf erfassen.
+          </p>
+        ) : null}
+        {rows.map((row) => (
+          <div key={row.index} className="rounded-xl border border-line bg-surface-2 p-3">
+            <div className="flex items-center justify-between gap-2">
+              {row.item.categoryKey ? (
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+                  {row.item.categoryKey}
+                </p>
+              ) : (
+                categorySelect(row.index, 'field-input h-10 min-w-0 flex-1 text-base')
+              )}
+              {canEdit ? (
+                <button
+                  type="button"
+                  className="-my-1 -mr-1 shrink-0 rounded-lg p-2 text-ink-muted transition hover:bg-surface hover:text-rose-500"
+                  aria-label={`Position ${row.item.categoryKey || 'ohne Kategorie'} löschen`}
+                  onClick={() => onRemoveItem(row.index)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+            <div className="mt-2 flex items-center gap-3">
+              <label className="flex shrink-0 items-center gap-2 text-xs text-ink-muted">
+                Menge
+                <input
+                  type="number"
+                  min={0}
+                  className="field-input h-10 w-20 text-center text-base"
+                  value={row.item.qty}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    onChangeItem(row.index, { qty: Math.max(0, Number(event.target.value) || 0) })
+                  }
+                />
+              </label>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-ink-muted">
+                  Ausgegeben{' '}
+                  <span className="tabular-nums text-ink">
+                    {row.issued} / {row.qty}
+                  </span>
+                </p>
+                <span className="mt-1 block h-1.5 w-full overflow-hidden rounded-full bg-surface">
+                  <span
+                    className={`block h-full rounded-full ${row.progress >= 1 && row.qty > 0 ? 'bg-emerald-500' : 'bg-primary'}`}
+                    style={{ width: `${Math.round(row.progress * 100)}%` }}
+                  />
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              className={`mt-2 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium ${row.visual.text}`}
+              onClick={() => setPopoverIndex(popoverIndex === row.index ? null : row.index)}
+            >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${row.visual.dot}`} aria-hidden="true" />
+              {availabilityLabel(row)}
+            </button>
+            {popoverIndex === row.index ? (
+              <div className="rounded-lg border border-line bg-surface p-3 text-xs">
+                <CapacityDetails capacity={row.capacity} state={row.state} onOpenConflicts={onOpenConflicts} />
+              </div>
+            ) : null}
+            <input
+              className="field-input mt-2 h-10 w-full text-base"
+              placeholder="Notiz"
+              value={row.item.notes}
+              disabled={!canEdit}
+              onChange={(event) => onChangeItem(row.index, { notes: event.target.value })}
+            />
+          </div>
+        ))}
+        {rows.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm">
+            <span className="font-semibold text-ink">
+              Summe · {categoryCount} {categoryCount === 1 ? 'Kategorie' : 'Kategorien'}
+            </span>
+            <span className="tabular-nums text-ink-muted">
+              {totalQty} geplant · {issuedTotal} / {totalQty} ausgegeben
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Desktop (>= md): kompakte Tabelle mit internem Scroll. */}
+      <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
         <table className="w-full min-w-[720px] border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
@@ -89,150 +271,89 @@ export function HardwareTab({
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-6 text-center text-xs text-ink-muted">
                   Noch keine Positionen — über „+ Position“ den Bedarf erfassen.
                 </td>
               </tr>
             ) : null}
-            {items.map((item, index) => {
-              const normalized = normalizeCategory(item.categoryKey);
-              const capacity = item.categoryKey ? capacityByCategory.get(normalized) : undefined;
-              const state = capacity?.state ?? 'unbekannt';
-              const visual = AVAILABILITY_VISUALS[state];
-              const issued = issuedByCategory.get(normalized) ?? 0;
-              const qty = Math.max(0, Number(item.qty) || 0);
-              const progress = qty > 0 ? Math.min(1, issued / qty) : 0;
-              return (
-                <tr key={index} className="border-b border-line/70 align-middle last:border-b-0">
-                  <td className="px-3 py-2 font-medium text-ink">
-                    {item.categoryKey ? (
-                      item.categoryKey
-                    ) : (
-                      <select
-                        className="field-input h-8 w-full text-xs"
-                        value=""
-                        onChange={(event) => onChangeItem(index, { categoryKey: event.target.value })}
-                      >
-                        <option value="" disabled>
-                          Kategorie wählen …
-                        </option>
-                        {categoryOptions
-                          .filter((option) => !usedCategories.has(normalizeCategory(option)))
-                          .map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="number"
-                      min={0}
-                      className="field-input h-8 w-16 text-center text-xs"
-                      value={item.qty}
-                      disabled={!canEdit}
-                      onChange={(event) =>
-                        onChangeItem(index, { qty: Math.max(0, Number(event.target.value) || 0) })
-                      }
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="tabular-nums text-ink-muted">
-                        {issued} / {qty}
-                      </span>
-                      <span className="inline-block h-1 w-14 overflow-hidden rounded-full bg-surface-2">
-                        <span
-                          className={`block h-full rounded-full ${progress >= 1 && qty > 0 ? 'bg-emerald-500' : 'bg-primary'}`}
-                          style={{ width: `${Math.round(progress * 100)}%` }}
-                        />
-                      </span>
+            {rows.map((row) => (
+              <tr key={row.index} className="border-b border-line/70 align-middle last:border-b-0">
+                <td className="px-3 py-2 font-medium text-ink">
+                  {row.item.categoryKey
+                    ? row.item.categoryKey
+                    : categorySelect(row.index, 'field-input h-8 w-full text-xs')}
+                </td>
+                <td className="px-2 py-2">
+                  <input
+                    type="number"
+                    min={0}
+                    className="field-input h-8 w-16 text-center text-xs"
+                    value={row.item.qty}
+                    disabled={!canEdit}
+                    onChange={(event) =>
+                      onChangeItem(row.index, { qty: Math.max(0, Number(event.target.value) || 0) })
+                    }
+                  />
+                </td>
+                <td className="px-2 py-2">
+                  <span className="inline-flex items-center gap-2">
+                    <span className="tabular-nums text-ink-muted">
+                      {row.issued} / {row.qty}
                     </span>
-                  </td>
-                  <td className="relative px-2 py-2">
+                    <span className="inline-block h-1 w-14 overflow-hidden rounded-full bg-surface-2">
+                      <span
+                        className={`block h-full rounded-full ${row.progress >= 1 && row.qty > 0 ? 'bg-emerald-500' : 'bg-primary'}`}
+                        style={{ width: `${Math.round(row.progress * 100)}%` }}
+                      />
+                    </span>
+                  </span>
+                </td>
+                <td className="relative px-2 py-2">
+                  <button
+                    type="button"
+                    className={`inline-flex items-center gap-1.5 text-xs font-medium ${row.visual.text}`}
+                    onClick={() => setPopoverIndex(popoverIndex === row.index ? null : row.index)}
+                    title="Details anzeigen"
+                  >
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${row.visual.dot}`} aria-hidden="true" />
+                    {availabilityLabel(row)}
+                  </button>
+                  {popoverIndex === row.index ? (
+                    <div className="absolute left-0 top-full z-20 mt-1 w-60 rounded-xl border border-line bg-surface p-3 text-xs shadow-panel">
+                      <CapacityDetails capacity={row.capacity} state={row.state} onOpenConflicts={onOpenConflicts} />
+                    </div>
+                  ) : null}
+                </td>
+                <td className="px-2 py-2">
+                  <input
+                    className="field-input h-8 w-full text-xs"
+                    placeholder="–"
+                    value={row.item.notes}
+                    disabled={!canEdit}
+                    onChange={(event) => onChangeItem(row.index, { notes: event.target.value })}
+                  />
+                </td>
+                <td className="px-2 py-2 text-right">
+                  {canEdit ? (
                     <button
                       type="button"
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium ${visual.text}`}
-                      onClick={() => setPopoverIndex(popoverIndex === index ? null : index)}
-                      title="Details anzeigen"
+                      className="rounded-lg p-1.5 text-ink-muted transition hover:bg-surface-2 hover:text-rose-500"
+                      aria-label={`Position ${row.item.categoryKey || 'ohne Kategorie'} löschen`}
+                      onClick={() => onRemoveItem(row.index)}
                     >
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${visual.dot}`} aria-hidden="true" />
-                      {state === 'konflikt' && capacity?.buffer != null
-                        ? `Fehlen ${Math.abs(capacity.buffer)}`
-                        : visual.label}
+                      <Trash2 className="h-4 w-4" />
                     </button>
-                    {popoverIndex === index ? (
-                      <div className="absolute left-0 top-full z-20 mt-1 w-60 rounded-xl border border-line bg-surface p-3 text-xs shadow-panel">
-                        {capacity && capacity.free !== null ? (
-                          <dl className="space-y-1 text-ink">
-                            <div className="flex justify-between">
-                              <dt className="text-ink-muted">Frei im Zeitraum</dt>
-                              <dd className="tabular-nums">{capacity.free}</dd>
-                            </div>
-                            <div className="flex justify-between">
-                              <dt className="text-ink-muted">Bedarf</dt>
-                              <dd className="tabular-nums">{capacity.demand}</dd>
-                            </div>
-                            <div className="flex justify-between font-semibold">
-                              <dt className="text-ink-muted">Puffer</dt>
-                              <dd className={`tabular-nums ${capacity.buffer !== null && capacity.buffer < 0 ? 'text-rose-600 dark:text-rose-300' : ''}`}>
-                                {capacity.buffer !== null && capacity.buffer >= 0 ? `+${capacity.buffer}` : capacity.buffer}
-                              </dd>
-                            </div>
-                          </dl>
-                        ) : (
-                          <p className="text-ink-muted">
-                            Diese Position wird nach dem Speichern gegen den Bestand geprüft.
-                          </p>
-                        )}
-                        {state === 'konflikt' ? (
-                          <button
-                            type="button"
-                            className="mt-2 text-[11px] font-medium text-[#00b9e1] underline-offset-2 hover:underline"
-                            onClick={() => {
-                              setPopoverIndex(null);
-                              onOpenConflicts();
-                            }}
-                          >
-                            Zum Konflikte-Tab
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      className="field-input h-8 w-full text-xs"
-                      placeholder="–"
-                      value={item.notes}
-                      disabled={!canEdit}
-                      onChange={(event) => onChangeItem(index, { notes: event.target.value })}
-                    />
-                  </td>
-                  <td className="px-2 py-2 text-right">
-                    {canEdit ? (
-                      <button
-                        type="button"
-                        className="rounded-lg p-1.5 text-ink-muted transition hover:bg-surface-2 hover:text-rose-500"
-                        aria-label={`Position ${item.categoryKey || 'ohne Kategorie'} löschen`}
-                        onClick={() => onRemoveItem(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              );
-            })}
+                  ) : null}
+                </td>
+              </tr>
+            ))}
           </tbody>
           <tfoot>
             <tr className="border-t border-line">
               <td className="px-3 py-2 text-sm font-semibold text-ink">
-                Summe · {items.filter((item) => item.categoryKey).length} Kategorien
+                Summe · {categoryCount} Kategorien
               </td>
               <td className="px-2 py-2 text-center font-semibold tabular-nums text-ink">{totalQty}</td>
               <td className="px-2 py-2 tabular-nums text-ink-muted">
