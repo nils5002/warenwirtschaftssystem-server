@@ -43,7 +43,18 @@ import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { canonicalPathForPage, planningDetailPath, resolveRoute } from '../../routing/appRoutes';
 import { navigate } from '../../routing/router';
+import { SegmentedControl } from '../../ui';
+import { PlanningCheckModal } from '../components/planning/PlanningCheckModal';
+import { PlanningDetailPanel } from '../components/planning/PlanningDetailPanel';
+import { PlanningKpiBar } from '../components/planning/PlanningKpiBar';
+import { PlanningListCompact } from '../components/planning/PlanningListCompact';
 import { categoryOptionsFromRecords, normalizeKnownCategory } from '../categories';
+import {
+  aggregateCategoryNeeds,
+  buildConflictSentences,
+  derivePlanningPhases,
+  summarizeNeeds,
+} from './planningCockpit';
 import { conflictSeverityRank, conflictSeverityVisual } from './conflictSeverityVisuals';
 import {
   PlanningPeriod,
@@ -98,16 +109,7 @@ type EditablePlanning = {
 
 type PlanningSummary = PlanningListItem | PlanningResponse;
 type PlanningListHandoverSummary = NonNullable<PlanningListItem['handoverSummary']>;
-type PlanningListMissingItem = NonNullable<PlanningListItem['missingItems']>[number];
 type BusyState = 'list' | 'open' | 'save' | 'create' | 'duplicate' | 'delete' | 'status' | null;
-
-type HandoverNetworkAccent = {
-  card: string;
-  cardActive: string;
-  panel: string;
-  badge: string;
-  hint: string;
-};
 
 type HandoverVisualStatus = 'ok' | 'handover' | 'review' | 'open';
 
@@ -188,60 +190,6 @@ type AvailabilityVisual = {
   conflictLabel: string | null;
   conflictSecondary: ConflictBadge[];
 };
-
-const HANDOVER_NETWORK_ACCENTS: HandoverNetworkAccent[] = [
-  {
-    card: 'border-sky-200 bg-sky-50/55 dark:border-sky-400/40 dark:bg-sky-950/25',
-    cardActive: 'border-sky-300 bg-sky-50/80 ring-1 ring-sky-200 dark:border-sky-400/60 dark:bg-sky-950/40 dark:ring-sky-500/40',
-    panel: 'border-sky-200 bg-white/75 text-sky-900 dark:border-sky-400/50 dark:bg-sky-950/35 dark:text-sky-50',
-    badge: 'border-sky-200 bg-sky-100/80 text-sky-700 dark:border-sky-400/60 dark:bg-sky-900/60 dark:text-sky-50',
-    hint: 'text-sky-800 dark:text-sky-100',
-  },
-  {
-    card: 'border-teal-200 bg-teal-50/55 dark:border-teal-400/40 dark:bg-teal-950/25',
-    cardActive: 'border-teal-300 bg-teal-50/80 ring-1 ring-teal-200 dark:border-teal-400/60 dark:bg-teal-950/40 dark:ring-teal-500/40',
-    panel: 'border-teal-200 bg-white/75 text-teal-900 dark:border-teal-400/50 dark:bg-teal-950/35 dark:text-teal-50',
-    badge: 'border-teal-200 bg-teal-100/80 text-teal-700 dark:border-teal-400/60 dark:bg-teal-900/60 dark:text-teal-50',
-    hint: 'text-teal-800 dark:text-teal-100',
-  },
-  {
-    card: 'border-violet-200 bg-violet-50/55 dark:border-violet-400/40 dark:bg-violet-950/25',
-    cardActive: 'border-violet-300 bg-violet-50/80 ring-1 ring-violet-200 dark:border-violet-400/60 dark:bg-violet-950/40 dark:ring-violet-500/40',
-    panel: 'border-violet-200 bg-white/75 text-violet-900 dark:border-violet-400/50 dark:bg-violet-950/35 dark:text-violet-50',
-    badge: 'border-violet-200 bg-violet-100/80 text-violet-700 dark:border-violet-400/60 dark:bg-violet-900/60 dark:text-violet-50',
-    hint: 'text-violet-800 dark:text-violet-100',
-  },
-  {
-    card: 'border-amber-200 bg-amber-50/55 dark:border-amber-400/40 dark:bg-amber-950/25',
-    cardActive: 'border-amber-300 bg-amber-50/80 ring-1 ring-amber-200 dark:border-amber-400/60 dark:bg-amber-950/40 dark:ring-amber-500/40',
-    panel: 'border-amber-200 bg-white/75 text-amber-900 dark:border-amber-400/50 dark:bg-amber-950/35 dark:text-amber-50',
-    badge: 'border-amber-200 bg-amber-100/80 text-amber-700 dark:border-amber-400/60 dark:bg-amber-900/60 dark:text-amber-50',
-    hint: 'text-amber-800 dark:text-amber-100',
-  },
-  {
-    card: 'border-emerald-200 bg-emerald-50/55 dark:border-emerald-400/40 dark:bg-emerald-950/25',
-    cardActive: 'border-emerald-300 bg-emerald-50/80 ring-1 ring-emerald-200 dark:border-emerald-400/60 dark:bg-emerald-950/40 dark:ring-emerald-500/40',
-    panel: 'border-emerald-200 bg-white/75 text-emerald-900 dark:border-emerald-400/50 dark:bg-emerald-950/35 dark:text-emerald-50',
-    badge: 'border-emerald-200 bg-emerald-100/80 text-emerald-700 dark:border-emerald-400/60 dark:bg-emerald-900/60 dark:text-emerald-50',
-    hint: 'text-emerald-800 dark:text-emerald-100',
-  },
-  {
-    card: 'border-rose-200 bg-rose-50/55 dark:border-rose-400/40 dark:bg-rose-950/25',
-    cardActive: 'border-rose-300 bg-rose-50/80 ring-1 ring-rose-200 dark:border-rose-400/60 dark:bg-rose-950/40 dark:ring-rose-500/40',
-    panel: 'border-rose-200 bg-white/75 text-rose-900 dark:border-rose-400/50 dark:bg-rose-950/35 dark:text-rose-50',
-    badge: 'border-rose-200 bg-rose-100/80 text-rose-700 dark:border-rose-400/60 dark:bg-rose-900/60 dark:text-rose-50',
-    hint: 'text-rose-800 dark:text-rose-100',
-  },
-  {
-    card: 'border-indigo-200 bg-indigo-50/55 dark:border-indigo-400/40 dark:bg-indigo-950/25',
-    cardActive: 'border-indigo-300 bg-indigo-50/80 ring-1 ring-indigo-200 dark:border-indigo-400/60 dark:bg-indigo-950/40 dark:ring-indigo-500/40',
-    panel: 'border-indigo-200 bg-white/75 text-indigo-900 dark:border-indigo-400/50 dark:bg-indigo-950/35 dark:text-indigo-50',
-    badge: 'border-indigo-200 bg-indigo-100/80 text-indigo-700 dark:border-indigo-400/60 dark:bg-indigo-900/60 dark:text-indigo-50',
-    hint: 'text-indigo-800 dark:text-indigo-100',
-  },
-];
-
-const DEFAULT_HANDOVER_NETWORK_ACCENT = HANDOVER_NETWORK_ACCENTS[0];
 
 const STATUS_OPTIONS: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Abgeschlossen', 'Storniert'];
 
@@ -441,50 +389,6 @@ function buildPlanningFallbackLabel(
   return buildPlanningLabel(match);
 }
 
-function buildPlanningListHandoverHint(summary: PlanningListHandoverSummary): string {
-  const partnerLabel =
-    summary.partnerPlanningLabel?.trim() ||
-    (summary.partnerPlanningId ? `Projektverknüpfung (${summary.partnerPlanningId.slice(-6)})` : 'Partnerprojekt');
-  const categoryLabel = summary.categoryKeys[0] ?? '';
-  const partnerSuffix = summary.partnerPlanningCount > 1 ? ` +${summary.partnerPlanningCount - 1}` : '';
-  const categorySuffix = summary.categoryKeys.length > 1 ? ` +${summary.categoryKeys.length - 1}` : '';
-  const detailParts = [partnerLabel + partnerSuffix, categoryLabel ? `${categoryLabel}${categorySuffix}` : ''].filter(Boolean);
-
-  if (summary.direction === 'incoming') {
-    return `Teil des Verbunds mit ${detailParts.join(' · ')}`;
-  }
-  if (summary.direction === 'mixed') {
-    return `Mit ${detailParts.join(' · ')} abgestimmt`;
-  }
-  return `Mit ${detailParts.join(' · ')} abgestimmt`;
-}
-
-const MISSING_SUMMARY_VISIBLE_LIMIT = 3;
-const CONFLICT_LINES_VISIBLE_LIMIT = 3;
-
-function getMissingHardwareSummary(
-  missingItems: PlanningListMissingItem[] | null | undefined,
-): string | null {
-  if (!missingItems || missingItems.length === 0) return null;
-  const positiveItems = missingItems.filter((item) => Number(item.missingQty) > 0);
-  if (positiveItems.length === 0) return null;
-  const visible = positiveItems.slice(0, MISSING_SUMMARY_VISIBLE_LIMIT);
-  const overflow = positiveItems.length - visible.length;
-  const parts = visible.map((item) => `${item.missingQty}× ${item.categoryKey}`);
-  const overflowSuffix = overflow > 0 ? ` + ${overflow} weitere` : '';
-  return `Fehlt: ${parts.join(', ')}${overflowSuffix}`;
-}
-
-// "2026-06-08" -> "08.06" für die kompakte Konfliktzeile auf der Karte.
-function formatConflictDay(iso: string): string {
-  const parts = String(iso).split('-');
-  return parts.length === 3 ? `${parts[2]}.${parts[1]}` : String(iso);
-}
-
-function conflictShortageText(qty: number): string {
-  return qty === 1 ? '1 fehlt' : `${qty} fehlen`;
-}
-
 // Deutsche Plural-Formen der bekannten Hardware-Kategorien. Für unbekannte
 // (z. B. selbst angelegte) Kategorien greift ein Fallback (siehe categoryCountLabel).
 const CATEGORY_PLURALS: Record<string, string> = {
@@ -588,6 +492,11 @@ export function PlanningPage({
   // Listen-Filter leben in der URL (?q, ?status, ?konflikte) — Browser-Zurück
   // aus dem Detail und Refresh stellen die gefilterte Liste wieder her.
   const [listSearch, setListSearch] = useUrlQueryState('q', '', { debounceMs: 350 });
+  // Cockpit-Ansicht (Liste | Woche | Konflikte) — in der URL, damit Zurück/
+  // Refresh die gewählte Ansicht erhalten. 'liste' ist Default (ohne Param).
+  const [viewParam, setView] = useUrlQueryState('view', 'liste');
+  const view: 'liste' | 'woche' | 'konflikte' =
+    viewParam === 'woche' || viewParam === 'konflikte' ? viewParam : 'liste';
   const [listStatusParam, setListStatus] = useUrlQueryState('status', 'Alle');
   const listStatus: 'Alle' | PlanningStatus = (STATUS_OPTIONS as string[]).includes(listStatusParam)
     ? (listStatusParam as PlanningStatus)
@@ -598,7 +507,12 @@ export function PlanningPage({
   // oder Browser-Zurück); Restaurierung erst, wenn die Liste geladen ist.
   useScrollRestoration(listScrollRef, { ready: plannings.length > 0 });
   const [createOpen, setCreateOpen] = useState(false);
-  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  // "Projekt prüfen"-Modal: offen + frischer Availability-Load läuft.
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [checkBusy, setCheckBusy] = useState(false);
+  // Ziel für "Konflikte lösen" (Scroll zum Konfliktblock im Panel).
+  const conflictBlockRef = useRef<HTMLDivElement | null>(null);
   const [editorInitial, setEditorInitial] = useState<EditablePlanning | null>(null);
   const [handoverEditorKey, setHandoverEditorKey] = useState<string | null>(null);
   const [handoverSnapshot, setHandoverSnapshot] = useState<Record<string, EditablePlanning['days'][number]['items'][number]>>({});
@@ -1164,86 +1078,61 @@ export function PlanningPage({
     return map;
   }, [visiblePlannings]);
 
-  const planningListNetworkAccentById = useMemo(() => {
-    const accentByPlanningId = new Map<string, HandoverNetworkAccent>();
-    if (!planningListHandoverSummaryById.size) return accentByPlanningId;
+  // Planungen mit Übergabe-Verbund → blauer Marker in der kompakten Liste.
+  const handoverIdSet = useMemo(
+    () => new Set(planningListHandoverSummaryById.keys()),
+    [planningListHandoverSummaryById],
+  );
 
-    const visiblePlanningById = new Map(visiblePlannings.map((planning) => [planning.id, planning]));
-    const adjacency = new Map<string, Set<string>>();
-    const addNode = (planningId: string) => {
-      if (!planningId) return;
-      if (!adjacency.has(planningId)) adjacency.set(planningId, new Set<string>());
-    };
-    const addEdge = (from: string, to: string) => {
-      if (!from || !to) return;
-      addNode(from);
-      addNode(to);
-      adjacency.get(from)?.add(to);
-      adjacency.get(to)?.add(from);
-    };
+  // --- Cockpit-Ableitungen für das Detail-Panel (reine Präsentation) --------
+  // Panel zeigt nur konsistente Daten: editor gehört zur aktuellen Auswahl,
+  // sonst Skeleton (openPlanning setzt selectedId sofort, Daten kommen async).
+  const panelPlanning = editor && editor.id === selectedId ? editor : null;
+  const todayIso = toIsoDate(new Date());
 
-    for (const [planningId, summary] of planningListHandoverSummaryById.entries()) {
-      addNode(planningId);
-      if (summary.partnerPlanningId) addEdge(planningId, summary.partnerPlanningId);
-    }
+  const cockpitTimeline = useMemo(
+    () =>
+      panelPlanning
+        ? derivePlanningPhases({
+            status: panelPlanning.status,
+            startDate: panelPlanning.startDate,
+            endDate: panelPlanning.endDate,
+            returnBufferDays: panelPlanning.returnBufferDays,
+            today: todayIso,
+            issuedQty: assignedAssets?.assignedTotal,
+            plannedQty: assignedAssets?.plannedTotal,
+          })
+        : null,
+    [panelPlanning, assignedAssets, todayIso],
+  );
 
-    type NetworkComponent = {
-      members: string[];
-      earliestStartDate: string;
-      smallestPlanningId: string;
-    };
-    const components: NetworkComponent[] = [];
-    const visited = new Set<string>();
-    for (const planningId of planningListHandoverSummaryById.keys()) {
-      if (visited.has(planningId)) continue;
-      const queue = [planningId];
-      const component = new Set<string>();
-      visited.add(planningId);
+  // Bedarf-Tabelle: konsumiert die bestehende Worst-Status-Aggregation pro
+  // Kategorie (availabilityVisualByCategoryForRange) — keine eigene Logik.
+  const needsRows = useMemo(
+    () =>
+      aggregateCategoryNeeds(
+        availability?.categorySummary ?? [],
+        availabilityVisualByCategoryForRange,
+        normalizeItemCategory,
+      ),
+    [availability, availabilityVisualByCategoryForRange, normalizeItemCategory],
+  );
+  const needsSummary = useMemo(() => summarizeNeeds(needsRows), [needsRows]);
 
-      while (queue.length) {
-        const current = queue.shift();
-        if (!current) continue;
-        component.add(current);
-        for (const neighbour of adjacency.get(current) ?? []) {
-          if (visited.has(neighbour)) continue;
-          visited.add(neighbour);
-          queue.push(neighbour);
-        }
-      }
-
-      const members = Array.from(component)
-        .filter((member) => planningListHandoverSummaryById.has(member))
-        .sort((a, b) => a.localeCompare(b, 'de'));
-      if (!members.length) continue;
-
-      const earliestStartDate = members.reduce((earliest, member) => {
-        const startDate = visiblePlanningById.get(member)?.startDate ?? '9999-12-31';
-        return startDate < earliest ? startDate : earliest;
-      }, '9999-12-31');
-
-      components.push({
-        members,
-        earliestStartDate,
-        smallestPlanningId: members[0] ?? '',
-      });
-    }
-
-    components
-      .sort((a, b) => {
-        if (a.earliestStartDate !== b.earliestStartDate) {
-          return a.earliestStartDate.localeCompare(b.earliestStartDate);
-        }
-        return a.smallestPlanningId.localeCompare(b.smallestPlanningId, 'de');
-      })
-      .forEach((component, index) => {
-        const accent = HANDOVER_NETWORK_ACCENTS[index % HANDOVER_NETWORK_ACCENTS.length];
-        for (const member of component.members) {
-          accentByPlanningId.set(member, accent);
-        }
-      });
-
-    return accentByPlanningId;
-  }, [planningListHandoverSummaryById, visiblePlannings]);
+  const conflictSentences = useMemo(
+    () =>
+      panelPlanning
+        ? buildConflictSentences({
+            dayVisuals: availabilityVisuals,
+            relatedPlannings,
+            conflictGroups,
+            ownPlanningId: panelPlanning.id,
+            ownEndDate: panelPlanning.endDate,
+            normalizeCategory: normalizeItemCategory,
+          })
+        : { sentences: [], recommendation: null },
+    [panelPlanning, availabilityVisuals, relatedPlannings, conflictGroups, normalizeItemCategory],
+  );
 
   const handoverProjectOptions = useMemo(() => {
     const activeStatuses: PlanningStatus[] = ['Entwurf', 'Geplant', 'Bestätigt', 'Bestaetigt'];
@@ -1379,6 +1268,10 @@ export function PlanningPage({
     }
   };
 
+  // Lädt eine Planung in Panel-/Editor-States. Navigiert NICHT selbst — die
+  // URL steuert die Auswahl (navigateToPlanning bzw. Route-Effekt unten);
+  // showModal=true öffnet zusätzlich das Editor-Modal (z. B. Mobile,
+  // Refresh-Flows während der Editor offen ist).
   const openPlanning = async (planningId: string, options?: { showModal?: boolean; silentBusy?: boolean }) => {
     // Ursache des Bugs: Mehrere schnelle Klicks konnten asynchron in falscher Reihenfolge zurückkommen
     // und damit Editor/Availability mit Daten eines anderen Projekts überschreiben.
@@ -1386,13 +1279,7 @@ export function PlanningPage({
     openPlanningRequestSeq.current = requestSeq;
     setSelectedId(planningId);
     if (options?.showModal ?? true) {
-      setDetailModalOpen(true);
-      // Detail-URL setzen (push mit plModal-Marker): Browser-Zurück schließt
-      // das Modal, Refresh/Deep-Link öffnet es wieder. Kein Push, wenn die
-      // URL das Detail schon trägt (z. B. Reload nach Statuswechsel).
-      if (resolveRoute(window.location.pathname).params.planningId !== planningId) {
-        navigate(planningDetailPath(planningId), { state: { plModal: true } });
-      }
+      setEditorOpen(true);
     }
     setDetailLoading(true);
     if (!options?.silentBusy) setBusyState('open');
@@ -1472,13 +1359,20 @@ export function PlanningPage({
     }
   };
 
+  // Detail-Auswahl über die URL (push mit plPanel-Marker): Der Route-Effekt
+  // unten lädt daraufhin die Daten; Browser-Zurück deselektiert das Panel.
+  const navigateToPlanning = (planningId: string) => {
+    if (resolveRoute(window.location.pathname).params.planningId === planningId) return;
+    navigate(planningDetailPath(planningId), { state: { plPanel: true } });
+  };
+
   const handlePlanningCardClick = (planningId: string) => {
-    if (detailModalOpen) return;
+    if (editorOpen) return;
     if (selectedId === planningId) {
-      setSelectedId('');
+      closePanel();
       return;
     }
-    void openPlanning(planningId);
+    navigateToPlanning(planningId);
   };
 
   const activateConflictFilter = () => {
@@ -1495,7 +1389,9 @@ export function PlanningPage({
         return a.projectName.localeCompare(b.projectName, 'de', { sensitivity: 'base' });
       })[0];
     if (firstWithConflict) {
-      setSelectedId(firstWithConflict.id);
+      // Auswahl läuft über die URL — so zeigt das Panel die Planung inkl.
+      // Konfliktdetails und Browser-Zurück funktioniert.
+      navigateToPlanning(firstWithConflict.id);
     }
   };
 
@@ -1606,7 +1502,7 @@ export function PlanningPage({
   // Wird vom Browser-Zurück (popstate) und als gemeinsamer Kern der
   // UI-Schließwege genutzt.
   const resetDetailState = () => {
-    setDetailModalOpen(false);
+    setEditorOpen(false);
     setHandoverEditorKey(null);
     setHandoverSnapshot({});
     setEditor(null);
@@ -1617,8 +1513,26 @@ export function PlanningPage({
     setSelectedId('');
   };
 
-  const closeDetailModal = async () => {
-    if (!detailModalOpen) return;
+  // Panel deselektieren: State abräumen und die URL zurück zur Liste bringen —
+  // echter Back-Schritt, wenn das Detail aus der App geöffnet wurde
+  // (plPanel-Marker), sonst replace (Deep-Link/Refresh ohne Vorgeschichte).
+  const closePanel = () => {
+    resetDetailState();
+    const historyState =
+      typeof window !== 'undefined' ? (window.history.state as { plPanel?: boolean } | null) : null;
+    if (historyState?.plPanel) {
+      window.history.back();
+    } else if (resolveRoute(window.location.pathname).params.planningId) {
+      navigate(canonicalPathForPage('planning'), { replace: true });
+    }
+  };
+
+  // Editor-Modal schließen: Dirty-Rückfrage, dann verworfene Änderungen auf
+  // den gespeicherten Stand zurückrollen (Clone — kein Referenz-Aliasing),
+  // damit das Panel darunter keine ungespeicherten Werte zeigt. Auswahl und
+  // URL bleiben erhalten; nur Mobile (kein Panel) räumt beides mit ab.
+  const closeEditorModal = async () => {
+    if (!editorOpen) return;
     if (canEdit && isEditorDirty) {
       const accepted = await confirm({
         title: 'Änderungen verwerfen?',
@@ -1629,41 +1543,46 @@ export function PlanningPage({
       });
       if (!accepted) return;
     }
-    resetDetailState();
-    // URL zurück auf die Liste: aus der App geöffnet (plModal-Marker) ⇒
-    // echter Back-Schritt; per Deep-Link/Refresh geöffnet ⇒ replace zur
-    // Liste, damit kein toter History-Eintrag entsteht.
-    const historyState =
-      typeof window !== 'undefined' ? (window.history.state as { plModal?: boolean } | null) : null;
-    if (historyState?.plModal) {
-      window.history.back();
-    } else if (resolveRoute(window.location.pathname).params.planningId) {
-      navigate(canonicalPathForPage('planning'), { replace: true });
+    if (editorInitial) {
+      setEditor(cloneEditablePlanning(editorInitial));
+    }
+    setHandoverEditorKey(null);
+    setEditorOpen(false);
+    if (isMobile) {
+      closePanel();
     }
   };
 
+  // Escape-Kaskade: erst den Editor schließen, dann das Panel deselektieren.
   useEffect(() => {
-    if (!detailModalOpen) return;
+    if (!editorOpen && !selectedId) return;
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || saving) return;
-      void closeDetailModal();
+      if (editorOpen) {
+        void closeEditorModal();
+      } else {
+        closePanel();
+      }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [detailModalOpen, saving, closeDetailModal]);
+  }, [editorOpen, selectedId, saving, closeEditorModal]);
 
-  // URL ⇄ Modal synchron halten: Eine Detail-URL (Deep-Link, Refresh,
-  // Browser-Vor/Zurück) öffnet das Modal für genau diese Planung; fällt die
-  // URL auf die Liste zurück (Browser-Zurück), schließt das Modal hart —
-  // bewusst ohne Verwerfen-Rückfrage, die gilt nur für UI-Schließwege.
+  // URL ⇄ Panel synchron halten: Eine Detail-URL (Deep-Link, Refresh,
+  // Browser-Vor/Zurück) selektiert das Panel für genau diese Planung (auf
+  // Mobile öffnet sie den Editor); fällt die URL auf die Liste zurück
+  // (Browser-Zurück), wird hart deselektiert — bewusst ohne Rückfrage, die
+  // gilt nur für UI-Schließwege.
   useEffect(() => {
     if (routePlanningId) {
-      if (!detailModalOpen || selectedId !== routePlanningId) {
-        void openPlanning(routePlanningId);
+      // Auch laden, wenn selectedId zwar schon stimmt (z. B. von loadPlannings
+      // nach dem Anlegen gesetzt), die Detail-Daten aber noch fehlen.
+      if (selectedId !== routePlanningId || editor?.id !== routePlanningId) {
+        void openPlanning(routePlanningId, { showModal: isMobile });
       }
       return;
     }
-    if (detailModalOpen) {
+    if (selectedId) {
       resetDetailState();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1711,7 +1630,10 @@ export function PlanningPage({
       }));
       await loadPlannings(created.id, { silentBusy: true });
       await refreshOverview();
-      await openPlanning(created.id, { silentBusy: true });
+      // Neue Planung im Panel selektieren (URL) und direkt den Editor öffnen,
+      // damit Positionen erfasst werden können — wie bisher.
+      navigateToPlanning(created.id);
+      if (canEdit) setEditorOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht angelegt werden.');
     } finally {
@@ -1728,7 +1650,8 @@ export function PlanningPage({
       const duplicated = await duplicatePlanning(planningId);
       await loadPlannings(duplicated.id, { silentBusy: true });
       await refreshOverview();
-      await openPlanning(duplicated.id, { silentBusy: true });
+      navigateToPlanning(duplicated.id);
+      if (canEdit) setEditorOpen(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planung konnte nicht dupliziert werden.');
     } finally {
@@ -1752,10 +1675,12 @@ export function PlanningPage({
     try {
       await deletePlanning(planningId);
       if (selectedId === planningId) {
-        setEditor(null);
-        setAvailability(null);
-        setAssignedAssets(null);
-    setHandoverStatus(null);
+        // Auswahl abräumen; die Detail-URL der gelöschten Planung nicht als
+        // History-Eintrag stehen lassen (replace zur Liste).
+        resetDetailState();
+        if (resolveRoute(window.location.pathname).params.planningId === planningId) {
+          navigate(canonicalPathForPage('planning'), { replace: true });
+        }
       }
       setPlanningListDetails((current) => {
         if (!current[planningId]) return current;
@@ -1786,7 +1711,7 @@ export function PlanningPage({
     setError(null);
     try {
       await updatePlanningStatus(planningId, status);
-      if (detailModalOpen && selectedId === planningId) {
+      if (selectedId === planningId) {
         await loadPlannings(planningId, { silentBusy: true });
         await openPlanning(planningId, { showModal: false, silentBusy: true });
       } else {
@@ -1800,6 +1725,39 @@ export function PlanningPage({
       setStatusUpdatingId(null);
       setBusyState(null);
     }
+  };
+
+  // --- "Projekt prüfen": frische Verfügbarkeitsprüfung + geführte Aktionen ---
+  const openCheck = async () => {
+    if (!panelPlanning) return;
+    setCheckOpen(true);
+    setCheckBusy(true);
+    try {
+      // Frisch laden — die Panel-Anzeige zieht automatisch mit (setAvailability).
+      const fresh = await getPlanningAvailability(panelPlanning.id);
+      setAvailability(fresh);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verfügbarkeit konnte nicht geprüft werden.');
+      setCheckOpen(false);
+    } finally {
+      setCheckBusy(false);
+    }
+  };
+
+  const resolveConflictsFromCheck = () => {
+    setCheckOpen(false);
+    conflictBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  const adjustFromCheck = () => {
+    setCheckOpen(false);
+    setEditorOpen(true);
+  };
+
+  const saveStatusFromCheck = (status: PlanningStatus) => {
+    if (!panelPlanning) return;
+    setCheckOpen(false);
+    void changeStatus(panelPlanning.id, status);
   };
 
   const patchEditor = (updater: (value: EditablePlanning) => EditablePlanning) => {
@@ -1911,7 +1869,7 @@ export function PlanningPage({
     void loadPlannings();
   }, []);
 
-  const todayIso = toIsoDate(new Date());
+  // todayIso ist weiter oben (Cockpit-Ableitungen) deklariert.
   const tomorrowIso = toIsoDate(new Date(Date.now() + 86400000));
   const weekEndIso = toIsoDate(new Date(Date.now() + 6 * 86400000));
   // Enddatum ist exklusiv (= Rückgabetag, kein Einsatztag). Eine Planung gilt
@@ -1943,80 +1901,84 @@ export function PlanningPage({
   return (
     <section className="space-y-5">
       <div className="surface-card animate-fade-up">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <PageHeader
-            kicker="Einsatzplanung"
-            title="Projektbezogene Hardwareplanung"
-            subtitle="Bedarf für den gesamten Projektzeitraum planen, Summen prüfen und Engpässe direkt sehen."
-          />
-          {canEdit ? (
-            <button type="button" data-testid="planning-create" className="btn-primary" onClick={() => setCreateOpen(true)}>
-              <CalendarPlus className="h-4 w-4" />
-              Neue Planung
-            </button>
-          ) : (
-            <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Leseansicht
-            </span>
-          )}
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt Planungen</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.total}</p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Aktiv</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.openCount}</p>
-          </div>
-          <div className="surface-muted px-3 py-2.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Abgeschlossen</p>
-            <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.doneCount}</p>
-          </div>
-          {planningStats.redCount > 0 ? (
-            <button
-              type="button"
-              data-testid="planning-conflicts-card"
-              className={`surface-muted px-3 py-2.5 text-left transition hover:border-rose-300 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 ${
-                conflictFilterActive ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : ''
-              }`}
-              onClick={activateConflictFilter}
-              aria-pressed={conflictFilterActive}
-              aria-label={`${planningStats.redCount} offene Konflikte anzeigen`}
-            >
-              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
-              {conflictCauseCount > 0 ? (
-                <p
-                  className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
-                  data-testid="planning-conflict-cause-count"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PageHeader dense kicker="Einsatzplanung" title="Projektbezogene Hardwareplanung" />
+          <div className="flex flex-wrap items-center gap-2">
+            {!isMobile ? (
+              <>
+                <input
+                  className="field-input h-9 w-52 text-sm"
+                  placeholder="Kunde oder Projekt suchen"
+                  value={listSearch}
+                  onChange={(event) => setListSearch(event.target.value)}
+                />
+                <select
+                  className="field-input h-9 w-40 text-sm"
+                  value={listStatus}
+                  onChange={(event) => setListStatus(event.target.value as 'Alle' | PlanningStatus)}
                 >
-                  Konfliktursachen: {conflictCauseCount}
-                </p>
-              ) : null}
-              <p className="mt-0.5 text-[11px] text-rose-700">
-                {conflictFilterActive ? 'Filter aktiv' : 'Klicken, um zu filtern'}
-              </p>
-            </button>
-          ) : (
-            <div className="surface-muted px-3 py-2.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{planningStats.redCount}</p>
-            </div>
-          )}
+                  <option value="Alle">Alle Status</option>
+                  {STATUS_OPTIONS.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+                <SegmentedControl
+                  options={[
+                    { value: 'liste', label: 'Liste' },
+                    { value: 'woche', label: 'Woche' },
+                    { value: 'konflikte', label: 'Konflikte' },
+                  ]}
+                  value={view}
+                  onChange={setView}
+                />
+              </>
+            ) : null}
+            {canEdit ? (
+              <button type="button" data-testid="planning-create" className="btn-primary" onClick={() => setCreateOpen(true)}>
+                <CalendarPlus className="h-4 w-4" />
+                Neue Planung
+              </button>
+            ) : (
+              <span className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Leseansicht
+              </span>
+            )}
+          </div>
         </div>
 
-        {conflictGroups.length > 0 ? (
-          <details
-            open
-            className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-700/50 dark:bg-amber-950/25"
+        <PlanningKpiBar
+          className="mt-3"
+          stats={planningStats}
+          conflictCauseCount={conflictCauseCount}
+          conflictsViewActive={view === 'konflikte'}
+          onConflictsClick={() => setView(view === 'konflikte' ? 'liste' : 'konflikte')}
+        />
+      </div>
+
+      {!isMobile && view === 'konflikte' ? (
+        conflictGroups.length > 0 ? (
+          <article
+            className="surface-card rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-700/50 dark:bg-amber-950/25"
             data-testid="conflict-causes-panel"
           >
-            <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-100">
-              <AlertTriangle className="h-4 w-4" aria-hidden="true" />
-              Konfliktursachen: {conflictCauseCount}
-            </summary>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-100">
+                <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+                Konfliktursachen: {conflictCauseCount}
+              </h3>
+              <button
+                type="button"
+                className="btn-secondary px-2.5 py-1.5 text-xs"
+                onClick={() => {
+                  activateConflictFilter();
+                  setView('liste');
+                }}
+              >
+                Betroffene Planungen in der Liste zeigen
+              </button>
+            </div>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">
               {planningStats.redCount} technische Konflikte hängen mit diesen Engpässen zusammen.
             </p>
@@ -2116,10 +2078,19 @@ export function PlanningPage({
                 );
               })}
             </div>
-          </details>
-        ) : null}
+          </article>
+        ) : (
+          <article className="surface-card" data-testid="conflict-causes-panel">
+            <h3 className="text-sm font-semibold text-ink">Konfliktursachen</h3>
+            <p className="mt-2 rounded-xl border border-dashed border-line bg-surface-2 px-3 py-6 text-center text-sm text-ink-muted">
+              Aktuell gibt es keine offenen Engpässe — alle Planungen sind gedeckt.
+            </p>
+          </article>
+        )
+      ) : null}
 
-        <div className="mt-4">
+      {!isMobile && view === 'woche' ? (
+        <article className="surface-card">
           <PlanningCalendarAddOn
             plannings={visiblePlannings}
             selectedId={selectedId}
@@ -2127,12 +2098,12 @@ export function PlanningPage({
             planningDetailsById={planningListDetails}
             availabilityByPlanningId={calendarAvailabilitiesByPlanningId}
             onSelectPlanning={(planningId) => {
-              void openPlanning(planningId);
+              navigateToPlanning(planningId);
             }}
             requestPlanningData={requestCalendarPlanningData}
           />
-        </div>
-      </div>
+        </article>
+      ) : null}
 
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
       {busyMessage ? <InlineLoadingState message={busyMessage} /> : null}
@@ -2194,8 +2165,8 @@ export function PlanningPage({
         </article>
       ) : null}
 
-      {!isMobile ? <div className="grid gap-4 xl:grid-cols-12">
-        <article className="surface-card xl:col-span-12">
+      {!isMobile && view === 'liste' ? <div className="grid gap-4 xl:grid-cols-12">
+        <article className="surface-card self-start xl:col-span-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 className="text-base font-semibold text-slate-900">Planungsliste</h3>
             <LoadingButton
@@ -2210,27 +2181,6 @@ export function PlanningPage({
             >
               Aktualisieren
             </LoadingButton>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              className="field-input"
-              placeholder="Kunde oder Projekt suchen"
-              value={listSearch}
-              onChange={(event) => setListSearch(event.target.value)}
-            />
-            <select
-              className="field-input"
-              value={listStatus}
-              onChange={(event) => setListStatus(event.target.value as 'Alle' | PlanningStatus)}
-            >
-              <option value="Alle">Alle Status</option>
-              {STATUS_OPTIONS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
           </div>
 
           {conflictFilterActive ? (
@@ -2250,211 +2200,78 @@ export function PlanningPage({
             </div>
           ) : null}
 
-          <div
-            ref={listScrollRef}
-            className="soft-scrollbar mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1"
-            onClick={(event) => {
-              if (event.target === event.currentTarget && !detailModalOpen) {
-                setSelectedId('');
-              }
+          <PlanningListCompact
+            items={visiblePlannings}
+            selectedId={selectedId}
+            canEdit={canEdit}
+            busy={saving}
+            onSelect={handlePlanningCardClick}
+            onDuplicate={(id) => {
+              void duplicate(id);
             }}
-          >
-            {!visiblePlannings.length && !listLoading ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-8 text-center text-sm text-slate-500">
-                Noch keine passende Planung gefunden.
-              </div>
-            ) : null}
-
-            {visiblePlannings.map((item) => {
-              const isActive = selectedId === item.id;
-              const handoverSummary = planningListHandoverSummaryById.get(item.id);
-              const rowStatusLoading = statusUpdatingId === item.id && busyState === 'status';
-              const hasHandoverNetwork = Boolean(handoverSummary);
-              const handoverAccent = planningListNetworkAccentById.get(item.id) ?? DEFAULT_HANDOVER_NETWORK_ACCENT;
-              const itemConflictCount = item.openConflictCount ?? 0;
-              const hasOpenConflict = itemConflictCount > 0;
-              // Klassifizierte Konfliktzeilen (Backend-sortiert nach Tag/Kategorie).
-              // Fallback auf die alte "Fehlt: ..."-Zeile, wenn das Backend noch
-              // kein conflicts-Feld liefert.
-              const conflictLines = item.conflicts ?? [];
-              const missingSummary = getMissingHardwareSummary(item.missingItems);
-              return (
-                <div
-                  key={item.id}
-                  data-testid={`planning-row-${item.id}`}
-                  role="button"
-                  tabIndex={0}
-                  className={`cursor-pointer rounded-xl border p-3 ${
-                    hasOpenConflict
-                      ? isActive
-                        ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300 dark:border-rose-400/60 dark:bg-rose-950/40 dark:ring-rose-500/40'
-                        : 'border-rose-200 bg-rose-50/60 dark:border-rose-400/40 dark:bg-rose-950/30'
-                      : isActive
-                      ? hasHandoverNetwork
-                        ? handoverAccent.cardActive
-                        : 'border-brand-300 bg-brand-50/50 ring-1 ring-brand-200/80 dark:border-brand-700 dark:bg-brand-900/20 dark:ring-brand-700/60'
-                      : hasHandoverNetwork
-                        ? handoverAccent.card
-                        : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/60'
-                  }`}
-                  onClick={() => {
-                    handlePlanningCardClick(item.id);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.target !== event.currentTarget) return;
-                    if (event.key !== 'Enter' && event.key !== ' ') return;
-                    event.preventDefault();
-                    handlePlanningCardClick(item.id);
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{item.customerName}</p>
-                      <p className="text-xs text-slate-600 dark:text-slate-300">{item.projectName}</p>
-                      {item.eventName ? <p className="text-xs text-slate-500 dark:text-slate-400">{item.eventName}</p> : null}
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      {hasOpenConflict ? (
-                        <span
-                          data-testid={`planning-conflict-badge-${item.id}`}
-                          className="rounded-full border border-rose-300 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:border-rose-400/50 dark:bg-rose-950/70 dark:text-rose-100"
-                        >
-                          Konflikt{itemConflictCount > 1 ? ` · ${itemConflictCount}` : ''}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                  {hasOpenConflict ? (
-                    <p className="mt-1 text-[11px] font-medium text-rose-700 dark:text-rose-200">Offener Konflikt</p>
-                  ) : null}
-                  {conflictLines.length > 0 ? (
-                    <div
-                      className="mt-1 flex flex-col gap-1"
-                      data-testid={`planning-conflict-list-${item.id}`}
-                    >
-                      {conflictLines.slice(0, CONFLICT_LINES_VISIBLE_LIMIT).map((conflict, index) => (
-                        <div
-                          key={`${conflict.conflictDay}-${conflict.categoryKey}-${index}`}
-                          data-testid={`planning-conflict-line-${item.id}-${index}`}
-                          className="flex flex-wrap items-center gap-1"
-                        >
-                          <span className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                            {conflict.categoryKey} · {formatConflictDay(conflict.conflictDay)} ·{' '}
-                            {conflictShortageText(Number(conflict.unresolvedShortageQty) || 0)}
-                          </span>
-                          <ConflictSeverityChip
-                            severity={conflict.conflictSeverity}
-                            label={conflict.conflictLabel}
-                          />
-                          {(conflict.secondary ?? []).map((badge) => (
-                            <ConflictSeverityChip
-                              key={badge.severity}
-                              severity={badge.severity}
-                              label={badge.label}
-                              size="sm"
-                            />
-                          ))}
-                        </div>
-                      ))}
-                      {conflictLines.length > CONFLICT_LINES_VISIBLE_LIMIT ? (
-                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          + {conflictLines.length - CONFLICT_LINES_VISIBLE_LIMIT} weitere
-                        </span>
-                      ) : null}
-                    </div>
-                  ) : missingSummary ? (
-                    <p
-                      data-testid={`planning-missing-summary-${item.id}`}
-                      className="mt-1 inline-flex max-w-full items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-400/40 dark:bg-rose-950/55 dark:text-rose-100"
-                    >
-                      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
-                      <span className="break-words">{missingSummary}</span>
-                    </p>
-                  ) : null}
-
-                  <PlanningPeriod start={item.startDate} end={item.endDate} buffer={item.returnBufferDays} className="mt-2 text-xs text-slate-500 dark:text-slate-300" />
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
-                    PM:{' '}
-                    {item.projectManagerUserId
-                      ? managerLabelById.get(item.projectManagerUserId) ?? '-'
-                      : '-'}
-                  </p>
-                  {handoverSummary ? (
-                    <div className={`mt-2 rounded-xl border px-2.5 py-2 text-xs shadow-sm ${handoverAccent.panel}`}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${handoverAccent.badge}`}>
-                          <Link2 className="h-3.5 w-3.5" />
-                          Übergabe-Verbund
-                        </span>
-                      </div>
-                      <p className={`mt-1.5 text-[11px] leading-relaxed ${handoverAccent.hint}`}>
-                        {buildPlanningListHandoverHint(handoverSummary)}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-2 grid gap-2">
-                    <select
-                      value={item.status}
-                      className="field-input h-9 text-xs"
-                      disabled={!canEdit || saving}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={(event) => {
-                        void changeStatus(item.id, event.target.value as PlanningStatus);
-                      }}
-                    >
-                      {STATUS_OPTIONS.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex items-center justify-end gap-1.5">
-                      {canEdit ? (
-                        <LoadingButton
-                        type="button"
-                        className="btn-secondary px-2 py-1 text-xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void duplicate(item.id);
-                        }}
-                        isLoading={rowStatusLoading}
-                        loadingText="..."
-                        disabled={saving && !rowStatusLoading}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                        </LoadingButton>
-                      ) : null}
-                      {canEdit ? (
-                        <LoadingButton
-                        type="button"
-                        className="btn-danger px-2 py-1 text-xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void deleteCurrent(item.id);
-                        }}
-                        isLoading={rowStatusLoading}
-                        loadingText="..."
-                        disabled={saving && !rowStatusLoading}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        </LoadingButton>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            onDelete={(id) => {
+              void deleteCurrent(id);
+            }}
+            handoverIds={handoverIdSet}
+            scrollRef={listScrollRef}
+            maxHeightClass="mt-3 max-h-[calc(100vh-330px)]"
+            emptyHint={listLoading ? 'Planungen werden geladen ...' : 'Noch keine passende Planung gefunden.'}
+          />
         </article>
+        <div className="xl:col-span-7">
+          <PlanningDetailPanel
+            planning={panelPlanning}
+            loading={detailLoading || (Boolean(selectedId) && !panelPlanning)}
+            timeline={cockpitTimeline}
+            needsRows={needsRows}
+            needsSummary={needsSummary}
+            sentences={conflictSentences.sentences}
+            recommendation={conflictSentences.recommendation}
+            issuedQty={assignedAssets?.assignedTotal ?? null}
+            managerLabel={
+              panelPlanning?.projectManagerUserId
+                ? managerLabelById.get(panelPlanning.projectManagerUserId) ?? null
+                : null
+            }
+            statusOptions={STATUS_OPTIONS}
+            canEdit={canEdit}
+            saving={saving}
+            onCheck={() => {
+              void openCheck();
+            }}
+            onEdit={() => setEditorOpen(true)}
+            onClose={closePanel}
+            onStatusChange={(status) => {
+              if (panelPlanning) void changeStatus(panelPlanning.id, status);
+            }}
+            conflictRef={conflictBlockRef}
+            maxHeightClass="max-h-[calc(100vh-260px)]"
+          />
+        </div>
       </div> : null}
 
-      {detailModalOpen ? (
+      <PlanningCheckModal
+        open={checkOpen}
+        checking={checkBusy || detailLoading}
+        saving={saving}
+        status={panelPlanning?.status ?? 'Entwurf'}
+        needsSummary={needsSummary}
+        needsCount={needsRows.length}
+        sentences={conflictSentences.sentences}
+        recommendation={conflictSentences.recommendation}
+        canEdit={canEdit}
+        onResolve={resolveConflictsFromCheck}
+        onSaveStatus={saveStatusFromCheck}
+        onAdjust={adjustFromCheck}
+        onClose={() => setCheckOpen(false)}
+      />
+
+      {editorOpen ? (
           <div
             className="fixed inset-0 z-[80] bg-slate-900/60 p-0 sm:p-4"
             onClick={() => {
               if (saving) return;
-              void closeDetailModal();
+              void closeEditorModal();
             }}
           >
             <div className="flex h-full items-end justify-center sm:items-center">
@@ -2477,7 +2294,7 @@ export function PlanningPage({
                             type="button"
                             className="btn-secondary"
                             onClick={() => {
-                              void closeDetailModal();
+                              void closeEditorModal();
                             }}
                             disabled={saving}
                           >
@@ -2503,7 +2320,7 @@ export function PlanningPage({
                               type="button"
                               className="btn-secondary"
                               onClick={() => {
-                                void closeDetailModal();
+                                void closeEditorModal();
                               }}
                             >
                               Schließen
@@ -2696,7 +2513,7 @@ export function PlanningPage({
                             const availabilityItem = availabilityByCategoryForRange.get(normalizedCategory);
                             const visual = availabilityVisualByCategoryForRange.get(normalizedCategory);
                             const editorKey = handoverKey(dayIndex, itemIndex);
-                            const editorOpen = handoverEditorKey === editorKey;
+                            const handoverEditorOpen = handoverEditorKey === editorKey;
                             return (
                               <div key={`${item.categoryKey}-${itemIndex}`} className="space-y-2">
                                 <div className="grid gap-2 lg:grid-cols-12">
@@ -2954,7 +2771,7 @@ export function PlanningPage({
                                               type="button"
                                               className="btn-secondary px-2.5 py-1.5 text-xs"
                                               onClick={() => {
-                                                void openPlanning(visual.partnerPlanningId);
+                                                navigateToPlanning(visual.partnerPlanningId);
                                               }}
                                             >
                                               Partner öffnen
@@ -3032,7 +2849,7 @@ export function PlanningPage({
                                               type="button"
                                               className="btn-secondary px-2.5 py-1.5 text-xs"
                                               onClick={() => {
-                                                void openPlanning(visual.partnerPlanningId);
+                                                navigateToPlanning(visual.partnerPlanningId);
                                               }}
                                             >
                                               Partner öffnen
@@ -3105,7 +2922,7 @@ export function PlanningPage({
                                   </div>
                                 ) : null}
 
-                                {editorOpen ? (
+                                {handoverEditorOpen ? (
                                   <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2 dark:border-amber-800 dark:bg-amber-950/25">
                                     <div className="grid gap-2 lg:grid-cols-12">
                                       <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 lg:col-span-3">
@@ -3542,7 +3359,7 @@ export function PlanningPage({
                                 type="button"
                                 className="btn-secondary px-2.5 py-1.5 text-xs"
                                 onClick={() => {
-                                  void openPlanning(visual.partnerPlanningId);
+                                  navigateToPlanning(visual.partnerPlanningId);
                                 }}
                               >
                                 Partner öffnen
@@ -3630,7 +3447,7 @@ export function PlanningPage({
                                 type="button"
                                 className="btn-secondary px-2.5 py-1.5 text-xs"
                                 onClick={() => {
-                                  void openPlanning(entry.partnerPlanningId);
+                                  navigateToPlanning(entry.partnerPlanningId);
                                 }}
                               >
                                 Partner öffnen
