@@ -1,3 +1,5 @@
+import { AlertTriangle, CircleCheck } from 'lucide-react';
+
 export type PlanningKpiStats = {
   total: number;
   openCount: number;
@@ -8,15 +10,18 @@ export type PlanningKpiStats = {
 type PlanningKpiBarProps = {
   stats: PlanningKpiStats;
   conflictCauseCount: number;
-  // Klick auf die Konflikt-Kachel wechselt in die Konflikte-Ansicht.
+  // Klick auf den Konflikt-Chip wechselt in die Konflikte-Ansicht.
   onConflictsClick: () => void;
   conflictsViewActive: boolean;
   className?: string;
 };
 
-// Kompakte KPI-Zeile des Planungs-Cockpits (Gesamt / Aktiv / Abgeschlossen /
-// Offene Konflikte). Bewusst flache surface-muted-Kacheln statt der großen
-// Dashboard-Karten — auf 14 Zoll zählt jede Zeile Höhe.
+const CHIP_BASE =
+  'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs';
+
+// Einzeilige KPI-Chips des Planungs-Cockpits (Gesamt / Aktiv / Abgeschlossen /
+// Offene Konflikte). Bewusst flache Chips statt Kacheln — der Kopfbereich soll
+// möglichst wenig Höhe kosten, damit Wochenansicht/Liste den Platz bekommen.
 export function PlanningKpiBar({
   stats,
   conflictCauseCount,
@@ -25,49 +30,46 @@ export function PlanningKpiBar({
   className = '',
 }: PlanningKpiBarProps) {
   return (
-    <div className={`grid gap-3 sm:grid-cols-4 ${className}`}>
-      <div className="surface-muted px-3 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Gesamt Planungen</p>
-        <p className="mt-1 text-xl font-semibold text-slate-900">{stats.total}</p>
-      </div>
-      <div className="surface-muted px-3 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">Aktiv</p>
-        <p className="mt-1 text-xl font-semibold text-slate-900">{stats.openCount}</p>
-      </div>
-      <div className="surface-muted px-3 py-2.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Abgeschlossen</p>
-        <p className="mt-1 text-xl font-semibold text-slate-900">{stats.doneCount}</p>
-      </div>
+    <div className={`flex flex-wrap items-center gap-1.5 ${className}`.trim()}>
+      <span className={`${CHIP_BASE} border-line bg-surface-2 text-ink-muted`}>
+        <span className="font-semibold tabular-nums text-ink">{stats.total}</span>
+        Planungen
+      </span>
+      <span className={`${CHIP_BASE} border-line bg-surface-2 text-ink-muted`}>
+        <span className="font-semibold tabular-nums text-ink">{stats.openCount}</span>
+        aktiv
+      </span>
+      <span className={`${CHIP_BASE} border-line bg-surface-2 text-ink-muted`}>
+        <span className="font-semibold tabular-nums text-ink">{stats.doneCount}</span>
+        abgeschlossen
+      </span>
       {stats.redCount > 0 ? (
         <button
           type="button"
           data-testid="planning-conflicts-card"
-          className={`surface-muted px-3 py-2.5 text-left transition hover:border-rose-300 hover:bg-rose-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 ${
-            conflictsViewActive ? 'border-rose-400 bg-rose-50 ring-1 ring-rose-300' : ''
+          className={`${CHIP_BASE} border-rose-200 bg-rose-50 font-medium text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20 ${
+            conflictsViewActive ? 'ring-1 ring-rose-400' : ''
           }`}
           onClick={onConflictsClick}
           aria-pressed={conflictsViewActive}
           aria-label={`${stats.redCount} offene Konflikte anzeigen`}
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{stats.redCount}</p>
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="font-semibold tabular-nums">{stats.redCount}</span>
+          {stats.redCount === 1 ? 'offener Konflikt' : 'offene Konflikte'}
           {conflictCauseCount > 0 ? (
-            <p
-              className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300"
-              data-testid="planning-conflict-cause-count"
-            >
-              Konfliktursachen: {conflictCauseCount}
-            </p>
+            <span data-testid="planning-conflict-cause-count" className="font-normal">
+              · {conflictCauseCount} {conflictCauseCount === 1 ? 'Ursache' : 'Ursachen'}
+            </span>
           ) : null}
-          <p className="mt-0.5 text-[11px] text-rose-700">
-            {conflictsViewActive ? 'Konflikte-Ansicht aktiv' : 'Klicken für Details'}
-          </p>
         </button>
       ) : (
-        <div className="surface-muted px-3 py-2.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Offene Konflikte</p>
-          <p className="mt-1 text-xl font-semibold text-slate-900">{stats.redCount}</p>
-        </div>
+        <span
+          className={`${CHIP_BASE} border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300`}
+        >
+          <CircleCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Keine offenen Konflikte
+        </span>
       )}
     </div>
   );

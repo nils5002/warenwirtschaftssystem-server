@@ -117,11 +117,13 @@ export function PlanningPage({
   >({});
 
   // Listen-Filter + Ansicht leben in der URL — Browser-Zurück aus dem Detail
-  // und Refresh stellen die gefilterte Sicht wieder her.
+  // und Refresh stellen die gefilterte Sicht wieder her. Ohne view-Parameter
+  // startet die Seite in der Wochenansicht (Arbeitsbereich zuerst); Deep-Links
+  // wie ?view=liste behalten Vorrang.
   const [listSearch, setListSearch] = useUrlQueryState('q', '', { debounceMs: 350 });
-  const [viewParam, setView] = useUrlQueryState('view', 'liste');
+  const [viewParam, setView] = useUrlQueryState('view', 'woche');
   const view: 'liste' | 'woche' | 'konflikte' =
-    viewParam === 'woche' || viewParam === 'konflikte' ? viewParam : 'liste';
+    viewParam === 'liste' || viewParam === 'konflikte' ? viewParam : 'woche';
   const [listStatusParam, setListStatus] = useUrlQueryState('status', 'Alle');
   const listStatus: 'Alle' | PlanningStatus = (STATUS_OPTIONS as string[]).includes(listStatusParam)
     ? (listStatusParam as PlanningStatus)
@@ -359,11 +361,11 @@ export function PlanningPage({
         </div>
 
         <PlanningKpiBar
-          className="mt-3"
+          className="mt-2.5"
           stats={planningStats}
           conflictCauseCount={conflictCauseCount}
           conflictsViewActive={view === 'konflikte'}
-          onConflictsClick={() => setView(view === 'konflikte' ? 'liste' : 'konflikte')}
+          onConflictsClick={() => setView(view === 'konflikte' ? 'woche' : 'konflikte')}
         />
       </div>
 
@@ -621,7 +623,7 @@ export function PlanningPage({
             }}
             handoverIds={handoverIdSet}
             scrollRef={listScrollRef}
-            maxHeightClass="mt-3 max-h-[calc(100vh-330px)]"
+            maxHeightClass="mt-3 max-h-[calc(100vh-290px)]"
             emptyHint={listLoading ? 'Planungen werden geladen ...' : 'Noch keine passende Planung gefunden.'}
           />
         </article>
