@@ -81,7 +81,76 @@ export function ConflictsTab({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-line">
+      {/* Mobile (< md): Kartenliste — die breite Tabelle darf auf schmalen
+          Viewports keine Box bilden, sonst weiten mobile Browser (v. a. iOS
+          Safari) den Layout-Viewport auf und die Seite zoomt raus, auch
+          innerhalb von overflow-x-auto (siehe HardwareTab). */}
+      <div className="space-y-2 md:hidden">
+        {rows.map((row) => {
+          const pill = STATE_PILLS[row.state];
+          return (
+            <div
+              key={row.categoryKey}
+              className={`rounded-xl border border-line p-3 ${
+                row.state === 'knapp' ? 'bg-amber-500/5' : row.state === 'konflikt' ? 'bg-rose-500/5' : 'bg-surface-2'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{row.categoryKey}</p>
+                <span
+                  className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${pill.className}`}
+                >
+                  {row.state === 'konflikt' && row.buffer !== null ? `Fehlen ${Math.abs(row.buffer)}` : pill.label}
+                </span>
+              </div>
+              <p className="mt-1.5 text-xs text-ink-muted">
+                Bedarf <span className="font-semibold tabular-nums text-ink">{row.demand}</span>
+                {' · '}Frei im Zeitraum <span className="tabular-nums text-ink">{row.free ?? '–'}</span>
+                {' · '}Puffer{' '}
+                <span
+                  className={`font-semibold tabular-nums ${
+                    row.buffer === null
+                      ? 'text-ink-faint'
+                      : row.buffer < 0
+                        ? 'text-rose-600 dark:text-rose-300'
+                        : row.buffer <= 1
+                          ? 'text-amber-600 dark:text-amber-300'
+                          : 'text-emerald-600 dark:text-emerald-300'
+                  }`}
+                >
+                  {row.buffer === null ? '–' : row.buffer >= 0 ? `+${row.buffer}` : row.buffer}
+                </span>
+              </p>
+              {row.state === 'konflikt' && canEdit ? (
+                <div className="mt-1.5 flex flex-wrap gap-x-4">
+                  <button
+                    type="button"
+                    className="py-1.5 text-xs font-medium text-[#00b9e1] underline-offset-2 hover:underline"
+                    onClick={onOpenExternalPool}
+                  >
+                    Fremdbestand anfragen
+                  </button>
+                  <button
+                    type="button"
+                    className="py-1.5 text-xs font-medium text-[#00b9e1] underline-offset-2 hover:underline"
+                    onClick={onOpenHardware}
+                  >
+                    Menge reduzieren
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+        {rows.length === 0 ? (
+          <p className="rounded-xl border border-line px-3 py-6 text-center text-xs text-ink-muted">
+            Noch kein Bedarf erfasst — die Kapazitätsrechnung erscheint, sobald Positionen existieren.
+          </p>
+        ) : null}
+      </div>
+
+      {/* Desktop (>= md): Tabelle mit internem Scroll. */}
+      <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
         <table className="w-full min-w-[620px] border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
