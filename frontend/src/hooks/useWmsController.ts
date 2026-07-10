@@ -202,7 +202,7 @@ const OVERVIEW_TIMEOUT_MS = 15_000;
 export function useWmsController(options: UseWmsControllerOptions) {
   const accessContext = getApiAccessContext();
   const { activeRole, isAuthenticated } = options;
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme, toggleTheme } = useTheme();
   const { alert, prompt } = useAppDialog();
   // Die URL ist die einzige Quelle der Wahrheit für die Navigation: aktive
   // Seite und Routen-Parameter (assetId/planningId) werden direkt aus der
@@ -1502,6 +1502,7 @@ export function useWmsController(options: UseWmsControllerOptions) {
   return {
     loadWms,
     theme,
+    setTheme,
     toggleTheme,
     activeRole,
     projectContext,

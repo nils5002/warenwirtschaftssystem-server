@@ -58,6 +58,37 @@
   --ui-primary-soft: rgb(47 125 246 / 0.16);
 }
 
+/* ============================================================
+   STUDIO-Theme (nach den Studio-Mockups)
+   Eigenständige, warme Oberfläche: sandfarbener Grund, weiche
+   creme-weiße Cards, tiefes Indigo/Navy als Akzent (aktive
+   Navigation, primäre Aktionen). Ruhig, hochwertig, kompakt.
+   Studio gehört zur Light-Familie (color-scheme: light), damit
+   native Controls hell rendern.
+   ============================================================ */
+:root.studio {
+  color-scheme: light;
+  --ui-bg: #e8e3d6;
+  --ui-bg-soft: #f2eee5;
+  --ui-surface: #fdfcf7;
+  --ui-surface-2: #f3efe5;
+  --ui-border: #e2dbcb;
+  --ui-border-strong: #cabfa9;
+  --ui-text: #2a2925;
+  --ui-text-muted: #6d675a;
+  --ui-text-faint: #9a9282;
+  --ui-primary: #343a72;
+  --ui-primary-hover: #2a2f60;
+  --ui-primary-soft: rgb(52 58 114 / 0.10);
+
+  --app-bg: var(--ui-bg);
+  --app-bg-soft: var(--ui-bg-soft);
+  --app-surface: var(--ui-surface);
+  --app-border: var(--ui-border);
+  --app-text: var(--ui-text);
+  --app-muted: var(--ui-text-muted);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -84,6 +115,16 @@ body {
   background:
     radial-gradient(circle at 50% -20%, rgb(47 125 246 / 0.10) 0%, transparent 42%),
     var(--ui-bg);
+}
+
+:root.studio body {
+  /* Warmer Sandgrund mit sehr leisem grünlichem Schimmer oben rechts (wie in
+     den Studio-Mockups) — hält den Hintergrund ruhig, die creme-weißen Cards
+     tragen den Fokus. */
+  background:
+    radial-gradient(circle at 88% -8%, rgb(120 170 140 / 0.18) 0%, transparent 44%),
+    radial-gradient(circle at 6% -14%, rgb(214 200 168 / 0.35) 0%, transparent 40%),
+    linear-gradient(180deg, var(--ui-bg-soft) 0%, var(--ui-bg) 100%);
 }
 
 h1,
@@ -452,6 +493,145 @@ h3 {
   }
 
   .dark .hover\:text-slate-900:hover {
+    color: var(--ui-text);
+  }
+
+  /* ------------------------------------------------------------
+     STUDIO-KOMPATIBILITÄTS-SCHICHT
+     Studio ist ein warmes Light-Theme. Hartkodierte kühle
+     Neutrals (bg-white, slate/zinc) der noch nicht auf Tokens
+     migrierten Seiten werden hier auf die warmen Studio-Tokens
+     umgebogen, damit keine grauen/kühlen Flächen den Sand-Look
+     brechen. Semantische Statusfarben (emerald/amber/rose/sky)
+     bleiben bewusst unangetastet. NICHT erweitern — migrierte
+     Seiten nutzen die Token-Klassen (surface/ink/line).
+     ------------------------------------------------------------ */
+
+  /* Warme, weiche Schatten statt der kühlen Slate-Schatten des Light-Themes. */
+  .studio .shadow-soft {
+    box-shadow: 0 1px 2px 0 rgb(74 62 40 / 0.06), 0 12px 30px -8px rgb(74 62 40 / 0.14);
+  }
+
+  .studio .shadow-panel {
+    box-shadow: 0 4px 12px -2px rgb(74 62 40 / 0.10), 0 22px 50px -10px rgb(74 62 40 / 0.20);
+  }
+
+  .studio .bg-white {
+    background-color: var(--ui-surface);
+  }
+
+  .studio .bg-white\/95 {
+    background-color: rgb(253 252 247 / 0.95);
+  }
+
+  .studio .bg-white\/90 {
+    background-color: rgb(253 252 247 / 0.9);
+  }
+
+  .studio .bg-white\/85 {
+    background-color: rgb(253 252 247 / 0.85);
+  }
+
+  .studio .bg-white\/80 {
+    background-color: rgb(253 252 247 / 0.8);
+  }
+
+  .studio .bg-white\/75 {
+    background-color: rgb(253 252 247 / 0.75);
+  }
+
+  .studio .bg-white\/70 {
+    background-color: rgb(253 252 247 / 0.7);
+  }
+
+  .studio .bg-white\/65 {
+    background-color: rgb(253 252 247 / 0.65);
+  }
+
+  .studio .bg-white\/40 {
+    background-color: rgb(253 252 247 / 0.4);
+  }
+
+  .studio .bg-slate-50,
+  .studio .bg-slate-100 {
+    background-color: var(--ui-surface-2);
+  }
+
+  .studio .bg-slate-50\/85 {
+    background-color: rgb(243 239 229 / 0.85);
+  }
+
+  .studio .bg-slate-200 {
+    background-color: #e6dece;
+  }
+
+  .studio .text-slate-900,
+  .studio .text-slate-800 {
+    color: var(--ui-text);
+  }
+
+  .studio .text-slate-700 {
+    color: #4a453b;
+  }
+
+  .studio .text-slate-600,
+  .studio .text-slate-500 {
+    color: var(--ui-text-muted);
+  }
+
+  .studio .text-slate-400 {
+    color: var(--ui-text-faint);
+  }
+
+  .studio .border-slate-200,
+  .studio .border-slate-200\/70,
+  .studio .border-slate-200\/80 {
+    border-color: var(--ui-border);
+  }
+
+  .studio .border-slate-300 {
+    border-color: var(--ui-border-strong);
+  }
+
+  .studio .hover\:border-slate-400:hover {
+    border-color: var(--ui-border-strong);
+  }
+
+  .studio .ring-slate-200 {
+    --tw-ring-color: var(--ui-border);
+  }
+
+  .studio .ring-slate-300 {
+    --tw-ring-color: var(--ui-border-strong);
+  }
+
+  .studio .bg-zinc-100,
+  .studio .bg-zinc-200 {
+    background-color: var(--ui-surface-2);
+  }
+
+  .studio .text-zinc-700 {
+    color: var(--ui-text);
+  }
+
+  .studio .ring-zinc-200 {
+    --tw-ring-color: var(--ui-border);
+  }
+
+  .studio .ring-zinc-300 {
+    --tw-ring-color: var(--ui-border-strong);
+  }
+
+  .studio .hover\:bg-slate-50:hover,
+  .studio .hover\:bg-slate-100:hover {
+    background-color: var(--ui-surface-2);
+  }
+
+  .studio .hover\:bg-slate-800:hover {
+    background-color: #e6dece;
+  }
+
+  .studio .hover\:text-slate-900:hover {
     color: var(--ui-text);
   }
 }
