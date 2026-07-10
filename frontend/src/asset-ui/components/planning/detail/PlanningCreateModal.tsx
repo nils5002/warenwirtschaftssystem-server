@@ -8,6 +8,8 @@ type PlanningCreateModalProps = {
   open: boolean;
   onClose: () => void;
   onCreated: (planning: PlanningResponse) => void;
+  /** Vorbelegtes Startdatum (z. B. Klick auf eine Tagesspalte im Kalender). */
+  initialStartDate?: string | null;
 };
 
 function toIsoDate(value: Date): string {
@@ -26,7 +28,7 @@ function getGermanWeekday(isoDate: string): string {
 // Kompaktes "Neue Planung"-Modal (nur Pflichtfelder, kein Scrollen).
 // Positionen werden nach dem Anlegen auf der Detailseite (Tab Hardware)
 // gepflegt — dorthin leitet onCreated weiter.
-export function PlanningCreateModal({ open, onClose, onCreated }: PlanningCreateModalProps) {
+export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate }: PlanningCreateModalProps) {
   const todayIso = toIsoDate(new Date());
   const [customerName, setCustomerName] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -38,10 +40,11 @@ export function PlanningCreateModal({ open, onClose, onCreated }: PlanningCreate
 
   useEffect(() => {
     if (!open) return;
+    const presetStart = initialStartDate && /^\d{4}-\d{2}-\d{2}$/.test(initialStartDate) ? initialStartDate : todayIso;
     setCustomerName('');
     setProjectName('');
-    setStartDate(todayIso);
-    setEndDate(todayIso);
+    setStartDate(presetStart);
+    setEndDate(presetStart);
     setReturnBufferDays(0);
     setError(null);
     const handleEscape = (event: KeyboardEvent) => {

@@ -32,6 +32,7 @@ from ..schemas.planning import (
     PlanningAvailabilityCategorySummary,
     PlanningAvailabilityItem,
     PlanningAvailabilityResponse,
+    PlanningCategoryTotal,
     PlanningConflictDetail,
     PlanningDayResponse,
     PlanningItemResponse,
@@ -102,7 +103,11 @@ def _planning_to_list_item(
     open_conflict_count: int = 0,
     missing_items: list[PlanningListMissingItem] | None = None,
     conflicts: list[PlanningConflictDetail] | None = None,
+    category_totals: list[PlanningCategoryTotal] | None = None,
+    assigned_count: int = 0,
+    handover_needs_review: bool = False,
 ) -> PlanningListItem:
+    totals = list(category_totals or [])
     return PlanningListItem(
         id=record.external_id,
         customerName=record.customer_name,
@@ -119,7 +124,66 @@ def _planning_to_list_item(
         openConflictCount=int(open_conflict_count),
         missingItems=list(missing_items or []),
         conflicts=list(conflicts or []),
+        totalQty=sum(entry.qty for entry in totals),
+        categoryTotals=totals,
+        assignedCount=int(assigned_count),
+        handoverNeedsReview=bool(handover_needs_review),
     )
+
+
+def _build_list_demand_aggregates(
+    db: Session, records: list[PlanningRecord]
+) -> tuple[dict[int, list[PlanningCategoryTotal]], dict[str, int], set[int]]:
+    """Batch-Aggregate für die Planungsliste (Kalender-Zeitleiste).
+
+    Liefert je Planung (PK) das Kategorien-Aggregat (Summe über alle Tage),
+    je Planung (external_id) die Anzahl aktuell zugeordneter Geräte sowie die
+    PKs mit unvollständiger Übergabe-Konfiguration (aktiviert, aber ohne
+    Partner). Drei Queries für die gesamte Liste statt N Detail-Roundtrips.
+    """
+    totals_by_pk: dict[int, list[PlanningCategoryTotal]] = {}
+    assigned_by_external_id: dict[str, int] = {}
+    needs_review_pks: set[int] = set()
+    if not records:
+        return totals_by_pk, assigned_by_external_id, needs_review_pks
+
+    pks = [record.id for record in records]
+    rows = db.execute(
+        select(
+            PlanningDayRecord.planning_id,
+            PlanningItemRecord.category_key,
+            PlanningItemRecord.qty,
+            PlanningItemRecord.handover_enabled,
+            PlanningItemRecord.linked_planning_external_id,
+        )
+        .join(PlanningDayRecord, PlanningItemRecord.planning_day_id == PlanningDayRecord.id)
+        .where(PlanningDayRecord.planning_id.in_(pks))
+    ).all()
+    qty_by_pk_and_category: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for planning_pk, category_key, qty, handover_enabled, linked_external_id in rows:
+        key = str(category_key or "").strip()
+        if key:
+            qty_by_pk_and_category[planning_pk][key] += max(0, int(qty or 0))
+        if bool(handover_enabled) and not str(linked_external_id or "").strip():
+            needs_review_pks.add(planning_pk)
+    for planning_pk, qty_by_category in qty_by_pk_and_category.items():
+        totals_by_pk[planning_pk] = [
+            PlanningCategoryTotal(categoryKey=key, qty=qty)
+            for key, qty in sorted(qty_by_category.items(), key=lambda entry: (-entry[1], entry[0]))
+        ]
+
+    external_ids = [record.external_id for record in records if record.external_id]
+    if external_ids:
+        assigned_rows = db.execute(
+            select(AssetRecord.assigned_planning_id)
+            .where(AssetRecord.assigned_planning_id.in_(external_ids))
+        ).all()
+        for (assigned_planning_id,) in assigned_rows:
+            key = str(assigned_planning_id or "").strip()
+            if key:
+                assigned_by_external_id[key] = assigned_by_external_id.get(key, 0) + 1
+
+    return totals_by_pk, assigned_by_external_id, needs_review_pks
 
 
 def _parse_loose_date(value: object) -> date | None:
@@ -1295,6 +1359,9 @@ def list_plannings(
         if active_target_ids
         else {}
     )
+    totals_by_pk, assigned_by_external_id, needs_review_pks = _build_list_demand_aggregates(
+        db, list(records)
+    )
     return [
         _planning_to_list_item(
             item,
@@ -1302,6 +1369,9 @@ def list_plannings(
             int(conflict_summary_map.get(item.external_id, {}).get("count", 0) or 0),
             list(conflict_summary_map.get(item.external_id, {}).get("missing", []) or []),
             list(conflict_summary_map.get(item.external_id, {}).get("conflicts", []) or []),
+            totals_by_pk.get(item.id),
+            assigned_by_external_id.get(item.external_id or "", 0),
+            item.id in needs_review_pks,
         )
         for item in records
     ]

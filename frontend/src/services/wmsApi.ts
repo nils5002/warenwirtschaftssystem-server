@@ -315,6 +315,12 @@ export type PlanningListItem = {
   // Additiv: je Konfliktzelle (Tag x Kategorie) ein klassifizierter Eintrag.
   // Anzahl harter Einträge entspricht openConflictCount.
   conflicts?: PlanningConflictDetail[];
+  // Additiv (Kalender-Zeitleiste): Bedarf + Ausgabestand direkt in der Liste,
+  // damit der Kalender keine Detail-Roundtrips pro Planung braucht.
+  totalQty?: number;
+  categoryTotals?: Array<{ categoryKey: string; qty: number }>;
+  assignedCount?: number;
+  handoverNeedsReview?: boolean;
 };
 
 export type PlanningItemResponse = {
