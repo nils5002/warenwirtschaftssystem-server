@@ -266,6 +266,9 @@ class UserItem(BaseModel):
     lastLoginAt: Optional[str] = None
     department: Optional[str] = None
     location: Optional[str] = None
+    # Signaturfarbe (Einsatzplanung/Kalender) + Herkunft ('auto' | 'manual').
+    signatureColor: Optional[str] = None
+    signatureColorSource: Optional[str] = None
 
 
 class UserUpdatePayload(BaseModel):
@@ -276,6 +279,9 @@ class UserUpdatePayload(BaseModel):
     isActive: Optional[bool] = None
     department: Optional[str] = Field(default=None, max_length=120)
     location: Optional[str] = Field(default=None, max_length=120)
+    # Nur Werte aus der festen Palette erlaubt (Validierung im Repository);
+    # Setzen markiert die Farbe als 'manual' - Automatik fasst sie nie wieder an.
+    signatureColor: Optional[str] = Field(default=None, max_length=16)
 
 
 class UserPasswordResetPayload(BaseModel):

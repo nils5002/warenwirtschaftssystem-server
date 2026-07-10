@@ -2,6 +2,7 @@ import { Check, Undo2 } from 'lucide-react';
 
 import type { PlanningListItem } from '../../../../services/wmsApi';
 import { formatGermanDate, getLastBookedDayIso } from '../../../pages/planningPeriod';
+import { ResponsibleBadge } from '../../ResponsibleBadge';
 import {
   buildUtilization,
   deriveTimelineStatus,
@@ -128,15 +129,26 @@ export function PlanningTimelineWeek({
         </button>
       );
     }
+    const responsible = segment.planning.responsibleUser;
     return (
       <button
         key={`${segment.planning.id}-e-${segmentIndex}`}
         type="button"
         data-testid={`timeline-bar-${segment.planning.id}`}
-        className={`pointer-events-auto relative z-10 flex h-9 min-w-0 items-center gap-2 border px-2.5 text-xs transition ${BAR_CLASSES[visual.status]} ${segmentRounding(segment)}`}
+        className={`pointer-events-auto relative z-10 flex h-9 min-w-0 items-center gap-2 border px-2.5 text-xs transition ${BAR_CLASSES[visual.status]} ${segmentRounding(segment)} ${responsible ? 'pl-3' : ''}`}
         style={{ gridColumn: `${segment.startCol} / ${segment.endCol + 1}` }}
+        title={responsible ? `Verantwortlich: ${responsible.name}` : undefined}
         {...interaction}
       >
+        {/* Signaturfarbe des Verantwortlichen als linker Akzentstreifen —
+            die fachliche Statusfarbe (Rahmen/Fläche) bleibt unangetastet. */}
+        {responsible && !segment.clippedStart ? (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 w-1 rounded-l-[inherit]"
+            style={{ backgroundColor: responsible.signatureColor }}
+          />
+        ) : null}
         {visual.status === 'gray' ? (
           <Check className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden="true" />
         ) : (
@@ -153,11 +165,12 @@ export function PlanningTimelineWeek({
             {qty} Geräte
           </span>
         ) : null}
-        {segment.clippedEnd ? (
-          <span className="ml-auto shrink-0 text-[11px] font-medium">
-            {formatUntilHint(segment.planning)}
-          </span>
-        ) : null}
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {responsible && spanDays >= 2 ? <ResponsibleBadge user={responsible} /> : null}
+          {segment.clippedEnd ? (
+            <span className="text-[11px] font-medium">{formatUntilHint(segment.planning)}</span>
+          ) : null}
+        </span>
       </button>
     );
   };

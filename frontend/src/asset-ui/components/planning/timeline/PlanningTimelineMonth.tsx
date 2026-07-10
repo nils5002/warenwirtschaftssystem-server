@@ -129,15 +129,25 @@ export function PlanningTimelineMonth({
         </button>
       );
     }
+    const responsible = segment.planning.responsibleUser;
     return (
       <button
         key={`${segment.planning.id}-e-${segmentIndex}`}
         type="button"
         data-testid={`timeline-month-bar-${segment.planning.id}`}
-        className={`flex h-7 min-w-0 items-center gap-1.5 border px-1.5 text-[11px] transition ${STRIP_CLASSES[visual.status]} ${stripRounding(segment)}`}
+        className={`relative flex h-7 min-w-0 items-center gap-1.5 border px-1.5 text-[11px] transition ${STRIP_CLASSES[visual.status]} ${stripRounding(segment)} ${responsible ? 'pl-2.5' : ''}`}
         style={{ gridColumn: `${segment.startCol} / ${segment.endCol + 1}` }}
+        title={responsible ? `Verantwortlich: ${responsible.name}` : undefined}
         {...interaction}
       >
+        {/* Linker Akzentstreifen in der Signaturfarbe des Verantwortlichen. */}
+        {responsible && !segment.clippedStart ? (
+          <span
+            aria-hidden="true"
+            className="absolute inset-y-0 left-0 w-1 rounded-l-[inherit]"
+            style={{ backgroundColor: responsible.signatureColor }}
+          />
+        ) : null}
         {visual.status === 'gray' ? (
           <Check className="h-3 w-3 shrink-0 opacity-80" aria-hidden="true" />
         ) : (

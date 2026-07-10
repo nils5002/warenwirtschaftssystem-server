@@ -4,6 +4,7 @@ import { useState, type Ref } from 'react';
 import { ContextMenu, type ContextMenuItem } from '../../../ui';
 import type { PlanningListItem } from '../../../services/wmsApi';
 import { formatEinsatz } from '../../pages/planningPeriod';
+import { ResponsibleBadge } from '../ResponsibleBadge';
 import { StatusBadge } from '../StatusBadge';
 
 type PlanningListCompactProps = {
@@ -107,11 +108,14 @@ export function PlanningListCompact({
                   }}
                 >
                   <td className="px-3 py-2">
-                    <p className="truncate text-sm font-semibold text-ink" title={item.projectName}>
-                      {item.projectName}
-                      {item.eventName ? (
-                        <span className="font-normal text-ink-muted"> · {item.eventName}</span>
-                      ) : null}
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+                      <ResponsibleBadge user={item.responsibleUser} />
+                      <span className="min-w-0 truncate" title={item.projectName}>
+                        {item.projectName}
+                        {item.eventName ? (
+                          <span className="font-normal text-ink-muted"> · {item.eventName}</span>
+                        ) : null}
+                      </span>
                     </p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-ink-muted">
                       <span className="truncate" title={item.customerName}>{item.customerName}</span>

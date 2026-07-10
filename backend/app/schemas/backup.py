@@ -41,6 +41,11 @@ class BackupUser(BaseModel):
     approvedAt: datetime | None = None
     approvedBy: str | None = None
     rejectedAt: datetime | None = None
+    # Signaturfarbe (Einsatzplanung). Optional mit Default - alte Backups ohne
+    # diese Felder bleiben importierbar; der Startup-Backfill vergibt dann
+    # automatisch eine Farbe.
+    signatureColor: str | None = None
+    signatureColorSource: str | None = None
 
 
 class BackupAsset(BaseModel):

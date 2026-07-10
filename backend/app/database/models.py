@@ -210,6 +210,11 @@ class UserRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="Aktiv")
     department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Signaturfarbe (Einsatzplanung/Kalender): einmal vergeben, dann stabil.
+    # source = 'auto' (Vergabe/Backfill) oder 'manual' (Admin) — die Automatik
+    # überschreibt 'manual' nie. Beide nullable → Altdaten/Backups kompatibel.
+    signature_color: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    signature_color_source: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # --- Security-/Login-Metadaten (Security-Paket „supman") ---
     # Alle nullable bzw. mit Default 0, damit Bestandsdaten und alte Backups
     # ohne diese Felder unverändert funktionieren. "Registriert am" ist das

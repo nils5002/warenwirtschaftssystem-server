@@ -230,6 +230,17 @@ class PlanningCategoryTotal(BaseModel):
     qty: int
 
 
+class PlanningResponsibleUser(BaseModel):
+    """Verantwortlicher einer Planung (= projectManagerUserId) inkl.
+    Signaturfarbe — direkt in der Liste, damit der Kalender keine Benutzer
+    nachladen muss."""
+
+    id: str
+    name: str
+    initials: str
+    signatureColor: str
+
+
 class PlanningListItem(BaseModel):
     id: str
     customerName: str
@@ -259,6 +270,8 @@ class PlanningListItem(BaseModel):
     # True, wenn mindestens eine Position Übergabe aktiviert hat, aber noch
     # kein Partnerprojekt verknüpft ist (Kalender-Status "Prüfung").
     handoverNeedsReview: bool = False
+    # Verantwortlicher (projectManagerUserId) inkl. Signaturfarbe/Initialen.
+    responsibleUser: PlanningResponsibleUser | None = None
 
 
 class PlanningAvailabilityItem(BaseModel):

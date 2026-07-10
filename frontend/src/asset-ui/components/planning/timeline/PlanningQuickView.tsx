@@ -9,6 +9,7 @@ import {
   getReturnDayIso,
   isDateBooked,
 } from '../../../pages/planningPeriod';
+import { ResponsibleBadge } from '../../ResponsibleBadge';
 import { StatusBadge } from '../../StatusBadge';
 import { deriveTimelineStatus, isActivePlanningStatus } from './timelineMath';
 
@@ -164,6 +165,21 @@ export function PlanningQuickView({
       <p className="mt-0.5 truncate text-xs text-ink-muted">
         {planning.customerName}
         {planning.eventName ? ` · ${planning.eventName}` : ''}
+      </p>
+      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-ink-muted">
+        {planning.responsibleUser ? (
+          <>
+            <ResponsibleBadge user={planning.responsibleUser} />
+            Verantwortlich: <span className="text-ink">{planning.responsibleUser.name}</span>
+          </>
+        ) : (
+          <>
+            <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line bg-surface-2 text-[9px] font-semibold text-ink-faint">
+              ?
+            </span>
+            Verantwortlich: Nicht zugewiesen
+          </>
+        )}
       </p>
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
         <span className="inline-flex items-center gap-1.5">

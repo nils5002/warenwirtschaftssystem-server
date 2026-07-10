@@ -112,6 +112,10 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     "approvedAt": item.approved_at,
                     "approvedBy": item.approved_by,
                     "rejectedAt": item.rejected_at,
+                    # Signaturfarbe mitsichern, damit sie einen Restore ueberlebt
+                    # (insbesondere manuell gesetzte Farben).
+                    "signatureColor": item.signature_color,
+                    "signatureColorSource": item.signature_color_source,
                 }
                 for item in users
             ],
@@ -401,6 +405,8 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     approved_at=item.approvedAt,
                     approved_by=item.approvedBy,
                     rejected_at=item.rejectedAt,
+                    signature_color=item.signatureColor,
+                    signature_color_source=item.signatureColorSource,
                 )
             )
 
