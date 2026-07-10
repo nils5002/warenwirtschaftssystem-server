@@ -223,6 +223,13 @@ class ConflictGroup(BaseModel):
     recommendations: list[Recommendation] = Field(default_factory=list)
 
 
+class PlanningCategoryTotal(BaseModel):
+    """Kategorien-Aggregat einer Planung (Summe über alle Planungstage)."""
+
+    categoryKey: str
+    qty: int
+
+
 class PlanningListItem(BaseModel):
     id: str
     customerName: str
@@ -242,6 +249,16 @@ class PlanningListItem(BaseModel):
     # Eintrag. Anzahl harter Eintraege == openConflictCount. Alte Clients ignorieren
     # das Feld; neue Clients nutzen es fuer die kompakte Konfliktliste der Karte.
     conflicts: list[PlanningConflictDetail] = Field(default_factory=list)
+    # Additiv (Kalender-Zeitleiste): Geräte-Gesamtzahl, Kategorien-Aggregat und
+    # Ausgabestand direkt in der Liste — der Kalender braucht damit keine
+    # Detail-/Availability-Roundtrips pro Planung mehr.
+    totalQty: int = 0
+    categoryTotals: list[PlanningCategoryTotal] = Field(default_factory=list)
+    # Aktuell dieser Planung zugeordnete (= noch draußen befindliche) Geräte.
+    assignedCount: int = 0
+    # True, wenn mindestens eine Position Übergabe aktiviert hat, aber noch
+    # kein Partnerprojekt verknüpft ist (Kalender-Status "Prüfung").
+    handoverNeedsReview: bool = False
 
 
 class PlanningAvailabilityItem(BaseModel):

@@ -7,18 +7,15 @@ import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { planningDetailPath } from '../../routing/appRoutes';
 import { navigate } from '../../routing/router';
-import { PageHeader, SegmentedControl } from '../../ui';
+import { PageHeader } from '../../ui';
 import { PlanningCreateModal } from '../components/planning/detail/PlanningCreateModal';
 import { PlanningKpiBar } from '../components/planning/PlanningKpiBar';
 import { PlanningListCompact } from '../components/planning/PlanningListCompact';
-import { PlanningCalendarAddOn } from './PlanningCalendarAddOn';
+import { PlanningTimeline, type TimelineView } from '../components/planning/timeline/PlanningTimeline';
 import {
   deletePlanning,
   duplicatePlanning,
-  getPlanningAvailability,
   listPlannings,
-  type PlanningAvailabilityResponse,
-  type PlanningResponse,
   type PlanningStatus,
   type RecommendationPriority,
   type WmsOverview,
@@ -111,19 +108,21 @@ export function PlanningPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [planningListDetails] = useState<Record<string, PlanningResponse>>({});
-  const [calendarAvailabilitiesByPlanningId, setCalendarAvailabilitiesByPlanningId] = useState<
-    Record<string, PlanningAvailabilityResponse>
-  >({});
+  const [createStartDate, setCreateStartDate] = useState<string | null>(null);
 
   // Listen-Filter + Ansicht leben in der URL — Browser-Zurück aus dem Detail
   // und Refresh stellen die gefilterte Sicht wieder her. Ohne view-Parameter
   // startet die Seite in der Wochenansicht (Arbeitsbereich zuerst); Deep-Links
-  // wie ?view=liste behalten Vorrang.
+  // wie ?view=liste|monat|konflikte behalten Vorrang.
   const [listSearch, setListSearch] = useUrlQueryState('q', '', { debounceMs: 350 });
   const [viewParam, setView] = useUrlQueryState('view', 'woche');
-  const view: 'liste' | 'woche' | 'konflikte' =
-    viewParam === 'liste' || viewParam === 'konflikte' ? viewParam : 'woche';
+  const view: TimelineView | 'konflikte' =
+    viewParam === 'liste' || viewParam === 'monat' || viewParam === 'konflikte'
+      ? viewParam
+      : 'woche';
+  // Datumsanker der Zeitleiste (?datum=YYYY-MM-DD) — Reload/Deep-Link stellt
+  // Woche bzw. Monat wieder her; "Heute" entfernt den Parameter.
+  const [datumParam, setDatumParam] = useUrlQueryState('datum', '');
   const [listStatusParam, setListStatus] = useUrlQueryState('status', 'Alle');
   const listStatus: 'Alle' | PlanningStatus = (STATUS_OPTIONS as string[]).includes(listStatusParam)
     ? (listStatusParam as PlanningStatus)
@@ -136,16 +135,7 @@ export function PlanningPage({
     if (!options?.silent) setListLoading(true);
     setError(null);
     try {
-      const data = await listPlannings();
-      setPlannings(data);
-      const visibleIds = new Set(data.map((item) => item.id));
-      setCalendarAvailabilitiesByPlanningId((current) => {
-        const next: Record<string, PlanningAvailabilityResponse> = {};
-        for (const [planningId, availability] of Object.entries(current)) {
-          if (visibleIds.has(planningId)) next[planningId] = availability;
-        }
-        return next;
-      });
+      setPlannings(await listPlannings());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Planungen konnten nicht geladen werden.');
     } finally {
@@ -221,6 +211,8 @@ export function PlanningPage({
   const conflictGroups = planningSummary?.conflictGroups ?? [];
   const conflictCauseCount = planningSummary?.conflictCauseCount ?? conflictGroups.length;
 
+  // Gefiltert + nach Startdatum sortiert — gemeinsame Basis für Zeitleiste,
+  // Liste und Mobile-Übersicht.
   const visiblePlannings = useMemo(() => {
     const filtered = plannings.filter((item) => {
       const matchesStatus = listStatus === 'Alle' || item.status === listStatus;
@@ -230,8 +222,7 @@ export function PlanningPage({
       const matchesConflict = !conflictFilterActive || (item.openConflictCount ?? 0) > 0;
       return matchesStatus && matchesSearch && matchesConflict;
     });
-    if (!conflictFilterActive) return filtered;
-    return [...filtered].sort((a, b) => {
+    return filtered.sort((a, b) => {
       if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
       const customer = a.customerName.localeCompare(b.customerName, 'de', { sensitivity: 'base' });
       if (customer !== 0) return customer;
@@ -264,36 +255,9 @@ export function PlanningPage({
     setConflictFilterActive(false);
   };
 
-  // Kalender lädt Availability lazy pro sichtbarer Woche nach.
-  const requestCalendarPlanningData = useCallback(
-    (planningIds: string[]) => {
-      const missingIds = planningIds.filter(
-        (planningId) => !calendarAvailabilitiesByPlanningId[planningId],
-      );
-      if (!missingIds.length) return;
-      void Promise.all(
-        missingIds.map(async (planningId) => {
-          try {
-            return { planningId, availability: await getPlanningAvailability(planningId) };
-          } catch {
-            return null;
-          }
-        }),
-      ).then((results) => {
-        setCalendarAvailabilitiesByPlanningId((current) => {
-          const next = { ...current };
-          for (const result of results) {
-            if (!result) continue;
-            next[result.availability.planningId || result.planningId] = result.availability;
-          }
-          return next;
-        });
-      });
-    },
-    [calendarAvailabilitiesByPlanningId],
-  );
-
   const todayIso = toIsoDate(new Date());
+  // Datumsanker der Zeitleiste: gültiges ?datum= gewinnt, sonst heute.
+  const anchorIso = /^\d{4}-\d{2}-\d{2}$/.test(datumParam) ? datumParam : todayIso;
   const tomorrowIso = toIsoDate(new Date(Date.now() + 86400000));
   const weekEndIso = toIsoDate(new Date(Date.now() + 6 * 86400000));
   // Enddatum ist exklusiv (= Rückgabetag, kein Einsatztag).
@@ -331,15 +295,6 @@ export function PlanningPage({
                     </option>
                   ))}
                 </select>
-                <SegmentedControl
-                  options={[
-                    { value: 'liste', label: 'Liste' },
-                    { value: 'woche', label: 'Woche' },
-                    { value: 'konflikte', label: 'Konflikte' },
-                  ]}
-                  value={view}
-                  onChange={setView}
-                />
               </>
             ) : null}
             {canEdit ? (
@@ -498,16 +453,82 @@ export function PlanningPage({
         )
       ) : null}
 
-      {!isMobile && view === 'woche' ? (
+      {!isMobile && view !== 'konflikte' ? (
         <article className="surface-card">
-          <PlanningCalendarAddOn
+          <PlanningTimeline
+            view={view}
+            onViewChange={setView}
+            anchorIso={anchorIso}
+            onAnchorChange={(iso) => setDatumParam(iso ?? '')}
+            todayIso={todayIso}
             plannings={visiblePlannings}
-            selectedId=""
-            handoverSummaryById={planningListHandoverSummaryById}
-            planningDetailsById={planningListDetails}
-            availabilityByPlanningId={calendarAvailabilitiesByPlanningId}
-            onSelectPlanning={navigateToPlanning}
-            requestPlanningData={requestCalendarPlanningData}
+            canEdit={canEdit}
+            onOpenPlanning={(planningId, tab) =>
+              navigate(
+                tab ? `${planningDetailPath(planningId)}?tab=${tab}` : planningDetailPath(planningId),
+                { state: { plPanel: true } },
+              )
+            }
+            onDuplicate={(planningId) => {
+              void duplicate(planningId);
+            }}
+            onCreateAt={(iso) => {
+              setCreateStartDate(iso);
+              setCreateOpen(true);
+            }}
+            listContent={
+              <div>
+                <div className="flex items-center justify-end">
+                  <LoadingButton
+                    type="button"
+                    className="btn-secondary px-2.5 py-1.5 text-xs"
+                    onClick={() => {
+                      void loadPlannings();
+                    }}
+                    isLoading={listLoading}
+                    loadingText="Wird geladen ..."
+                    disabled={busy}
+                  >
+                    Aktualisieren
+                  </LoadingButton>
+                </div>
+
+                {conflictFilterActive ? (
+                  <div
+                    className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
+                    data-testid="planning-conflict-filter-banner"
+                  >
+                    <span>Es werden nur Planungen mit offenen Konflikten angezeigt.</span>
+                    <button
+                      type="button"
+                      data-testid="planning-conflict-filter-reset"
+                      className="rounded-full border border-rose-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
+                      onClick={clearConflictFilter}
+                    >
+                      Filter zurücksetzen
+                    </button>
+                  </div>
+                ) : null}
+
+                <PlanningListCompact
+                  items={visiblePlannings}
+                  selectedId=""
+                  canEdit={canEdit}
+                  busy={busy}
+                  onSelect={navigateToPlanning}
+                  onDuplicate={(id) => {
+                    void duplicate(id);
+                  }}
+                  onDelete={(id) => {
+                    void deleteCurrent(id);
+                  }}
+                  handoverIds={handoverIdSet}
+                  scrollRef={listScrollRef}
+                  maxHeightClass="mt-3 max-h-[calc(100vh-330px)]"
+                  emptyHint={listLoading ? 'Planungen werden geladen ...' : 'Noch keine passende Planung gefunden.'}
+                />
+              </div>
+            }
           />
         </article>
       ) : null}
@@ -515,7 +536,7 @@ export function PlanningPage({
       {error ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
       ) : null}
-      {listLoading ? <InlineLoadingState message="Planungen werden geladen ..." /> : null}
+      {listLoading && view !== 'liste' ? <InlineLoadingState message="Planungen werden geladen ..." /> : null}
 
       {isMobile ? (
         <article className="surface-card">
@@ -574,66 +595,16 @@ export function PlanningPage({
         </article>
       ) : null}
 
-      {!isMobile && view === 'liste' ? (
-        <article className="surface-card">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <h3 className="text-base font-semibold text-slate-900">Planungsliste</h3>
-            <LoadingButton
-              type="button"
-              className="btn-secondary px-2.5 py-1.5 text-xs"
-              onClick={() => {
-                void loadPlannings();
-              }}
-              isLoading={listLoading}
-              loadingText="Wird geladen ..."
-              disabled={busy}
-            >
-              Aktualisieren
-            </LoadingButton>
-          </div>
-
-          {conflictFilterActive ? (
-            <div
-              className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800"
-              data-testid="planning-conflict-filter-banner"
-            >
-              <span>Es werden nur Planungen mit offenen Konflikten angezeigt.</span>
-              <button
-                type="button"
-                data-testid="planning-conflict-filter-reset"
-                className="rounded-full border border-rose-300 bg-white px-2.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100"
-                onClick={clearConflictFilter}
-              >
-                Filter zurücksetzen
-              </button>
-            </div>
-          ) : null}
-
-          <PlanningListCompact
-            items={visiblePlannings}
-            selectedId=""
-            canEdit={canEdit}
-            busy={busy}
-            onSelect={navigateToPlanning}
-            onDuplicate={(id) => {
-              void duplicate(id);
-            }}
-            onDelete={(id) => {
-              void deleteCurrent(id);
-            }}
-            handoverIds={handoverIdSet}
-            scrollRef={listScrollRef}
-            maxHeightClass="mt-3 max-h-[calc(100vh-290px)]"
-            emptyHint={listLoading ? 'Planungen werden geladen ...' : 'Noch keine passende Planung gefunden.'}
-          />
-        </article>
-      ) : null}
-
       <PlanningCreateModal
         open={createOpen}
-        onClose={() => setCreateOpen(false)}
+        initialStartDate={createStartDate}
+        onClose={() => {
+          setCreateOpen(false);
+          setCreateStartDate(null);
+        }}
         onCreated={(created) => {
           setCreateOpen(false);
+          setCreateStartDate(null);
           void loadPlannings({ silent: true });
           void refreshOverview();
           // Direkt zur Detailseite (Tab Hardware) — dort werden die
