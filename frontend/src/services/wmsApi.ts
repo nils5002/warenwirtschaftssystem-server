@@ -1124,15 +1124,20 @@ export function upsertUser(user: UserItem): Promise<UserItem> {
   return postJson<UserItem>('/api/wms/users', user);
 }
 
-// Signaturfarbe eines Benutzers setzen (nur Admin; nur Paletten-Werte).
-export async function updateUserSignatureColor(
+// Signaturfarbe eines Benutzers setzen oder auf Automatik zuruecksetzen
+// (nur Admin; nur Paletten-Werte, Reset vergibt die am wenigsten genutzte
+// Farbe neu).
+export async function updateUserSignature(
   userId: string,
-  signatureColor: string,
+  payload: { signatureColor?: string; reset?: boolean },
 ): Promise<UserItem> {
+  const body = payload.reset
+    ? { resetSignatureColor: true }
+    : { signatureColor: payload.signatureColor };
   const response = await apiFetch(`/api/wms/users/${userId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ signatureColor }),
+    body: JSON.stringify(body),
   });
   return parseResponse<UserItem>(response);
 }

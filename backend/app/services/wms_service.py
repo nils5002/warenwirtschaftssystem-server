@@ -270,6 +270,7 @@ class WmsService:
             department=payload.department,
             location=payload.location,
             signature_color=payload.signatureColor,
+            reset_signature_color=bool(payload.resetSignatureColor),
             actor_user_id=actor_user_id,
         )
 
