@@ -4,6 +4,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
@@ -110,6 +111,7 @@ def _planning_to_list_item(
     assigned_count: int = 0,
     handover_needs_review: bool = False,
     responsible_user: PlanningResponsibleUser | None = None,
+    on_site_responsible_user: PlanningResponsibleUser | None = None,
 ) -> PlanningListItem:
     totals = list(category_totals or [])
     return PlanningListItem(
@@ -133,6 +135,7 @@ def _planning_to_list_item(
         assignedCount=int(assigned_count),
         handoverNeedsReview=bool(handover_needs_review),
         responsibleUser=responsible_user,
+        onSiteResponsibleUser=on_site_responsible_user,
     )
 
 
@@ -154,9 +157,13 @@ def _build_responsible_user_map(
     fuer die gesamte Liste). Fehlende Farbe: deterministischer Fallback,
     identisch zum Startup-Backfill."""
     manager_ids = {
-        str(record.project_manager_user_id or "").strip()
+        value
         for record in records
-        if str(record.project_manager_user_id or "").strip()
+        for value in (
+            str(record.project_manager_user_id or "").strip(),
+            str(getattr(record, "on_site_responsible_user_id", None) or "").strip(),
+        )
+        if value
     }
     if not manager_ids:
         return {}
@@ -1361,6 +1368,7 @@ def _planning_to_response(
         projectName=record.project_name,
         eventName=record.event_name,
         projectManagerUserId=record.project_manager_user_id,
+        onSiteResponsibleUserId=getattr(record, "on_site_responsible_user_id", None),
         calendarWeek=record.calendar_week,
         startDate=record.start_date,
         endDate=record.end_date,
@@ -1415,6 +1423,9 @@ def list_plannings(
             assigned_by_external_id.get(item.external_id or "", 0),
             item.id in needs_review_pks,
             responsible_by_user_id.get(str(item.project_manager_user_id or "").strip()),
+            responsible_by_user_id.get(
+                str(getattr(item, "on_site_responsible_user_id", None) or "").strip()
+            ),
         )
         for item in records
     ]
@@ -1501,6 +1512,21 @@ def _upsert_days_and_items(db: Session, planning_pk: int, payload: PlanningUpser
             )
 
 
+def _validated_user_reference(db: Session, user_external_id: str | None, field_label: str) -> str | None:
+    """Normalisiert eine optionale Benutzerreferenz und lehnt unbekannte IDs ab
+    (nichts stillschweigend speichern). Leer/None -> None."""
+    resolved = (user_external_id or "").strip()
+    if not resolved:
+        return None
+    exists = db.scalar(select(UserRecord.id).where(UserRecord.external_id == resolved))
+    if exists is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field_label}: Benutzer '{resolved}' existiert nicht.",
+        )
+    return resolved
+
+
 def upsert_planning(db: Session, payload: PlanningUpsertPayload, planning_id: str | None = None) -> PlanningResponse:
     resolved_id = planning_id or payload.id
     if resolved_id:
@@ -1515,6 +1541,9 @@ def upsert_planning(db: Session, payload: PlanningUpsertPayload, planning_id: st
             project_name=payload.projectName.strip(),
             event_name=payload.eventName.strip() if payload.eventName else None,
             project_manager_user_id=payload.projectManagerUserId.strip() if payload.projectManagerUserId else None,
+            on_site_responsible_user_id=_validated_user_reference(
+                db, payload.onSiteResponsibleUserId, "On-Site-Verantwortlicher"
+            ),
             calendar_week=payload.calendarWeek,
             start_date=payload.startDate,
             end_date=payload.endDate,
@@ -1530,6 +1559,9 @@ def upsert_planning(db: Session, payload: PlanningUpsertPayload, planning_id: st
         planning.event_name = payload.eventName.strip() if payload.eventName else None
         planning.project_manager_user_id = (
             payload.projectManagerUserId.strip() if payload.projectManagerUserId else None
+        )
+        planning.on_site_responsible_user_id = _validated_user_reference(
+            db, payload.onSiteResponsibleUserId, "On-Site-Verantwortlicher"
         )
         planning.calendar_week = payload.calendarWeek
         planning.start_date = payload.startDate
@@ -1562,6 +1594,7 @@ def duplicate_planning(db: Session, planning_id: str) -> PlanningResponse | None
         projectName=source.projectName,
         eventName=source.eventName,
         projectManagerUserId=source.projectManagerUserId,
+        onSiteResponsibleUserId=source.onSiteResponsibleUserId,
         calendarWeek=source.calendarWeek,
         startDate=source.startDate,
         endDate=source.endDate,

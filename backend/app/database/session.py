@@ -166,6 +166,9 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # lässt manuell gesetzte Farben unangetastet.
     ("users", "signature_color", "VARCHAR(16)"),
     ("users", "signature_color_source", "VARCHAR(16)"),
+    # On-Site-Verantwortlicher je Planung. Nullable -> Bestandsplanungen
+    # verhalten sich unveraendert (keine Zuweisung).
+    ("planning", "on_site_responsible_user_id", "VARCHAR(64)"),
 )
 
 

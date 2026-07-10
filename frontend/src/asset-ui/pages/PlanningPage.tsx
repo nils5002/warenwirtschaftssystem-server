@@ -96,6 +96,7 @@ function recoPriorityDot(priority: RecommendationPriority): string {
 // Planung navigiert auf die Detailseite /einsatzplanung/:planningId —
 // bearbeitet wird ausschließlich dort (kein Editor-Modal mehr).
 export function PlanningPage({
+  users = [],
   planningSummary,
   onRefreshOverview,
   canEdit = true,
@@ -602,6 +603,7 @@ export function PlanningPage({
       <PlanningCreateModal
         open={createOpen}
         initialStartDate={createStartDate}
+        users={users}
         onClose={() => {
           setCreateOpen(false);
           setCreateStartDate(null);

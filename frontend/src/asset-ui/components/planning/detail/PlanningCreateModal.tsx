@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 
 import { LoadingButton } from '../../../../components/loading';
 import { createPlanning, type PlanningResponse } from '../../../../services/wmsApi';
+import type { UserItem } from '../../../types';
 
 type PlanningCreateModalProps = {
   open: boolean;
@@ -10,6 +11,8 @@ type PlanningCreateModalProps = {
   onCreated: (planning: PlanningResponse) => void;
   /** Vorbelegtes Startdatum (z. B. Klick auf eine Tagesspalte im Kalender). */
   initialStartDate?: string | null;
+  /** Benutzerliste fuer den optionalen On-Site-Verantwortlichen. */
+  users?: UserItem[];
 };
 
 function toIsoDate(value: Date): string {
@@ -28,13 +31,14 @@ function getGermanWeekday(isoDate: string): string {
 // Kompaktes "Neue Planung"-Modal (nur Pflichtfelder, kein Scrollen).
 // Positionen werden nach dem Anlegen auf der Detailseite (Tab Hardware)
 // gepflegt — dorthin leitet onCreated weiter.
-export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate }: PlanningCreateModalProps) {
+export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate, users = [] }: PlanningCreateModalProps) {
   const todayIso = toIsoDate(new Date());
   const [customerName, setCustomerName] = useState('');
   const [projectName, setProjectName] = useState('');
   const [startDate, setStartDate] = useState(todayIso);
   const [endDate, setEndDate] = useState(todayIso);
   const [returnBufferDays, setReturnBufferDays] = useState(0);
+  const [onSiteResponsibleUserId, setOnSiteResponsibleUserId] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,6 +50,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
     setStartDate(presetStart);
     setEndDate(presetStart);
     setReturnBufferDays(0);
+    setOnSiteResponsibleUserId('');
     setError(null);
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -74,6 +79,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
         notes: '',
         status: 'Entwurf',
         returnBufferDays,
+        onSiteResponsibleUserId: onSiteResponsibleUserId || null,
         days: [{ planningDate: startDate, weekday: getGermanWeekday(startDate), items: [] }],
       });
       onCreated(created);
@@ -147,6 +153,24 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
                 min={startDate}
                 onChange={(event) => setEndDate(event.target.value)}
               />
+            </label>
+            <label className="field text-xs sm:col-span-2">
+              On-Site-Verantwortlicher (optional)
+              <select
+                className="field-input"
+                data-testid="planning-create-on-site"
+                value={onSiteResponsibleUserId}
+                onChange={(event) => setOnSiteResponsibleUserId(event.target.value)}
+              >
+                <option value="">– nicht zugewiesen –</option>
+                {users
+                  .filter((user) => user.status === 'Aktiv')
+                  .map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                    </option>
+                  ))}
+              </select>
             </label>
             <label className="field text-xs sm:col-span-2">
               Rückgabe-Puffer (optional)

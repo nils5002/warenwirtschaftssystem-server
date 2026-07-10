@@ -245,6 +245,12 @@ class PlanningRecord(TimestampMixin, Base):
     project_manager_user_id: Mapped[str | None] = mapped_column(
         String(64), ForeignKey("users.external_id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Optionaler On-Site-Verantwortlicher (vor Ort) - unabhaengig vom
+    # Projektverantwortlichen; derselbe Benutzer darf beides sein. Rein
+    # organisatorisches Feld ohne Einfluss auf Verfuegbarkeit/Konflikte.
+    on_site_responsible_user_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("users.external_id", ondelete="SET NULL"), nullable=True, index=True
+    )
     calendar_week: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     start_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     end_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
