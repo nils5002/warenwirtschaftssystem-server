@@ -163,6 +163,9 @@ class BackupPlanning(BaseModel):
     projectName: str
     eventName: str | None = None
     projectManagerUserId: str | None = None
+    # On-Site-Verantwortlicher. Default None -> Altbackups ohne dieses Feld
+    # bleiben unveraendert importierbar (keine Zuweisung).
+    onSiteResponsibleUserId: str | None = None
     calendarWeek: int | None = None
     startDate: date
     endDate: date

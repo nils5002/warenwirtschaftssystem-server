@@ -181,6 +181,12 @@ export function PlanningQuickView({
           </>
         )}
       </p>
+      {planning.onSiteResponsibleUser ? (
+        <p className="mt-1 flex items-center gap-1.5 text-xs text-ink-muted">
+          <ResponsibleBadge user={planning.onSiteResponsibleUser} />
+          On-Site: <span className="text-ink">{planning.onSiteResponsibleUser.name}</span>
+        </p>
+      ) : null}
       <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-muted">
         <span className="inline-flex items-center gap-1.5">
           <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />

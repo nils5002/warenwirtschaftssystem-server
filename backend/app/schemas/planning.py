@@ -34,6 +34,8 @@ class PlanningUpsertPayload(BaseModel):
     projectName: str = Field(min_length=1, max_length=180)
     eventName: str | None = Field(default=None, max_length=180)
     projectManagerUserId: str | None = Field(default=None, max_length=64)
+    # On-Site-Verantwortlicher (optional, unabhaengig vom Projektverantwortlichen).
+    onSiteResponsibleUserId: str | None = Field(default=None, max_length=64)
     calendarWeek: int | None = Field(default=None, ge=1, le=53)
     startDate: date
     endDate: date
@@ -95,6 +97,7 @@ class PlanningResponse(BaseModel):
     projectName: str
     eventName: str | None = None
     projectManagerUserId: str | None = None
+    onSiteResponsibleUserId: str | None = None
     calendarWeek: int | None = None
     startDate: date
     endDate: date
@@ -272,6 +275,8 @@ class PlanningListItem(BaseModel):
     handoverNeedsReview: bool = False
     # Verantwortlicher (projectManagerUserId) inkl. Signaturfarbe/Initialen.
     responsibleUser: PlanningResponsibleUser | None = None
+    # On-Site-Verantwortlicher (vor Ort) - gleiche aufgeloeste Struktur.
+    onSiteResponsibleUser: PlanningResponsibleUser | None = None
 
 
 class PlanningAvailabilityItem(BaseModel):

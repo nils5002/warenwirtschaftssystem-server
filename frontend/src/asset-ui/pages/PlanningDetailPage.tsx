@@ -52,6 +52,7 @@ type DetailDraft = {
   projectName: string;
   eventName: string;
   projectManagerUserId: string;
+  onSiteResponsibleUserId: string;
   startDate: string;
   endDate: string;
   returnBufferDays: number;
@@ -135,6 +136,7 @@ function draftFromPlanning(planning: PlanningResponse): DetailDraft {
     projectName: planning.projectName,
     eventName: planning.eventName ?? '',
     projectManagerUserId: planning.projectManagerUserId ?? '',
+    onSiteResponsibleUserId: planning.onSiteResponsibleUserId ?? '',
     startDate: planning.startDate,
     endDate: planning.endDate,
     returnBufferDays: Math.min(3, Math.max(0, Number(planning.returnBufferDays ?? 0))),
@@ -155,6 +157,7 @@ function draftToPayload(planningId: string, draft: DetailDraft): PlanningUpsertP
     projectName: draft.projectName.trim(),
     eventName: draft.eventName.trim() || null,
     projectManagerUserId: draft.projectManagerUserId || null,
+    onSiteResponsibleUserId: draft.onSiteResponsibleUserId || null,
     startDate: draft.startDate,
     endDate: draft.endDate,
     notes: draft.notes,
@@ -397,6 +400,32 @@ export function PlanningDetailPage({
     if (!draft?.projectManagerUserId) return null;
     const user = users.find((item) => item.id === draft.projectManagerUserId);
     return user ? user.name : null;
+  }, [draft, users]);
+
+  // On-Site-Verantwortlicher: neu auswaehlbar sind nur aktive Benutzer; eine
+  // bestehende Zuweisung an einen inzwischen inaktiven/geloeschten Benutzer
+  // bleibt sichtbar (markiert bzw. als "Ehemaliger Benutzer"), damit die
+  // Auswahl beim Speichern nicht stillschweigend verloren geht.
+  const onSiteOptions = useMemo(() => {
+    const active = users
+      .filter((item) => item.status === 'Aktiv')
+      .map((item) => ({ id: item.id, label: item.name }));
+    const currentId = draft?.onSiteResponsibleUserId ?? '';
+    if (currentId && !active.some((option) => option.id === currentId)) {
+      const current = users.find((item) => item.id === currentId);
+      active.push({
+        id: currentId,
+        label: current ? `${current.name} (inaktiv)` : 'Ehemaliger Benutzer',
+      });
+    }
+    return active.sort((a, b) => a.label.localeCompare(b.label, 'de'));
+  }, [draft, users]);
+
+  const onSiteLabel = useMemo(() => {
+    const currentId = draft?.onSiteResponsibleUserId ?? '';
+    if (!currentId) return null;
+    const user = users.find((item) => item.id === currentId);
+    return user ? user.name : 'Ehemaliger Benutzer';
   }, [draft, users]);
 
   // Partneroptionen für die Übergabe-Verknüpfung (aktive Planungen ohne die
@@ -921,6 +950,31 @@ export function PlanningDetailPage({
                   ) : (
                     <p className="mt-2 text-ink">{managerLabel ?? '–'}</p>
                   )}
+                </div>
+                <div className="rounded-xl border border-line bg-surface-2 p-3">
+                  <h4 className="font-semibold uppercase tracking-wide text-ink-muted">On-Site-Verantwortlich</h4>
+                  {canEdit ? (
+                    <select
+                      className="field-input mt-2 h-8 w-full text-xs"
+                      data-testid="planning-on-site-select"
+                      value={draft.onSiteResponsibleUserId}
+                      onChange={(event) => patchDraft({ onSiteResponsibleUserId: event.target.value })}
+                    >
+                      <option value="">– nicht zugewiesen –</option>
+                      {onSiteOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="mt-2 text-ink" data-testid="planning-on-site-label">
+                      {onSiteLabel ?? 'Nicht zugewiesen'}
+                    </p>
+                  )}
+                  <p className="mt-1.5 leading-relaxed text-ink-faint">
+                    Mitarbeiter, der während des Einsatzes vor Ort verantwortlich ist.
+                  </p>
                 </div>
                 <div className="rounded-xl border border-line bg-surface-2 p-3">
                   <h4 className="font-semibold uppercase tracking-wide text-ink-muted">Nächste Schritte</h4>

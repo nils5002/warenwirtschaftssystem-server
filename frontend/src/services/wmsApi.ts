@@ -185,6 +185,8 @@ export type PlanningUpsertPayload = {
   projectName: string;
   eventName?: string | null;
   projectManagerUserId?: string | null;
+  // On-Site-Verantwortlicher (optional, unabhaengig vom Projektverantwortlichen).
+  onSiteResponsibleUserId?: string | null;
   calendarWeek?: number | null;
   startDate: string;
   endDate: string;
@@ -328,6 +330,13 @@ export type PlanningListItem = {
     initials: string;
     signatureColor: string;
   } | null;
+  // On-Site-Verantwortlicher (vor Ort) - gleiche aufgeloeste Struktur.
+  onSiteResponsibleUser?: {
+    id: string;
+    name: string;
+    initials: string;
+    signatureColor: string;
+  } | null;
 };
 
 export type PlanningItemResponse = {
@@ -363,6 +372,7 @@ export type PlanningResponse = {
   projectName: string;
   eventName?: string | null;
   projectManagerUserId?: string | null;
+  onSiteResponsibleUserId?: string | null;
   calendarWeek?: number | null;
   startDate: string;
   endDate: string;
