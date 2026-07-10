@@ -1,5 +1,7 @@
 import { Boxes, Loader2, LogIn, UserPlus } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { fetchLoginBranding } from '../../services/wmsApi';
 
 type LoginPageProps = {
   onLogin: (payload: { email: string; password: string }) => Promise<void>;
@@ -23,8 +25,22 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [busy, setBusy] = useState(false);
   // Honeypot: für Menschen unsichtbares Feld — nur Bots füllen es aus.
   const [website, setWebsite] = useState('');
+  // Vom Admin verwaltetes Hintergrundbild (öffentlicher Endpunkt, kein Login
+  // nötig). Bis es geladen ist bzw. wenn keines aktiv ist, greift der statische
+  // Standard-Hintergrund /login-background.jpg.
+  const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
 
   const isRegister = mode === 'register';
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchLoginBranding().then((branding) => {
+      if (!cancelled) setBackgroundUrl(branding.backgroundUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -73,7 +89,12 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="fixed inset-0 bg-[url('/login-background.jpg')] bg-cover bg-center bg-no-repeat" />
+      {/* Aktiver, admin-verwalteter Hintergrund (falls vorhanden), sonst der
+          statische Standard. Inline-Style, weil die URL dynamisch ist. */}
+      <div
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url('${backgroundUrl ?? '/login-background.jpg'}')` }}
+      />
       <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.02)_0%,rgba(2,6,23,0.2)_72%,rgba(2,6,23,0.32)_100%)]" />
       <div className="fixed inset-0 bg-gradient-to-br from-slate-950/16 via-slate-900/10 to-indigo-950/18" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">

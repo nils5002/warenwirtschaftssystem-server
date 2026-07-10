@@ -249,6 +249,23 @@ class BackupTelecomPassBooking(BaseModel):
     createdByUserId: str | None = None
 
 
+class BackupLoginBackground(BaseModel):
+    # Login-Hintergrundbild (Metadaten). Optional mit Defaults → Altbackups OHNE
+    # diese Collection bleiben importierbar. Die Bilddatei selbst liegt im
+    # persistenten Volume; fehlt sie nach einem Restore, degradiert die
+    # Login-Seite sauber auf den statischen Standard-Hintergrund.
+    id: str
+    fileName: str
+    originalName: str = ""
+    mimeType: str = "image/webp"
+    sizeBytes: int = 0
+    width: int = 0
+    height: int = 0
+    uploadedByUserId: str | None = None
+    uploadedByName: str | None = None
+    isActive: bool = False
+
+
 class WarehouseBackupPayload(BaseModel):
     version: int = 1
     exportedAt: datetime
@@ -275,6 +292,9 @@ class WarehouseBackupPayload(BaseModel):
     systemSettings: list[BackupSystemSetting] = Field(default_factory=list)
     # Telekompass-Verlauf (Buchungen/Korrekturen je Asset).
     telecomPassBookings: list[BackupTelecomPassBooking] = Field(default_factory=list)
+    # Login-Hintergrundbilder (Metadaten): Default-Liste → Altbackups ohne diese
+    # Collection bleiben gültig (keine Bilder werden angelegt).
+    loginBackgrounds: list[BackupLoginBackground] = Field(default_factory=list)
 
 
 class BackupImportResponse(BaseModel):

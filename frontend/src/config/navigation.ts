@@ -3,6 +3,7 @@ import {
   Boxes,
   CalendarRange,
   Download,
+  Image as ImageIcon,
   KeyRound,
   LayoutDashboard,
   PackagePlus,
@@ -118,6 +119,13 @@ export const navigation: NavItem[] = [
     icon: Sparkles,
     group: 'administration',
     hint: 'Versionshinweise pflegen',
+  },
+  {
+    key: 'loginBackground',
+    label: 'Login-Seite',
+    icon: ImageIcon,
+    group: 'administration',
+    hint: 'Hintergrundbild verwalten',
   },
   {
     key: 'rolesPermissions',

@@ -22,6 +22,7 @@ from ..database.models import (
     ReservationRecord,
     RolePermissionRecord,
     SystemSettingRecord,
+    LoginBackgroundRecord,
     TelecomPassBookingRecord,
     UpdateNoteRecord,
     UserRecord,
@@ -336,6 +337,23 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     )
                 ).all()
             ],
+            "loginBackgrounds": [
+                {
+                    "id": row.external_id,
+                    "fileName": row.file_name,
+                    "originalName": row.original_name or "",
+                    "mimeType": row.mime_type or "image/webp",
+                    "sizeBytes": int(row.size_bytes or 0),
+                    "width": int(row.width or 0),
+                    "height": int(row.height or 0),
+                    "uploadedByUserId": row.uploaded_by_user_id,
+                    "uploadedByName": row.uploaded_by_name,
+                    "isActive": bool(row.is_active),
+                }
+                for row in db.scalars(
+                    select(LoginBackgroundRecord).order_by(LoginBackgroundRecord.created_at.asc())
+                ).all()
+            ],
         }
     )
 
@@ -346,6 +364,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
 
     try:
         db.execute(delete(TelecomPassBookingRecord))
+        db.execute(delete(LoginBackgroundRecord))
         db.execute(delete(SystemSettingRecord))
         db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
@@ -667,6 +686,22 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 )
             )
 
+        for item in payload.loginBackgrounds:
+            db.add(
+                LoginBackgroundRecord(
+                    external_id=item.id,
+                    file_name=item.fileName,
+                    original_name=item.originalName or "",
+                    mime_type=item.mimeType or "image/webp",
+                    size_bytes=int(item.sizeBytes or 0),
+                    width=int(item.width or 0),
+                    height=int(item.height or 0),
+                    uploaded_by_user_id=item.uploadedByUserId,
+                    uploaded_by_name=item.uploadedByName,
+                    is_active=bool(item.isActive),
+                )
+            )
+
         db.commit()
 
         # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
@@ -699,6 +734,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
             "handoverExecutions": len(payload.handoverExecutions),
             "systemSettings": len(payload.systemSettings),
             "telecomPassBookings": len(payload.telecomPassBookings),
+            "loginBackgrounds": len(payload.loginBackgrounds),
         }
     )
 
@@ -735,6 +771,7 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         # mitlöschen. Die globale Preis-Einstellung (system_settings) bleibt als
         # Konfiguration bewusst erhalten.
         db.execute(delete(TelecomPassBookingRecord))
+        db.execute(delete(LoginBackgroundRecord))
         db.execute(delete(HandoverExecutionRecord))
         db.execute(delete(QrCodeGroupMemberRecord))
         db.execute(delete(QrCodeGroupRecord))

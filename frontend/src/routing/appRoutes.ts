@@ -15,6 +15,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   massPrint: '/massendruck',
   labelAudit: '/label-pruefung',
   updateNotes: '/update-notizen',
+  loginBackground: '/login-seite',
   rolesPermissions: '/rollen-rechte',
   telecomPass: '/telekompass',
   securityLogs: '/sicherheit-protokolle',
@@ -65,6 +66,9 @@ const PATH_ALIASES: Record<string, AppPage> = {
 
   '/update-notizen': 'updateNotes',
   '/updatenotes': 'updateNotes',
+
+  '/login-seite': 'loginBackground',
+  '/login-hintergrund': 'loginBackground',
 
   '/rollen-rechte': 'rolesPermissions',
   '/rollen-und-rechte': 'rolesPermissions',
