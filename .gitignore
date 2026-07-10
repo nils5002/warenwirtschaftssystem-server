@@ -25,6 +25,8 @@ __pycache__/
 backend/app/data/logs/
 # Lokal gecachte Produkt-/Kategoriebilder (Laufzeitdaten, nie committen)
 backend/app/data/product_images/
+# Hochgeladene Login-Hintergrundbilder (Laufzeitdaten, nie committen)
+backend/app/data/login_backgrounds/
 *.out
 *.err
 npm-debug.log*

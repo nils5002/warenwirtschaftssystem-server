@@ -40,6 +40,7 @@ const PAGE_GROUP_MAP: Record<AppPage, string> = {
   massPrint: 'System',
   labelAudit: 'System',
   updateNotes: 'System',
+  loginBackground: 'System',
   rolesPermissions: 'Verwaltung',
   telecomPass: 'Verwaltung',
   securityLogs: 'Verwaltung',

@@ -2,6 +2,7 @@ import { AssetDetailPage } from '../asset-ui/pages/AssetDetailPage';
 import { AssetsPage } from '../asset-ui/pages/AssetsPage';
 import { BackupPage } from '../asset-ui/pages/BackupPage';
 import { UpdateNotesAdminPage } from '../asset-ui/pages/UpdateNotesAdminPage';
+import { LoginBackgroundAdminPage } from '../asset-ui/pages/LoginBackgroundAdminPage';
 import { CategoriesPage } from '../asset-ui/pages/CategoriesPage';
 import { CheckinCheckoutPage } from '../asset-ui/pages/CheckinCheckoutPage';
 import { DashboardPage } from '../asset-ui/pages/DashboardPage';
@@ -558,6 +559,11 @@ export function WmsPageView({
         return renderAccessDenied('Update-Notizen nur für Admin / Techniker.');
       }
       return <UpdateNotesAdminPage />;
+    case 'loginBackground':
+      if (!isAdmin) {
+        return renderAccessDenied('Login-Seite nur für Admin / Techniker.');
+      }
+      return <LoginBackgroundAdminPage />;
     case 'rolesPermissions':
       if (!isAdmin) {
         return renderAccessDenied('Rollen & Rechte nur für Admin / Techniker.');

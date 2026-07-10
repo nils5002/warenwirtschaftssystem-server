@@ -1304,6 +1304,77 @@ export async function confirmHardwareImport(previewId: string): Promise<Hardware
   return postJson<HardwareImportConfirmResponse>('/api/wms/import/confirm', { preview_id: previewId });
 }
 
+// --- Login-Hintergrundbilder -------------------------------------------------
+
+export type LoginBackground = {
+  id: string;
+  url: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  width: number;
+  height: number;
+  uploadedByName?: string | null;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export function fetchLoginBackgrounds(): Promise<LoginBackground[]> {
+  return apiFetch('/api/wms/admin/login-backgrounds').then((response) =>
+    parseResponse<LoginBackground[]>(response),
+  );
+}
+
+export async function uploadLoginBackground(file: File): Promise<LoginBackground> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await apiFetch('/api/wms/admin/login-backgrounds', {
+    method: 'POST',
+    body: formData,
+  });
+  return parseResponse<LoginBackground>(response);
+}
+
+export async function activateLoginBackground(id: string): Promise<LoginBackground> {
+  const response = await apiFetch(`/api/wms/admin/login-backgrounds/${id}/activate`, {
+    method: 'PATCH',
+  });
+  return parseResponse<LoginBackground>(response);
+}
+
+export async function deleteLoginBackground(id: string): Promise<{ deleted: boolean }> {
+  const response = await apiFetch(`/api/wms/admin/login-backgrounds/${id}`, { method: 'DELETE' });
+  return parseResponse<{ deleted: boolean }>(response);
+}
+
+export function deactivateLoginBackground(): Promise<{ deactivated: boolean }> {
+  return postJson<{ deactivated: boolean }>('/api/wms/admin/login-backgrounds/deactivate', {});
+}
+
+/**
+ * Öffentliche Login-Branding-Abfrage — läuft VOR der Anmeldung. Bewusst ein
+ * schlichter fetch (nicht apiFetch/parseResponse), damit ein Fehler oder ein
+ * unerwarteter Status niemals den globalen 401-Handler auslöst; jeder Fehler
+ * führt einfach zum statischen Standard-Hintergrund.
+ */
+export async function fetchLoginBranding(): Promise<{ backgroundUrl: string | null }> {
+  try {
+    for (const url of apiUrls('/api/wms/login-branding')) {
+      try {
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (!response.ok) continue;
+        const payload = (await response.json()) as { backgroundUrl?: string | null };
+        return { backgroundUrl: payload.backgroundUrl ?? null };
+      } catch {
+        // nächste URL-Variante versuchen
+      }
+    }
+  } catch {
+    // ignorieren — Fallback auf statischen Hintergrund
+  }
+  return { backgroundUrl: null };
+}
+
 export async function downloadHardwareImportTemplate(): Promise<Blob> {
   const response = await apiFetch('/api/wms/import/template');
   if (!response.ok) {

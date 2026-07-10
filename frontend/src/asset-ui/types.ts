@@ -33,6 +33,7 @@ export type AppPage =
   | 'backup'
   | 'users'
   | 'updateNotes'
+  | 'loginBackground'
   | 'rolesPermissions'
   | 'telecomPass'
   | 'securityLogs';

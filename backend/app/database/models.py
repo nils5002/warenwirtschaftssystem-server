@@ -667,3 +667,32 @@ class TelecomPassBookingRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
+
+
+class LoginBackgroundRecord(TimestampMixin, Base):
+    """Admin-verwaltete Hintergrundbilder der (öffentlichen) Login-Seite.
+
+    Neue Tabelle → wird beim Startup per ``Base.metadata.create_all`` angelegt
+    (kein Spalten-Patch nötig). Die eigentlichen Bilddateien liegen im
+    persistenten Volume unter ``app/data/login_backgrounds/`` (analog zum
+    Produktbild-Cache) — hier stehen nur die Metadaten. Genau EIN Datensatz
+    darf ``is_active`` sein; die öffentliche Login-Seite lädt diesen.
+    """
+
+    __tablename__ = "login_backgrounds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    # Gespeicherter Dateiname im Volume (nicht erratbar, .webp). Getrennt vom
+    # ursprünglichen Upload-Namen, der nur zur Anzeige dient.
+    file_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    mime_type: Mapped[str] = mapped_column(String(64), nullable=False, default="image/webp")
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    width: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    height: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Denormalisiert für die Audit-Anzeige „hochgeladen von" — überlebt auch das
+    # spätere Löschen/Deaktivieren des Benutzers.
+    uploaded_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    uploaded_by_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)

@@ -9,6 +9,7 @@ from . import (
     defaults,
     health,
     label_audit,
+    login_backgrounds,
     media,
     mobile,
     planning,
@@ -32,6 +33,7 @@ from . import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(media.router)
+api_router.include_router(login_backgrounds.router)
 api_router.include_router(defaults.router)
 api_router.include_router(auth.router)
 api_router.include_router(wms.router)
