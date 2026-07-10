@@ -34,6 +34,8 @@ type UserFormState = {
   // Signaturfarbe: nur beim Bearbeiten waehlbar (Neuanlage bekommt sie
   // automatisch vom Backend); '' = unveraendert lassen.
   signatureColor: string;
+  // True = beim Speichern auf automatische Vergabe zuruecksetzen.
+  signatureColorReset: boolean;
 };
 
 function emptyUserForm(): UserFormState {
@@ -45,6 +47,7 @@ function emptyUserForm(): UserFormState {
     department: '',
     location: '',
     signatureColor: '',
+    signatureColorReset: false,
   };
 }
 
@@ -83,6 +86,7 @@ export function UsersPage({
     department?: string;
     location?: string;
     signatureColor?: string;
+    resetSignatureColor?: boolean;
   }) => Promise<void>;
   onResetUserPassword: (
     userId: string,
@@ -278,6 +282,7 @@ export function UsersPage({
       department: user.department ?? '',
       location: user.location ?? '',
       signatureColor: user.signatureColor ?? '',
+      signatureColorReset: false,
     });
     setError(null);
     setActionError(null);
@@ -314,7 +319,8 @@ export function UsersPage({
           status: form.status,
           department: form.department.trim() || undefined,
           location: form.location.trim() || undefined,
-          signatureColor: form.signatureColor || undefined,
+          signatureColor: form.signatureColorReset ? undefined : form.signatureColor || undefined,
+          resetSignatureColor: form.signatureColorReset || undefined,
         });
       } else {
         await onInviteUser({
@@ -1027,43 +1033,64 @@ export function UsersPage({
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <h4 className="text-sm font-semibold text-slate-900">Signaturfarbe</h4>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Kennzeichnet Planungen dieses Benutzers im Kalender. Automatisch vergeben —
+                    Kennzeichnet Planungen dieses Benutzers im Kalender. Automatisch vergeben -
                     hier manuell aenderbar.
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {USER_SIGNATURE_COLORS.map((option) => {
                       const active =
+                        !form.signatureColorReset &&
                         form.signatureColor.toUpperCase() === option.value.toUpperCase();
                       return (
                         <button
                           key={option.value}
                           type="button"
                           data-testid={`signature-color-${option.value.replace('#', '')}`}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                          className={`h-7 w-7 rounded-full border-2 transition ${
                             active
-                              ? 'border-slate-900 ring-2 ring-slate-300 dark:border-white dark:ring-slate-600'
-                              : 'border-line hover:border-line-strong'
+                              ? 'scale-110 border-slate-900 ring-2 ring-slate-400 dark:border-white dark:ring-slate-500'
+                              : 'border-transparent hover:scale-110'
                           }`}
+                          style={{ backgroundColor: option.value }}
+                          title={option.label}
                           aria-pressed={active}
+                          aria-label={`Signaturfarbe ${option.label}`}
                           onClick={() =>
-                            setForm((current) => ({ ...current, signatureColor: option.value }))
+                            setForm((current) => ({
+                              ...current,
+                              signatureColor: option.value,
+                              signatureColorReset: false,
+                            }))
                           }
-                        >
-                          <span
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: option.value }}
-                            aria-hidden="true"
-                          />
-                          {option.label}
-                        </button>
+                        />
                       );
                     })}
                   </div>
-                  {form.signatureColor ? (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Aktuell: {signatureColorLabel(form.signatureColor)}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="signature-color-auto"
+                      className={`btn-secondary px-2.5 py-1 text-xs ${
+                        form.signatureColorReset ? 'ring-2 ring-slate-400' : ''
+                      }`}
+                      onClick={() =>
+                        setForm((current) => ({
+                          ...current,
+                          signatureColor: '',
+                          signatureColorReset: true,
+                        }))
+                      }
+                    >
+                      Automatisch (zuruecksetzen)
+                    </button>
+                    <p className="text-xs text-slate-500">
+                      {form.signatureColorReset
+                        ? 'Beim Speichern wird automatisch eine freie Farbe vergeben.'
+                        : `Aktuell: ${signatureColorLabel(form.signatureColor)}${
+                            userInForm?.signatureColorSource === 'manual' ? ' (manuell)' : ' (automatisch)'
+                          }`}
                     </p>
-                  ) : null}
+                  </div>
                 </div>
               ) : null}
             </div>

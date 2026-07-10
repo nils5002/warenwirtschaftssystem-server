@@ -30,7 +30,9 @@ from ..domain.categories import normalize_category
 from ..domain.user_colors import (
     SIGNATURE_COLOR_SOURCE_AUTO,
     SIGNATURE_COLOR_SOURCE_MANUAL,
+    USER_SIGNATURE_COLORS,
     normalize_signature_color,
+    pick_least_used_signature_color,
     pick_signature_color,
 )
 from . import category_repository, planning_repository
@@ -1057,11 +1059,13 @@ def upsert_user(db: Session, item: UserItem, *, actor_user_id: str | None = None
         if record.role != previous_role or record.is_active != previous_is_active:
             record.token_version = int(record.token_version or 0) + 1
     else:
+        used_colors = db.scalars(select(UserRecord.signature_color)).all()
         record = UserRecord(
             external_id=item.id,
             password_hash=hash_password(secrets.token_urlsafe(24)),
-            # Signaturfarbe automatisch vergeben (deterministisch aus der ID).
-            signature_color=pick_signature_color(item.id),
+            # Signaturfarbe automatisch vergeben: am wenigsten genutzte Farbe
+            # (Wiederholung erst, wenn alle Palettenfarben vergeben sind).
+            signature_color=pick_least_used_signature_color(item.id, used_colors),
             signature_color_source=SIGNATURE_COLOR_SOURCE_AUTO,
             **payload,
         )
@@ -1072,24 +1076,41 @@ def upsert_user(db: Session, item: UserItem, *, actor_user_id: str | None = None
 
 
 def ensure_signature_colors(db: Session) -> int:
-    """Startup-Backfill: vergibt Signaturfarben an Benutzer ohne Farbe.
+    """Startup-Backfill: vergibt Signaturfarben an Benutzer ohne Farbe und
+    loest Dubletten unter AUTOMATISCH vergebenen Farben auf.
 
-    Idempotent - befuellt AUSSCHLIESSLICH leere Werte (deterministisch aus der
-    User-ID, daher stabil ueber Neustarts und unabhaengig von geloeschten
-    Benutzern). Manuell oder frueher automatisch gesetzte Farben bleiben
-    unangetastet. Liefert die Anzahl nachgetragener Benutzer.
+    Deterministisch (stabile Reihenfolge nach Anlage-PK) und idempotent: ohne
+    Luecken/Dubletten aendert ein zweiter Lauf nichts. Manuell gesetzte Farben
+    ('manual') werden NIE angefasst; Auto-Farben wechseln nur, wenn dieselbe
+    Farbe bereits ein frueher angelegter Benutzer traegt und die Palette noch
+    nicht erschoepft ist. Liefert die Anzahl geaenderter Benutzer.
     """
-    records = db.scalars(
-        select(UserRecord).where(
-            or_(UserRecord.signature_color.is_(None), UserRecord.signature_color == "")
-        )
-    ).all()
+    records = db.scalars(select(UserRecord).order_by(UserRecord.id.asc())).all()
+    changed = 0
+    seen_colors: list[str | None] = []
     for record in records:
-        record.signature_color = pick_signature_color(record.external_id)
-        record.signature_color_source = SIGNATURE_COLOR_SOURCE_AUTO
-    if records:
+        is_manual = (record.signature_color_source or "") == SIGNATURE_COLOR_SOURCE_MANUAL
+        raw = (record.signature_color or "").strip()
+        needs_color = not raw
+        seen_upper = {(color or "").upper() for color in seen_colors if color}
+        # Auto-Farbe nur neu vergeben, wenn sie ein frueherer Benutzer schon
+        # traegt UND die Palette noch nicht erschoepft ist (sonst stabil lassen).
+        is_duplicate_auto = (
+            not is_manual
+            and not needs_color
+            and raw.upper() in seen_upper
+            and len(seen_upper) < len(USER_SIGNATURE_COLORS)
+        )
+        if needs_color or is_duplicate_auto:
+            record.signature_color = pick_least_used_signature_color(
+                record.external_id, seen_colors
+            )
+            record.signature_color_source = SIGNATURE_COLOR_SOURCE_AUTO
+            changed += 1
+        seen_colors.append(record.signature_color)
+    if changed:
         db.commit()
-    return len(records)
+    return changed
 
 
 def delete_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> bool:
@@ -1127,6 +1148,7 @@ def update_user(
     department: str | None = None,
     location: str | None = None,
     signature_color: str | None = None,
+    reset_signature_color: bool = False,
     actor_user_id: str | None = None,
 ) -> UserItem:
     record = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
@@ -1160,7 +1182,15 @@ def update_user(
         record.department = department.strip() or None
     if location is not None:
         record.location = location.strip() or None
-    if signature_color is not None:
+    if reset_signature_color:
+        # Zurueck auf Automatik: am wenigsten genutzte Farbe neu vergeben
+        # (eigene bisherige Farbe zaehlt dabei nicht mit).
+        other_colors = db.scalars(
+            select(UserRecord.signature_color).where(UserRecord.external_id != external_id)
+        ).all()
+        record.signature_color = pick_least_used_signature_color(external_id, other_colors)
+        record.signature_color_source = SIGNATURE_COLOR_SOURCE_AUTO
+    elif signature_color is not None:
         # Nur Farben aus der festen Palette zulassen; manuell gesetzte Farben
         # werden als 'manual' markiert und von der Automatik nie ueberschrieben.
         normalized_color = normalize_signature_color(signature_color)

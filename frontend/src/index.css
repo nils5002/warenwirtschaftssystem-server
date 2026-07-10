@@ -245,6 +245,20 @@ h3 {
     animation: overlay-fade 200ms ease-out both;
   }
 
+  /* Signaturfarben-Badge (Initialen des Verantwortlichen): Farbvarianten
+     kommen als CSS-Variablen aus resolveSignatureVisual - im Dark Mode
+     wechselt der Text auf die hellere Variante, damit er auf der dunklen
+     Tint-Flaeche lesbar bleibt. */
+  .sig-badge {
+    background-color: var(--sig-bg);
+    border-color: var(--sig-border);
+    color: var(--sig-text);
+  }
+
+  .dark .sig-badge {
+    color: var(--sig-text-dark);
+  }
+
   .soft-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: rgb(148 163 184 / 0.55) transparent;

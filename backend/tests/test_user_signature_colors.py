@@ -15,7 +15,7 @@ from app.domain.user_colors import USER_SIGNATURE_COLORS, pick_signature_color
 from app.main import app
 from app.repositories.wms_repository import ensure_signature_colors
 from app.database.models import UserRecord
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 
 from .auth_helpers import auth_headers
 
@@ -49,11 +49,22 @@ def test_new_user_gets_stable_palette_color() -> None:
     created = _create_user(client, "a1")
     assert created["signatureColor"] in USER_SIGNATURE_COLORS
     assert created["signatureColorSource"] == "auto"
-    # Deterministisch: identisch zur Ableitung aus der ID, stabil bei Reload.
-    assert created["signatureColor"] == pick_signature_color(created["id"])
+    # Stabil: erneutes Lesen liefert dieselbe gespeicherte Farbe.
     res = client.get("/api/wms/users", headers=_headers(client, "Admin"))
     listed = [item for item in res.json() if item["id"] == created["id"]][0]
     assert listed["signatureColor"] == created["signatureColor"]
+
+
+def test_palette_has_at_least_25_distinct_colors() -> None:
+    assert len(USER_SIGNATURE_COLORS) >= 25
+    assert len(set(color.upper() for color in USER_SIGNATURE_COLORS)) == len(USER_SIGNATURE_COLORS)
+
+
+def test_new_users_get_distinct_colors_until_palette_exhausted() -> None:
+    client = TestClient(app)
+    _reset(client)
+    colors = [_create_user(client, f"uniq{i}")["signatureColor"] for i in range(12)]
+    assert len(set(colors)) == len(colors), colors
 
 
 def test_backfill_fills_only_missing_colors() -> None:
@@ -68,7 +79,7 @@ def test_backfill_fills_only_missing_colors() -> None:
         filled = ensure_signature_colors(db)
         assert filled >= 1
         db.refresh(record)
-        assert record.signature_color == pick_signature_color(created["id"])
+        assert record.signature_color in USER_SIGNATURE_COLORS
         assert record.signature_color_source == "auto"
         # Idempotent: zweiter Lauf ändert nichts mehr.
         assert ensure_signature_colors(db) == 0
@@ -118,6 +129,66 @@ def test_non_admin_cannot_change_color() -> None:
         json={"signatureColor": USER_SIGNATURE_COLORS[0]},
     )
     assert res.status_code in {401, 403}, res.text
+
+
+def test_backfill_resolves_duplicate_auto_colors_but_keeps_manual() -> None:
+    client = TestClient(app)
+    _reset(client)
+    a = _create_user(client, "dup-a")
+    b = _create_user(client, "dup-b")
+    c = _create_user(client, "dup-c")
+    duplicate = USER_SIGNATURE_COLORS[0]
+    with SessionLocal() as db:
+        # Die geteilte Test-DB sammelt Dutzende Auth-Testuser an — mit >=30
+        # Benutzern ist die Palette erschoepft und der Schutz verhindert
+        # (korrekt) jede Umverteilung. Fuer den Dubletten-Fall braucht der
+        # Test eine kontrollierte Population aus genau drei Benutzern.
+        db.execute(
+            sa_delete(UserRecord).where(
+                UserRecord.external_id.not_in([a["id"], b["id"], c["id"]])
+            )
+        )
+        for external_id, source in ((a["id"], "auto"), (b["id"], "auto"), (c["id"], "manual")):
+            record = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
+            record.signature_color = duplicate
+            record.signature_color_source = source
+        db.commit()
+        changed = ensure_signature_colors(db)
+        assert changed >= 1
+        rec_a = db.scalar(select(UserRecord).where(UserRecord.external_id == a["id"]))
+        rec_b = db.scalar(select(UserRecord).where(UserRecord.external_id == b["id"]))
+        rec_c = db.scalar(select(UserRecord).where(UserRecord.external_id == c["id"]))
+        # Manuelle Farbe bleibt exakt erhalten, Auto-Dubletten sind aufgeloest.
+        assert rec_c.signature_color == duplicate
+        assert rec_c.signature_color_source == "manual"
+        auto_colors = {rec_a.signature_color, rec_b.signature_color}
+        assert len(auto_colors) == 2
+        # Idempotent: zweiter Lauf ändert nichts mehr.
+        assert ensure_signature_colors(db) == 0
+
+
+def test_admin_can_reset_color_to_automatic() -> None:
+    client = TestClient(app)
+    _reset(client)
+    created = _create_user(client, "reset1")
+    manual_color = next(c for c in USER_SIGNATURE_COLORS if c != created["signatureColor"])
+    res = client.patch(
+        f"/api/wms/users/{created['id']}",
+        headers=_headers(client, "Admin"),
+        json={"signatureColor": manual_color},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["signatureColorSource"] == "manual"
+
+    res = client.patch(
+        f"/api/wms/users/{created['id']}",
+        headers=_headers(client, "Admin"),
+        json={"resetSignatureColor": True},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["signatureColorSource"] == "auto"
+    assert body["signatureColor"] in USER_SIGNATURE_COLORS
 
 
 def test_planning_list_contains_responsible_user_with_color() -> None:

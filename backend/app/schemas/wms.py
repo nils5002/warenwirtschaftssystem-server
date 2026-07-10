@@ -282,6 +282,8 @@ class UserUpdatePayload(BaseModel):
     # Nur Werte aus der festen Palette erlaubt (Validierung im Repository);
     # Setzen markiert die Farbe als 'manual' - Automatik fasst sie nie wieder an.
     signatureColor: Optional[str] = Field(default=None, max_length=16)
+    # True = Farbe auf Automatik zuruecksetzen (neue Least-Used-Vergabe).
+    resetSignatureColor: Optional[bool] = None
 
 
 class UserPasswordResetPayload(BaseModel):

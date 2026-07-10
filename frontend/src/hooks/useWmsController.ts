@@ -36,7 +36,7 @@ import {
   upsertLocation,
   upsertMaintenance,
   upsertReservation,
-  updateUserSignatureColor,
+  updateUserSignature,
   upsertUser,
   updateCategory as updateCategoryRequest,
   refreshCategoryDefaultImage as refreshCategoryDefaultImageRequest,
@@ -100,8 +100,10 @@ type UserUpsertInput = {
   status: UserItem['status'];
   department?: string;
   location?: string;
-  // Nur beim Bearbeiten: Admin setzt die Signaturfarbe (feste Palette).
+  // Nur beim Bearbeiten: Admin setzt die Signaturfarbe (feste Palette)
+  // oder setzt sie auf die automatische Vergabe zurueck.
   signatureColor?: string;
+  resetSignatureColor?: boolean;
 };
 
 type UseWmsControllerOptions = {
@@ -1247,13 +1249,19 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setUsers((prev) => prev.map((item) => (item.id === payload.id ? updated : item)));
     try {
       await upsertUser(updated);
-      // Signaturfarbe laeuft ueber den PATCH-Endpoint (markiert 'manual' und
-      // validiert gegen die Palette) - nur wenn sie sich wirklich aendert.
-      if (
-        payload.signatureColor &&
-        payload.signatureColor.toUpperCase() !== (existing.signatureColor ?? '').toUpperCase()
-      ) {
-        const withColor = await updateUserSignatureColor(payload.id, payload.signatureColor);
+      // Signaturfarbe laeuft ueber den PATCH-Endpoint (markiert 'manual'/'auto'
+      // und validiert gegen die Palette) - nur bei tatsaechlicher Aenderung.
+      const wantsReset = Boolean(payload.resetSignatureColor);
+      const wantsColor =
+        !wantsReset &&
+        Boolean(payload.signatureColor) &&
+        (payload.signatureColor ?? '').toUpperCase() !==
+          (existing.signatureColor ?? '').toUpperCase();
+      if (wantsReset || wantsColor) {
+        const withColor = await updateUserSignature(
+          payload.id,
+          wantsReset ? { reset: true } : { signatureColor: payload.signatureColor },
+        );
         setUsers((prev) =>
           prev.map((item) =>
             item.id === payload.id
