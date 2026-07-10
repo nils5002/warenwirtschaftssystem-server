@@ -13,7 +13,9 @@ from ..database.models import (
     PlanningDayRecord,
     PlanningItemRecord,
     PlanningRecord,
+    UserRecord,
 )
+from ..domain.user_colors import pick_signature_color
 from ..domain.categories import normalize_category_or_self
 from ..domain.conflict_classification import (
     ConflictCellFacts,
@@ -39,6 +41,7 @@ from ..schemas.planning import (
     PlanningListHandoverSummary,
     PlanningListItem,
     PlanningListMissingItem,
+    PlanningResponsibleUser,
     PlanningResponse,
     PlanningStatus,
     PlanningUpsertPayload,
@@ -106,6 +109,7 @@ def _planning_to_list_item(
     category_totals: list[PlanningCategoryTotal] | None = None,
     assigned_count: int = 0,
     handover_needs_review: bool = False,
+    responsible_user: PlanningResponsibleUser | None = None,
 ) -> PlanningListItem:
     totals = list(category_totals or [])
     return PlanningListItem(
@@ -128,7 +132,44 @@ def _planning_to_list_item(
         categoryTotals=totals,
         assignedCount=int(assigned_count),
         handoverNeedsReview=bool(handover_needs_review),
+        responsibleUser=responsible_user,
     )
+
+
+def _user_initials(name: str) -> str:
+    """Initialen aus dem Anzeigenamen: erste Buchstaben der ersten beiden
+    Woerter ("Nils Klemm" -> "NK"), sonst die ersten zwei Zeichen."""
+    parts = [part for part in (name or "").split() if part]
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    if parts:
+        return parts[0][:2].upper()
+    return "?"
+
+
+def _build_responsible_user_map(
+    db: Session, records: list[PlanningRecord]
+) -> dict[str, PlanningResponsibleUser]:
+    """Aufloesung projectManagerUserId -> Verantwortlichen-Info (eine Query
+    fuer die gesamte Liste). Fehlende Farbe: deterministischer Fallback,
+    identisch zum Startup-Backfill."""
+    manager_ids = {
+        str(record.project_manager_user_id or "").strip()
+        for record in records
+        if str(record.project_manager_user_id or "").strip()
+    }
+    if not manager_ids:
+        return {}
+    users = db.scalars(select(UserRecord).where(UserRecord.external_id.in_(manager_ids))).all()
+    return {
+        user.external_id: PlanningResponsibleUser(
+            id=user.external_id,
+            name=user.name,
+            initials=_user_initials(user.name),
+            signatureColor=user.signature_color or pick_signature_color(user.external_id),
+        )
+        for user in users
+    }
 
 
 def _build_list_demand_aggregates(
@@ -1362,6 +1403,7 @@ def list_plannings(
     totals_by_pk, assigned_by_external_id, needs_review_pks = _build_list_demand_aggregates(
         db, list(records)
     )
+    responsible_by_user_id = _build_responsible_user_map(db, list(records))
     return [
         _planning_to_list_item(
             item,
@@ -1372,6 +1414,7 @@ def list_plannings(
             totals_by_pk.get(item.id),
             assigned_by_external_id.get(item.external_id or "", 0),
             item.id in needs_review_pks,
+            responsible_by_user_id.get(str(item.project_manager_user_id or "").strip()),
         )
         for item in records
     ]

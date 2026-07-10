@@ -12,6 +12,8 @@ import {
   updateRegistrationSetting,
 } from '../../services/wmsApi';
 import type { ActivityItem, Asset, UserItem, UserSecurityInfo } from '../types';
+import { USER_SIGNATURE_COLORS, signatureColorLabel, userInitials } from '../userColors';
+import { ResponsibleBadge } from '../components/ResponsibleBadge';
 
 type UserStatusAction = 'approve' | 'reject' | 'lock' | 'unlock';
 
@@ -29,6 +31,9 @@ type UserFormState = {
   status: UserItem['status'];
   department: string;
   location: string;
+  // Signaturfarbe: nur beim Bearbeiten waehlbar (Neuanlage bekommt sie
+  // automatisch vom Backend); '' = unveraendert lassen.
+  signatureColor: string;
 };
 
 function emptyUserForm(): UserFormState {
@@ -39,6 +44,7 @@ function emptyUserForm(): UserFormState {
     status: 'Aktiv',
     department: '',
     location: '',
+    signatureColor: '',
   };
 }
 
@@ -76,6 +82,7 @@ export function UsersPage({
     status: UserItem['status'];
     department?: string;
     location?: string;
+    signatureColor?: string;
   }) => Promise<void>;
   onResetUserPassword: (
     userId: string,
@@ -270,6 +277,7 @@ export function UsersPage({
       status: user.status,
       department: user.department ?? '',
       location: user.location ?? '',
+      signatureColor: user.signatureColor ?? '',
     });
     setError(null);
     setActionError(null);
@@ -306,6 +314,7 @@ export function UsersPage({
           status: form.status,
           department: form.department.trim() || undefined,
           location: form.location.trim() || undefined,
+          signatureColor: form.signatureColor || undefined,
         });
       } else {
         await onInviteUser({
@@ -642,7 +651,19 @@ export function UsersPage({
                     />
                   </td>
                   <td className="px-3 py-3">
-                    <p className="font-semibold text-slate-900">{user.name}</p>
+                    <p className="flex items-center gap-2 font-semibold text-slate-900">
+                      {user.signatureColor ? (
+                        <ResponsibleBadge
+                          user={{
+                            name: user.name,
+                            initials: userInitials(user.name),
+                            signatureColor: user.signatureColor,
+                          }}
+                          size="sm"
+                        />
+                      ) : null}
+                      <span className="min-w-0 truncate">{user.name}</span>
+                    </p>
                   </td>
                   <td className="px-3 py-3">{user.email}</td>
                   <td className="px-3 py-3">
@@ -1001,6 +1022,50 @@ export function UsersPage({
                   </label>
                 </div>
               </div>
+
+              {form.id ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="text-sm font-semibold text-slate-900">Signaturfarbe</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Kennzeichnet Planungen dieses Benutzers im Kalender. Automatisch vergeben —
+                    hier manuell aenderbar.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {USER_SIGNATURE_COLORS.map((option) => {
+                      const active =
+                        form.signatureColor.toUpperCase() === option.value.toUpperCase();
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          data-testid={`signature-color-${option.value.replace('#', '')}`}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                            active
+                              ? 'border-slate-900 ring-2 ring-slate-300 dark:border-white dark:ring-slate-600'
+                              : 'border-line hover:border-line-strong'
+                          }`}
+                          aria-pressed={active}
+                          onClick={() =>
+                            setForm((current) => ({ ...current, signatureColor: option.value }))
+                          }
+                        >
+                          <span
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: option.value }}
+                            aria-hidden="true"
+                          />
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {form.signatureColor ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Aktuell: {signatureColorLabel(form.signatureColor)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="sticky bottom-0 mt-4 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white pt-3">

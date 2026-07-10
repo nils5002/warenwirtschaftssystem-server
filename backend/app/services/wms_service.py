@@ -269,6 +269,7 @@ class WmsService:
             status=payload.status,
             department=payload.department,
             location=payload.location,
+            signature_color=payload.signatureColor,
             actor_user_id=actor_user_id,
         )
 

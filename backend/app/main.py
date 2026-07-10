@@ -235,6 +235,14 @@ def create_app() -> FastAPI:
             try:
                 ensure_initial_admin(db)
                 ensure_user_passwords(db)
+                # Signaturfarben-Backfill: nur Benutzer OHNE Farbe erhalten
+                # eine (deterministisch aus der ID); manuell gesetzte Farben
+                # bleiben unangetastet. Idempotent.
+                from .repositories.wms_repository import ensure_signature_colors
+
+                filled = ensure_signature_colors(db)
+                if filled:
+                    logger.info("Signaturfarben nachgetragen: %s Benutzer", filled)
             except Exception:  # noqa: BLE001
                 # Bewusst KEIN re-raise mehr: ein Fehlschlag der
                 # Passwort-Initialisierung darf den Server-Start nicht

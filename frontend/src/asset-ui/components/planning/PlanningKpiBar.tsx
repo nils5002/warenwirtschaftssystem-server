@@ -58,7 +58,7 @@ export function PlanningKpiBar({
           <span className="font-semibold tabular-nums">{stats.redCount}</span>
           {stats.redCount === 1 ? 'offener Konflikt' : 'offene Konflikte'}
           {conflictCauseCount > 0 ? (
-            <span data-testid="planning-conflict-cause-count" className="font-normal">
+            <span data-testid="planning-conflict-cause-count" className="hidden font-normal 2xl:inline">
               · {conflictCauseCount} {conflictCauseCount === 1 ? 'Ursache' : 'Ursachen'}
             </span>
           ) : null}

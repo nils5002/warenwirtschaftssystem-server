@@ -36,6 +36,7 @@ import {
   upsertLocation,
   upsertMaintenance,
   upsertReservation,
+  updateUserSignatureColor,
   upsertUser,
   updateCategory as updateCategoryRequest,
   refreshCategoryDefaultImage as refreshCategoryDefaultImageRequest,
@@ -99,6 +100,8 @@ type UserUpsertInput = {
   status: UserItem['status'];
   department?: string;
   location?: string;
+  // Nur beim Bearbeiten: Admin setzt die Signaturfarbe (feste Palette).
+  signatureColor?: string;
 };
 
 type UseWmsControllerOptions = {
@@ -1244,6 +1247,25 @@ export function useWmsController(options: UseWmsControllerOptions) {
     setUsers((prev) => prev.map((item) => (item.id === payload.id ? updated : item)));
     try {
       await upsertUser(updated);
+      // Signaturfarbe laeuft ueber den PATCH-Endpoint (markiert 'manual' und
+      // validiert gegen die Palette) - nur wenn sie sich wirklich aendert.
+      if (
+        payload.signatureColor &&
+        payload.signatureColor.toUpperCase() !== (existing.signatureColor ?? '').toUpperCase()
+      ) {
+        const withColor = await updateUserSignatureColor(payload.id, payload.signatureColor);
+        setUsers((prev) =>
+          prev.map((item) =>
+            item.id === payload.id
+              ? {
+                  ...item,
+                  signatureColor: withColor.signatureColor,
+                  signatureColorSource: withColor.signatureColorSource,
+                }
+              : item,
+          ),
+        );
+      }
       await addActivity('Benutzer bearbeitet', `${updated.name} wurde aktualisiert.`);
     } catch {
       setWmsError('Benutzer konnte nicht aktualisiert werden.');

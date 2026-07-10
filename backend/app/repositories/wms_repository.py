@@ -27,6 +27,12 @@ from ..database.models import (
     QrCodeGroupRecord,
 )
 from ..domain.categories import normalize_category
+from ..domain.user_colors import (
+    SIGNATURE_COLOR_SOURCE_AUTO,
+    SIGNATURE_COLOR_SOURCE_MANUAL,
+    normalize_signature_color,
+    pick_signature_color,
+)
 from . import category_repository, planning_repository
 from ..schemas.security import UserSecurityInfo
 from ..schemas.wms import (
@@ -280,6 +286,12 @@ def _user_to_schema(record: UserRecord) -> UserItem:
         lastLoginAt=record.last_login_at.strftime("%d.%m.%Y %H:%M") if record.last_login_at else None,
         department=record.department,
         location=record.location,
+        # Gespeicherte Farbe bevorzugen; fehlt sie (Altdaten vor dem Backfill),
+        # deterministischer Fallback - identisch zu dem Wert, den der Backfill
+        # persistieren wuerde (kein Farbwechsel beim Nachtragen).
+        signatureColor=record.signature_color or pick_signature_color(record.external_id),
+        signatureColorSource=record.signature_color_source
+        or (None if record.signature_color is None else SIGNATURE_COLOR_SOURCE_AUTO),
     )
 
 
@@ -1048,12 +1060,36 @@ def upsert_user(db: Session, item: UserItem, *, actor_user_id: str | None = None
         record = UserRecord(
             external_id=item.id,
             password_hash=hash_password(secrets.token_urlsafe(24)),
+            # Signaturfarbe automatisch vergeben (deterministisch aus der ID).
+            signature_color=pick_signature_color(item.id),
+            signature_color_source=SIGNATURE_COLOR_SOURCE_AUTO,
             **payload,
         )
         db.add(record)
     db.commit()
     db.refresh(record)
     return _user_to_schema(record)
+
+
+def ensure_signature_colors(db: Session) -> int:
+    """Startup-Backfill: vergibt Signaturfarben an Benutzer ohne Farbe.
+
+    Idempotent - befuellt AUSSCHLIESSLICH leere Werte (deterministisch aus der
+    User-ID, daher stabil ueber Neustarts und unabhaengig von geloeschten
+    Benutzern). Manuell oder frueher automatisch gesetzte Farben bleiben
+    unangetastet. Liefert die Anzahl nachgetragener Benutzer.
+    """
+    records = db.scalars(
+        select(UserRecord).where(
+            or_(UserRecord.signature_color.is_(None), UserRecord.signature_color == "")
+        )
+    ).all()
+    for record in records:
+        record.signature_color = pick_signature_color(record.external_id)
+        record.signature_color_source = SIGNATURE_COLOR_SOURCE_AUTO
+    if records:
+        db.commit()
+    return len(records)
 
 
 def delete_user(db: Session, external_id: str, *, actor_user_id: str | None = None) -> bool:
@@ -1090,6 +1126,7 @@ def update_user(
     status: str | None = None,
     department: str | None = None,
     location: str | None = None,
+    signature_color: str | None = None,
     actor_user_id: str | None = None,
 ) -> UserItem:
     record = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
@@ -1123,6 +1160,17 @@ def update_user(
         record.department = department.strip() or None
     if location is not None:
         record.location = location.strip() or None
+    if signature_color is not None:
+        # Nur Farben aus der festen Palette zulassen; manuell gesetzte Farben
+        # werden als 'manual' markiert und von der Automatik nie ueberschrieben.
+        normalized_color = normalize_signature_color(signature_color)
+        if normalized_color is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Ungueltige Signaturfarbe - bitte eine Farbe aus der Palette waehlen.",
+            )
+        record.signature_color = normalized_color
+        record.signature_color_source = SIGNATURE_COLOR_SOURCE_MANUAL
 
     # Security-Audit Paket B2: Rollenwechsel oder (De-)Aktivierung
     # invalidiert alle bestehenden Tokens dieses Benutzers. Reine

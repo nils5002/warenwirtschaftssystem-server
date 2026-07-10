@@ -321,6 +321,13 @@ export type PlanningListItem = {
   categoryTotals?: Array<{ categoryKey: string; qty: number }>;
   assignedCount?: number;
   handoverNeedsReview?: boolean;
+  // Verantwortlicher (projectManagerUserId) inkl. Signaturfarbe/Initialen.
+  responsibleUser?: {
+    id: string;
+    name: string;
+    initials: string;
+    signatureColor: string;
+  } | null;
 };
 
 export type PlanningItemResponse = {
@@ -1115,6 +1122,19 @@ export function cleanupUnusedLocations(): Promise<LocationCleanupResponse> {
 
 export function upsertUser(user: UserItem): Promise<UserItem> {
   return postJson<UserItem>('/api/wms/users', user);
+}
+
+// Signaturfarbe eines Benutzers setzen (nur Admin; nur Paletten-Werte).
+export async function updateUserSignatureColor(
+  userId: string,
+  signatureColor: string,
+): Promise<UserItem> {
+  const response = await apiFetch(`/api/wms/users/${userId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ signatureColor }),
+  });
+  return parseResponse<UserItem>(response);
 }
 
 export async function register(payload: AuthRegisterPayload): Promise<AuthRegisterResponse> {

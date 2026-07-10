@@ -161,6 +161,11 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("users", "approved_at", "DATETIME"),
     ("users", "approved_by", "VARCHAR(64)"),
     ("users", "rejected_at", "DATETIME"),
+    # Signaturfarbe pro Benutzer (Einsatzplanung/Kalender). Nullable — der
+    # Startup-Backfill (ensure_signature_colors) füllt nur leere Werte und
+    # lässt manuell gesetzte Farben unangetastet.
+    ("users", "signature_color", "VARCHAR(16)"),
+    ("users", "signature_color_source", "VARCHAR(16)"),
 )
 
 

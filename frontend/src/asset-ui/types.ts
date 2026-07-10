@@ -226,6 +226,9 @@ export type UserItem = {
   lastLoginAt?: string | null;
   department?: string;
   location?: string;
+  // Signaturfarbe (Einsatzplanung/Kalender) + Herkunft ('auto' | 'manual').
+  signatureColor?: string | null;
+  signatureColorSource?: string | null;
 };
 
 // Sicherheitsdetails eines Benutzers (Admin-Modal, on-demand geladen).

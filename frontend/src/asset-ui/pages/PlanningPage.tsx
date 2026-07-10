@@ -7,7 +7,6 @@ import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { planningDetailPath } from '../../routing/appRoutes';
 import { navigate } from '../../routing/router';
-import { PageHeader } from '../../ui';
 import { PlanningCreateModal } from '../components/planning/detail/PlanningCreateModal';
 import { PlanningKpiBar } from '../components/planning/PlanningKpiBar';
 import { PlanningListCompact } from '../components/planning/PlanningListCompact';
@@ -270,21 +269,34 @@ export function PlanningPage({
   );
 
   return (
-    <section className="space-y-4">
-      <div className="surface-card animate-fade-up">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <PageHeader dense kicker="Einsatzplanung" title="Projektbezogene Hardwareplanung" />
-          <div className="flex flex-wrap items-center gap-2">
+    <section className="space-y-3">
+      {/* Kompakte Planungs-Toolbar statt Dashboard-Hero-Card: eine Zeile mit
+          Titel, Mini-KPIs und Aktionen — maximale Fläche für die Zeitleiste. */}
+      <div className="surface-card animate-fade-up !p-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold leading-tight text-ink">Einsatzplanung</h2>
+            <p className="hidden truncate text-[11px] leading-tight text-ink-muted lg:block">
+              Projektbezogene Hardwareplanung
+            </p>
+          </div>
+          <PlanningKpiBar
+            stats={planningStats}
+            conflictCauseCount={conflictCauseCount}
+            conflictsViewActive={view === 'konflikte'}
+            onConflictsClick={() => setView(view === 'konflikte' ? 'woche' : 'konflikte')}
+          />
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {!isMobile ? (
               <>
                 <input
-                  className="field-input h-9 w-52 text-sm"
+                  className="field-input h-9 w-44 text-sm"
                   placeholder="Kunde oder Projekt suchen"
                   value={listSearch}
                   onChange={(event) => setListSearch(event.target.value)}
                 />
                 <select
-                  className="field-input h-9 w-40 text-sm"
+                  className="field-input h-9 w-32 text-sm"
                   value={listStatus}
                   onChange={(event) => setListStatus(event.target.value as 'Alle' | PlanningStatus)}
                 >
@@ -301,7 +313,7 @@ export function PlanningPage({
               <button
                 type="button"
                 data-testid="planning-create"
-                className="btn-primary"
+                className="btn-primary px-3 py-2 text-sm"
                 onClick={() => setCreateOpen(true)}
               >
                 <CalendarPlus className="h-4 w-4" />
@@ -314,14 +326,6 @@ export function PlanningPage({
             )}
           </div>
         </div>
-
-        <PlanningKpiBar
-          className="mt-2.5"
-          stats={planningStats}
-          conflictCauseCount={conflictCauseCount}
-          conflictsViewActive={view === 'konflikte'}
-          onConflictsClick={() => setView(view === 'konflikte' ? 'woche' : 'konflikte')}
-        />
       </div>
 
       {!isMobile && view === 'konflikte' ? (
