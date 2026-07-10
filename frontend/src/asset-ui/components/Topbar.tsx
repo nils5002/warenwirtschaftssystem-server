@@ -1,12 +1,15 @@
-import { Bell, CircleHelp, LogOut, Menu, Moon, Search, Sun } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Bell, Check, CircleHelp, LogOut, Menu, Moon, Palette, Search, Sun } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { AppPage, AppRole } from '../types';
+import { type Theme } from '../../hooks/useTheme';
 
 type TopbarProps = {
   search: string;
   onSearch: (value: string) => void;
   onMenuOpen: () => void;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
+  theme: Theme;
+  onSelectTheme: (theme: Theme) => void;
   activeRole: AppRole;
   userName: string;
   projectContext: string;
@@ -50,6 +53,110 @@ const ICON_BUTTON =
   'inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-muted transition ' +
   'hover:bg-surface-2 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
+type ThemeOption = { value: Theme; label: string; hint: string; icon: LucideIcon };
+
+const THEME_OPTIONS: ThemeOption[] = [
+  { value: 'light', label: 'Hell', hint: 'Helle Oberfläche', icon: Sun },
+  { value: 'dark', label: 'Dunkel', hint: 'Navy-Produkt-Look', icon: Moon },
+  { value: 'studio', label: 'Studio', hint: 'Warmes Sand-Theme', icon: Palette },
+];
+
+const THEME_META: Record<Theme, ThemeOption> = THEME_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.value] = option;
+    return acc;
+  },
+  {} as Record<Theme, ThemeOption>,
+);
+
+// Dreifach-Theme-Auswahl als kleines Popover. Ein-Klick statt Zyklus, damit
+// jedes Theme (inkl. Studio) direkt erreichbar und erkennbar ist.
+function ThemeMenu({
+  theme,
+  onSelectTheme,
+  buttonClassName,
+  iconSize,
+}: {
+  theme: Theme;
+  onSelectTheme: (theme: Theme) => void;
+  buttonClassName: string;
+  iconSize: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const ActiveIcon = THEME_META[theme]?.icon ?? Sun;
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointer = (event: MouseEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointer);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handlePointer);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        title="Design wählen"
+        aria-label="Design wählen"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={buttonClassName}
+      >
+        <ActiveIcon className={iconSize} />
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface p-1.5 shadow-panel"
+        >
+          <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint">
+            Design
+          </p>
+          {THEME_OPTIONS.map((option) => {
+            const active = option.value === theme;
+            const OptionIcon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                onClick={() => {
+                  onSelectTheme(option.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm font-semibold transition ${
+                  active ? 'bg-primary-soft text-primary' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                }`}
+              >
+                <OptionIcon className="h-[18px] w-[18px] shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{option.label}</span>
+                  <span className="block truncate text-[11px] font-medium text-ink-faint">{option.hint}</span>
+                </span>
+                {active ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function buildInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return 'U';
@@ -63,7 +170,7 @@ export function Topbar({
   onSearch,
   onMenuOpen,
   theme,
-  onToggleTheme,
+  onSelectTheme,
   activeRole,
   userName,
   projectContext,
@@ -77,7 +184,6 @@ export function Topbar({
   compact = false,
 }: TopbarProps) {
   const initials = buildInitials(userName);
-  const themeToggleLabel = theme === 'dark' ? 'Zu hellem Modus wechseln' : 'Zu dunklem Modus wechseln';
   const crumbGroup = PAGE_GROUP_MAP[activePage] ?? 'Betrieb';
 
   if (compact) {
@@ -95,15 +201,12 @@ export function Topbar({
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              title={themeToggleLabel}
-              aria-label={themeToggleLabel}
-              className={`${ICON_BUTTON} h-11 w-11`}
-            >
-              {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </button>
+            <ThemeMenu
+              theme={theme}
+              onSelectTheme={onSelectTheme}
+              buttonClassName={`${ICON_BUTTON} h-11 w-11`}
+              iconSize="h-5 w-5"
+            />
             <button type="button" onClick={onOpenProfile} aria-label="Profil" className={`${ICON_BUTTON} h-11 w-11`}>
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
                 {initials}
@@ -171,15 +274,12 @@ export function Topbar({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={onToggleTheme}
-            title={themeToggleLabel}
-            aria-label={themeToggleLabel}
-            className={ICON_BUTTON}
-          >
-            {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
-          </button>
+          <ThemeMenu
+            theme={theme}
+            onSelectTheme={onSelectTheme}
+            buttonClassName={ICON_BUTTON}
+            iconSize="h-[18px] w-[18px]"
+          />
           <button
             type="button"
             onClick={onOpenHelp}

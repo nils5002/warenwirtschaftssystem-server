@@ -244,7 +244,7 @@ function App() {
           onSearch={controller.setSearch}
           onMenuOpen={() => controller.setMobileSidebarOpen(true)}
           theme={controller.theme}
-          onToggleTheme={controller.toggleTheme}
+          onSelectTheme={controller.setTheme}
           activeRole={activeRole}
           userName={authUser.name}
           projectContext={controller.projectContext}
