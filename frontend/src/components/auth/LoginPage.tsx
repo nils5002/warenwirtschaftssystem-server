@@ -101,25 +101,25 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
         <div className="absolute -left-20 top-0 h-80 w-80 rounded-full bg-sky-500/16 blur-3xl" />
         <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-indigo-500/16 blur-3xl" />
       </div>
-      <main className="relative mx-auto flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-8 sm:px-6 lg:px-8">
-        <div className="relative w-full max-w-[560px] min-h-[620px] overflow-hidden rounded-[2.25rem] border border-white/15 bg-slate-950/45 px-8 py-10 shadow-[0_30px_80px_rgba(2,6,23,0.7),0_0_60px_rgba(14,165,233,0.12)] backdrop-blur-[24px] sm:px-10 sm:py-12">
+      <main className="relative mx-auto flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="relative w-full max-w-[460px] overflow-hidden rounded-[1.75rem] border border-white/15 bg-slate-950/45 px-6 py-6 shadow-[0_30px_80px_rgba(2,6,23,0.7),0_0_60px_rgba(14,165,233,0.12)] backdrop-blur-[24px] sm:px-8 sm:py-7">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.02)_42%,rgba(2,132,199,0.08)_100%)]" />
-          <div className="relative flex min-h-[540px] flex-col">
+          <div className="relative flex flex-col">
             <div className="flex flex-col items-center text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/20 bg-sky-300/10 shadow-[0_0_28px_rgba(56,189,248,0.25)]">
-                <Boxes className="h-7 w-7 text-sky-200" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/20 bg-sky-300/10 shadow-[0_0_28px_rgba(56,189,248,0.25)]">
+                <Boxes className="h-6 w-6 text-sky-200" />
               </div>
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-200/90">WARENWIRTSCHAFT</p>
-              <h1 className="mt-4 text-3xl font-semibold text-white sm:text-4xl">Willkommen.</h1>
-              <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-200/90">
+              <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-200/90">WARENWIRTSCHAFT</p>
+              <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Willkommen.</h1>
+              <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-slate-200/90">
                 Hardware, Planung und Rückgabe zentral verwalten
               </p>
-              <p className="mt-4 inline-flex rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-medium text-sky-100/90">
+              <p className="mt-3 inline-flex rounded-full border border-sky-200/20 bg-sky-300/10 px-3 py-1 text-[11px] font-medium text-sky-100/90">
                 Inventar · Einsatzplanung · QR-Scan
               </p>
             </div>
 
-            <div className="mt-8 inline-flex self-center rounded-2xl border border-white/15 bg-slate-900/50 p-1.5">
+            <div className="mt-5 inline-flex self-center rounded-2xl border border-white/15 bg-slate-900/50 p-1.5">
               <button
                 type="button"
                 className={`rounded-xl px-5 py-2 text-sm font-medium transition ${
@@ -139,7 +139,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                 Registrieren
               </button>
             </div>
-            <p className="mt-4 text-center text-xs text-slate-300/90">
+            <p className="mt-3 text-center text-xs text-slate-300/90">
               Noch kein Konto?{' '}
               <button
                 type="button"
@@ -150,12 +150,12 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               </button>
             </p>
 
-            <form className="mt-8 space-y-4" onSubmit={submit}>
+            <form className="mt-5 space-y-3" onSubmit={submit}>
               {isRegister ? (
                 <label className="field text-slate-200">
                   Name
                   <input
-                    className="field-input h-12 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
+                    className="field-input h-11 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     autoComplete="name"
@@ -166,7 +166,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               <label className="field text-slate-200">
                 E-Mail
                 <input
-                  className="field-input h-12 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
+                  className="field-input h-11 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   autoComplete="email"
@@ -177,7 +177,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                 Passwort
                 <input
                   type="password"
-                  className="field-input h-12 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
+                  className="field-input h-11 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete={isRegister ? 'new-password' : 'current-password'}
@@ -188,7 +188,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                   Passwort bestätigen
                   <input
                     type="password"
-                    className="field-input h-12 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
+                    className="field-input h-11 rounded-xl border-white/20 bg-slate-900/55 text-white placeholder:text-slate-400 focus:border-sky-300/60"
                     value={passwordConfirm}
                     onChange={(event) => setPasswordConfirm(event.target.value)}
                     autoComplete="new-password"
@@ -225,7 +225,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
 
               <button
                 type="submit"
-                className="mt-2 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-1 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={busy}
               >
                 {busy ? (
