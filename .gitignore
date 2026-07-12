@@ -84,7 +84,7 @@ Hardwareplannung/
 .local-backups/
 backups/
 exports/
-.github
+# .github ist bewusst versioniert (CI-Workflow); actions-runner bleibt tabu.
 actions-runner/
 
 # Local tooling / agent & audit artifacts (per-user, never commit)
