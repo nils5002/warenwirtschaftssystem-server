@@ -29,7 +29,8 @@ werden, wenn lokale Prüfungen **und** die produktionsnahe Containerprüfung gr�
 - **DATABASE_URL-Gotcha:** Default ist bewusst **absolut** mit 4 Slashes
   (`sqlite:////app/data/app.db`), damit die DB im Volume liegt. Ein relativer Pfad
   landet außerhalb des Volumes → Datenverlust beim Redeploy. Gleiches gilt für
-  `PRODUCT_IMAGE_CACHE_PATH`, `HARDWARE_IMPORT_PATH`, `BACKUP_PATH`.
+  `PRODUCT_IMAGE_CACHE_PATH`, `LOGIN_BACKGROUND_PATH`, `HARDWARE_IMPORT_PATH`,
+  `BACKUP_PATH`.
 - **Pflicht-Env ohne Default:** `AUTH_TOKEN_SECRET`, `BASE_URL`, `FRONTEND_URL`,
   `CORS_ORIGINS`, `INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`.
 - **Server-Runtime:** `/opt/web/cloud_web_runtime/` hält `.env` +

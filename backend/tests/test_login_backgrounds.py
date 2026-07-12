@@ -52,6 +52,30 @@ def test_upload_activates_and_reencodes_to_webp() -> None:
     assert created["url"].startswith("/api/wms/login-backgrounds/file/")
 
 
+def test_upload_stores_file_in_configured_absolute_path(tmp_path, monkeypatch) -> None:
+    """Regression Redeploy-Datenverlust: Der Service muss den Settings-Pfad
+    (LOGIN_BACKGROUND_PATH) respektieren. Im Container zeigt der auf das
+    persistente Volume /app/data/login_backgrounds — ohne diese Auflösung
+    landeten Uploads im vergänglichen Container-Filesystem (/app/app/data/...)
+    und waren nach jedem Redeploy weg."""
+    from app.config.settings import get_settings
+
+    target = tmp_path / "login_backgrounds"
+    monkeypatch.setattr(get_settings(), "login_background_path", str(target))
+
+    client = TestClient(app)
+    _reset(client)
+    created = _upload(client)
+
+    stored = list(target.glob("*.webp"))
+    assert len(stored) == 1
+    # Öffentlicher Abruf liest aus demselben konfigurierten Verzeichnis.
+    public = TestClient(app)
+    res = public.get(created["url"])
+    assert res.status_code == 200, res.text
+    assert res.content == stored[0].read_bytes()
+
+
 def test_public_branding_and_file_are_reachable_without_auth() -> None:
     client = TestClient(app)
     _reset(client)

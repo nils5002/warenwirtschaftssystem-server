@@ -20,6 +20,7 @@ from PIL import Image, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..config.settings import get_settings
 from ..database.models import LoginBackgroundRecord
 from ..schemas.login_background import LoginBackgroundResponse
 
@@ -35,11 +36,14 @@ _FILE_NAME_PATTERN = re.compile(r"^[0-9a-f]{32}\.webp$")
 
 
 def _storage_dir() -> Path:
-    # parents[2] = backend-Wurzel (Datei liegt unter app/services/). Der Ordner
-    # muss neben product_images unter app/data/ landen (persistentes Volume),
-    # nicht unter app/app/... — sonst verliert jeder Redeploy die Bilder.
+    # Pfad kommt aus den Settings (LOGIN_BACKGROUND_PATH), analog zu
+    # PRODUCT_IMAGE_CACHE_PATH: Im Container MUSS ein absoluter Pfad ins
+    # persistente Volume gesetzt sein (/app/data/login_backgrounds, siehe
+    # docker-compose.yml). Der relative Default trifft nur lokal die
+    # backend-Wurzel — im Container würde er zu /app/app/data/... auflösen
+    # und jeder Redeploy verlöre die Bilder (DB-Metadaten bleiben, Datei 404).
     base_dir = Path(__file__).resolve().parents[2]
-    target = base_dir / "app" / "data" / "login_backgrounds"
+    target = get_settings().resolve_login_background_path(base_dir)
     target.mkdir(parents=True, exist_ok=True)
     return target
 

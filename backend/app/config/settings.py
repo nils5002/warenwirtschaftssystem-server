@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     wms_legacy_json_path: str = "app/data/wms_db.json"
     hardware_import_path: str = "/app/data/hardware_imports"
     product_image_cache_path: str = "app/data/product_images/assets"
+    login_background_path: str = "app/data/login_backgrounds"
     # Einmalige Selbstheilung nach dem Start: fehlt zu einem Datensatz mit
     # Bild-Status "ready" die Cache-Datei (z. B. nach Redeploy/Restore), wird
     # sie aus der gespeicherten Quell-URL neu geladen. In Tests abschaltbar.
@@ -77,6 +78,12 @@ class Settings(BaseSettings):
 
     def resolve_product_image_cache_path(self, base_dir: Path) -> Path:
         path = Path(self.product_image_cache_path)
+        if path.is_absolute():
+            return path
+        return (base_dir / path).resolve()
+
+    def resolve_login_background_path(self, base_dir: Path) -> Path:
+        path = Path(self.login_background_path)
         if path.is_absolute():
             return path
         return (base_dir / path).resolve()

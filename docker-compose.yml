@@ -30,6 +30,12 @@ services:
       # jedem Redeploy verloren gehen (Symptom: Status "ready", Bild 404).
       PRODUCT_IMAGE_CACHE_PATH: ${PRODUCT_IMAGE_CACHE_PATH:-/app/data/product_images/assets}
 
+      # Absoluter Pfad aus demselben Grund: Login-Hintergrundbilder müssen im
+      # persistenten Volume liegen. Mit dem relativen Default landeten sie im
+      # Container-Filesystem (/app/app/data/...) und waren nach jedem Redeploy
+      # weg (Symptom: Galerie-Metadaten vorhanden, Bilddatei 404).
+      LOGIN_BACKGROUND_PATH: ${LOGIN_BACKGROUND_PATH:-/app/data/login_backgrounds}
+
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}
