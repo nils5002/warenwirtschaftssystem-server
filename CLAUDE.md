@@ -214,10 +214,14 @@ Ein Task ist erst fertig, wenn:
 2. Betroffene Tests angepasst/neu erstellt sind.
 3. `frontend build` + `compileall` gruen sind.
 4. Keine sensiblen Dateien versehentlich getrackt sind.
-5. Kurzbericht vorhanden ist:
+5. Bei deploymentrelevanten Aenderungen (Code, Dependencies, Docker, Ports, Env,
+   Vite/Proxy, DB-Init/Schema): Container-Validierung nach
+   `.claude/skills/container-verify/SKILL.md` erfolgreich durchlaufen —
+   ein lokaler Dev-Start allein ist kein Nachweis.
+6. Kurzbericht vorhanden ist:
    - Ursache
    - geaenderte Dateien
-   - Validierung
+   - Validierung (lokal + Container getrennt)
    - Rest-Risiken
 
 ## 11) Commit-Qualitaet
