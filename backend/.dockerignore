@@ -1,4 +1,29 @@
+# Build-Kontext fuer das Backend-Image schlank halten.
+# WICHTIG: app/data/wms_db.json (Legacy-Seed) wird BEWUSST NICHT ausgeschlossen —
+# nur echte Laufzeit-/Werkzeug-Artefakte werden hier ausgeklammert.
+
+# Virtuelle Umgebungen / Bytecode
 .venv
 __pycache__
 *.pyc
+*.pyo
+
+# Test-/Typcheck-/Lint-Caches und Coverage
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# SQLite-Datenbanken + Laufzeit-Journale (nie ins Image)
 app/data/*.db
+app/data/*.db-wal
+app/data/*.db-shm
+app/data/*.db-journal
+
+# Persistente Laufzeit-Daten (liegen im Volume /app/data, nicht im Image)
+app/data/logs/
+app/data/product_images/
+app/data/login_backgrounds/
+app/data/backups/
+app/data/hardware_imports/
