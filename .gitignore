@@ -5,9 +5,21 @@ frontend/dist/
 node_modules/
 dist/
 build/
+.vite/
 __pycache__/
 *.pyc
+
+# Python-Test-/Typcheck-/Lint-Caches und Coverage (reine Werkzeug-Artefakte)
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
 *.db
+*.sqlite
+*.sqlite3
 # SQLite-Laufzeitdateien (WAL/Shared-Memory/Rollback-Journal). Reine
 # Runtime-Artefakte — duerfen nie eingecheckt werden, sonst landet
 # (Teil-)Datenbankzustand im Repo.
@@ -56,6 +68,12 @@ cloudflared/
 Thumbs.db
 *.tmp
 *.temp
+*.bak
+*.backup
+
+# IDE-Zustandsdateien (per-user, nie committen)
+.vscode/
+.idea/
 
 # Real hardware inventory sheets (import-only, never commit)
 Hardwarebestand/*.xlsx
@@ -64,6 +82,8 @@ Hardwareplannung/
 
 # Local-only backup files for restore/verify tests (never commit)
 .local-backups/
+backups/
+exports/
 .github
 actions-runner/
 
@@ -75,3 +95,6 @@ actions-runner/
 .agents/
 skills-lock.json
 artifacts/
+
+# graphify-Wissensgraph (per-user, lokal generiert, nie committen)
+graphify-out/

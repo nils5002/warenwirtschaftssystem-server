@@ -1,0 +1,16 @@
+# Build-Kontext fuer das Frontend-Image schlank halten.
+# Der Dockerfile-Ablauf ist: `COPY package*.json` -> `npm install` -> `COPY . .`
+# -> `npm run build`. node_modules/dist duerfen NICHT aus dem lokalen (ggf.
+# Windows-)Arbeitsverzeichnis mitkopiert werden, sonst ueberschreibt `COPY . .`
+# die im Image frisch installierten Alpine-Module. Beide werden im Image ohnehin
+# neu erzeugt.
+
+node_modules
+dist
+.vite
+
+# Logs / Test-Artefakte
+*.log
+npm-debug.log*
+playwright-report
+test-results
