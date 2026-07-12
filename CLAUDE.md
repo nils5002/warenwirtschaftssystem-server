@@ -226,6 +226,15 @@ Ein Task ist erst fertig, wenn:
 
 ## 11) Commit-Qualitaet
 
+### Branch-Strategie: Trunk-based, nur `main`
+
+Alle Aenderungen gehen direkt auf `main` — keine Feature-Branches, keine PRs.
+`main` wird automatisch deployt und dient als Live-Testumgebung; genau das ist
+gewollt. Konsequenz: Das Abschluss-Gate aus
+`.claude/skills/container-verify/SKILL.md` muss bei deploymentrelevanten
+Aenderungen VOR dem Push bestanden sein — es ist die einzige Sicherung vor Live.
+Keine halbfertigen Zwischenstaende pushen; ein Push = ein testbarer Stand.
+
 Commit Messages:
 - praezise, fachlich, in einem Thema gebuendelt
 - Beispiel:
