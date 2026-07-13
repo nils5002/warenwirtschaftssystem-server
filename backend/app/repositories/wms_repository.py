@@ -379,6 +379,17 @@ def _sync_asset_maintenance_status(db: Session, maintenance: MaintenanceRecord) 
     if status not in {"Erledigt", "Abgeschlossen"}:
         return
 
+    _recompute_asset_status_from_active_maintenance(
+        db, asset, exclude_external_id=maintenance.external_id
+    )
+
+
+def _recompute_asset_status_from_active_maintenance(
+    db: Session, asset: AssetRecord, *, exclude_external_id: str
+) -> None:
+    """Leitet den Asset-Status aus den verbleibenden aktiven Einträgen ab.
+    Freigabe auf Verfuegbar nur, wenn KEIN aktiver Eintrag mehr existiert
+    (Fachregel aus PROJECT_CONTEXT.md)."""
     # Vorfilter direkt in SQL: nur Maintenance-Sätze mit aktivem Status
     # und passender Asset-Zuordnung holen, statt die komplette Tabelle zu
     # laden und in Python zu filtern. Der zusätzliche Substring-Match auf
@@ -388,7 +399,7 @@ def _sync_asset_maintenance_status(db: Session, maintenance: MaintenanceRecord) 
         asset_match_clauses.append(MaintenanceRecord.asset_name.contains(asset.tag_number))
     candidate_stmt = (
         select(MaintenanceRecord)
-        .where(MaintenanceRecord.external_id != maintenance.external_id)
+        .where(MaintenanceRecord.external_id != exclude_external_id)
         .where(or_(*asset_match_clauses))
     )
     active_items = [
@@ -875,7 +886,16 @@ def delete_maintenance(db: Session, external_id: str) -> bool:
     record = db.scalar(stmt)
     if not record:
         return False
+    # Asset-Zuordnung VOR dem Löschen auflösen, danach Status aus den
+    # verbleibenden aktiven Einträgen neu ableiten — sonst bleibt ein Asset
+    # nach Löschung des einzigen aktiven Eintrags dauerhaft gesperrt.
+    asset = _find_asset_for_maintenance(db, record.asset_name)
     db.delete(record)
+    db.flush()
+    if asset is not None:
+        _recompute_asset_status_from_active_maintenance(
+            db, asset, exclude_external_id=external_id
+        )
     db.commit()
     return True
 
