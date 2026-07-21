@@ -1441,11 +1441,16 @@ export async function listPlannings(filters?: {
   status?: string;
   fromDate?: string;
   toDate?: string;
+  // Nur Planungen, denen der eingeloggte Benutzer zugewiesen ist
+  // (Projektverantwortlicher ODER On-Site-Verantwortlicher). Serverseitig
+  // gefiltert — Grundlage der persönlichen Dashboard-Sicht.
+  assignedToMe?: boolean;
 }): Promise<PlanningListItem[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.fromDate) params.set("fromDate", filters.fromDate);
   if (filters?.toDate) params.set("toDate", filters.toDate);
+  if (filters?.assignedToMe) params.set("assignedToMe", "true");
   const query = params.toString();
   const response = await apiFetch(`/api/wms/planning${query ? `?${query}` : ""}`);
   return parseResponse<PlanningListItem[]>(response);

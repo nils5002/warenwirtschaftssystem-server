@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Boxes,
   CalendarPlus,
@@ -9,6 +10,7 @@ import {
   MonitorSmartphone,
   PackagePlus,
   Printer,
+  RefreshCw,
   ScanLine,
   Sparkles,
   TriangleAlert,
@@ -18,9 +20,13 @@ import {
 import { ActionCard, EmptyState } from '../../ui';
 import { normalizeCategory } from '../categories';
 import { canAccessPage } from '../../config/pageAccess';
+import { planningDetailPath } from '../../routing/appRoutes';
+import { navigate } from '../../routing/router';
 import type { ActivityItem, AppPage, AppRole, Asset, MaintenanceItem, ReservationItem } from '../types';
 import type { Theme } from '../../hooks/useTheme';
-import type { WmsOverview } from '../../services/wmsApi';
+import { getCurrentUser, listPlannings } from '../../services/wmsApi';
+import type { PlanningListItem, WmsOverview } from '../../services/wmsApi';
+import { formatGermanDate, isDateBooked, toIsoDate } from './planningPeriod';
 
 type DashboardPageProps = {
   assets: Asset[];
@@ -214,55 +220,52 @@ function getMetricTone(
   }
 }
 
-function getTimelineAccent(index: number, theme: Theme): {
-  background: string;
-  borderColor: string;
-  textClass: string;
-} {
-  const isDark = theme === 'dark';
-  const palette = [
-    {
-      background: isDark
-        ? 'linear-gradient(135deg, rgba(92, 204, 138, 0.95) 0%, rgba(74, 180, 118, 0.92) 100%)'
-        : 'linear-gradient(135deg, rgba(74, 222, 128, 0.92) 0%, rgba(34, 197, 94, 0.92) 100%)',
-      borderColor: isDark ? 'rgba(187, 247, 208, 0.28)' : 'rgba(21, 128, 61, 0.18)',
-      textClass: 'text-slate-950',
-    },
-    {
-      background: isDark
-        ? 'linear-gradient(135deg, rgba(87, 149, 255, 0.95) 0%, rgba(71, 119, 246, 0.92) 100%)'
-        : 'linear-gradient(135deg, rgba(96, 165, 250, 0.92) 0%, rgba(59, 130, 246, 0.92) 100%)',
-      borderColor: isDark ? 'rgba(191, 219, 254, 0.28)' : 'rgba(37, 99, 235, 0.18)',
-      textClass: 'text-white',
-    },
-    {
-      background: isDark
-        ? 'linear-gradient(135deg, rgba(123, 182, 206, 0.95) 0%, rgba(94, 148, 186, 0.92) 100%)'
-        : 'linear-gradient(135deg, rgba(103, 232, 249, 0.92) 0%, rgba(14, 165, 233, 0.92) 100%)',
-      borderColor: isDark ? 'rgba(186, 230, 253, 0.26)' : 'rgba(8, 145, 178, 0.18)',
-      textClass: 'text-slate-950',
-    },
-    {
-      background: isDark
-        ? 'linear-gradient(135deg, rgba(248, 210, 91, 0.95) 0%, rgba(240, 176, 58, 0.92) 100%)'
-        : 'linear-gradient(135deg, rgba(253, 224, 71, 0.92) 0%, rgba(245, 158, 11, 0.92) 100%)',
-      borderColor: isDark ? 'rgba(254, 240, 138, 0.28)' : 'rgba(180, 83, 9, 0.18)',
-      textClass: 'text-slate-950',
-    },
-    {
-      background: isDark
-        ? 'linear-gradient(135deg, rgba(236, 86, 119, 0.95) 0%, rgba(215, 69, 100, 0.92) 100%)'
-        : 'linear-gradient(135deg, rgba(251, 113, 133, 0.92) 0%, rgba(244, 63, 94, 0.92) 100%)',
-      borderColor: isDark ? 'rgba(254, 205, 211, 0.28)' : 'rgba(225, 29, 72, 0.18)',
-      textClass: 'text-white',
-    },
-  ];
-  return palette[index % palette.length];
+// Kurzformat "TT.MM." für kompakte Zeiträume in der persönlichen Einsatzliste.
+function formatShortDate(isoDate: string): string {
+  const [, month, day] = isoDate.split('-');
+  if (!month || !day) return isoDate;
+  return `${day}.${month}.`;
+}
+
+function dayDiffFromIso(fromIso: string, toIso: string): number {
+  const from = new Date(`${fromIso}T00:00:00`).getTime();
+  const to = new Date(`${toIso}T00:00:00`).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to)) return 0;
+  return Math.round((to - from) / 86400000);
+}
+
+// Zeitliche Einordnung eines persönlichen Einsatzes relativ zu heute.
+function getPlanningTiming(
+  planning: PlanningListItem,
+  todayIso: string,
+): { label: string; tone: 'now' | 'soon' | 'later' } {
+  if (isDateBooked(todayIso, planning.startDate, planning.endDate)) {
+    return { label: 'Heute im Einsatz', tone: 'now' };
+  }
+  if (planning.startDate > todayIso) {
+    const days = dayDiffFromIso(todayIso, planning.startDate);
+    if (days === 1) return { label: 'Startet morgen', tone: 'soon' };
+    return { label: `Start in ${days} Tagen`, tone: days <= 7 ? 'soon' : 'later' };
+  }
+  return { label: `Rückgabe ${formatShortDate(planning.endDate)}`, tone: 'later' };
+}
+
+// Rolle des eingeloggten Benutzers in einer Planung — Zuordnung über die
+// stabile User-ID (userId aus /api/auth/me), nie über Anzeigenamen.
+function getMyPlanningRole(planning: PlanningListItem, userId: string): string | null {
+  if (!userId) return null;
+  const isResponsible =
+    planning.projectManagerUserId === userId || planning.responsibleUser?.id === userId;
+  const isOnSite = planning.onSiteResponsibleUser?.id === userId;
+  if (isResponsible && isOnSite) return 'Verantwortlich · vor Ort';
+  if (isOnSite) return 'Vor Ort verantwortlich';
+  if (isResponsible) return 'Verantwortlich';
+  return null;
 }
 
 // Kompakter Monats-Mini-Kalender für den aktuellen Monat, heutiger Tag
-// hervorgehoben. Rein aus dem aktuellen Datum abgeleitet (keine Fake-Bars).
-function MiniCalendar() {
+// hervorgehoben. `markedDays` markiert Tage mit persönlichen Einsätzen.
+function MiniCalendar({ markedDays }: { markedDays?: ReadonlySet<number> }) {
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -293,13 +296,21 @@ function MiniCalendar() {
               <span className="h-8 w-8" />
             ) : (
               <span
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
+                className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
                   day === today
                     ? 'bg-primary text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_10px_30px_rgba(47,125,246,0.35)]'
-                    : 'text-ink-muted'
+                    : markedDays?.has(day)
+                      ? 'bg-primary/10 font-semibold text-ink'
+                      : 'text-ink-muted'
                 }`}
               >
                 {day}
+                {markedDays?.has(day) ? (
+                  <span
+                    aria-hidden
+                    className={`absolute bottom-0.5 h-1 w-1 rounded-full ${day === today ? 'bg-white' : 'bg-primary'}`}
+                  />
+                ) : null}
               </span>
             )}
           </div>
@@ -355,10 +366,75 @@ export function DashboardPage({
 
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
 
-  // Nächste Einsätze: aktive/geplante Reservierungen (keine abgeschlossenen).
-  const upcomingReservations = reservations
-    .filter((item) => item.status !== 'Abgeschlossen' && item.status !== 'Storniert')
-    .slice(0, 4);
+  // --- Persönlicher Planungsüberblick -----------------------------------------
+  // Eigene Datenquelle für den gesamten Abschnitt: die dem eingeloggten
+  // Benutzer zugewiesenen Planungen (serverseitig gefiltert über assignedToMe).
+  // Kalender, Einsatzliste und Kennzahlen leiten sich alle daraus ab — keine
+  // gemischten Quellen mehr (vorher: Reservierungen vs. globale Summary).
+  const todayIso = toIsoDate(new Date());
+  const currentUserId = getCurrentUser()?.userId ?? '';
+  const [myPlannings, setMyPlannings] = useState<PlanningListItem[]>([]);
+  const [myPlanningsState, setMyPlanningsState] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  const loadMyPlannings = useCallback(async () => {
+    setMyPlanningsState('loading');
+    try {
+      // fromDate = heute: laufende + kommende Einsätze (endDate >= heute).
+      const items = await listPlannings({ assignedToMe: true, fromDate: toIsoDate(new Date()) });
+      setMyPlannings(items);
+      setMyPlanningsState('ready');
+    } catch {
+      setMyPlanningsState('error');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMyPlannings();
+  }, [loadMyPlannings]);
+
+  // Persönliche Einsatzliste: stornierte/abgeschlossene raus, laufende zuerst,
+  // danach nach Startdatum.
+  const personalPlannings = useMemo(() => {
+    const relevant = myPlannings.filter(
+      (item) => item.status !== 'Storniert' && item.status !== 'Abgeschlossen',
+    );
+    const rank = (item: PlanningListItem): number =>
+      isDateBooked(todayIso, item.startDate, item.endDate) ? 0 : item.startDate > todayIso ? 1 : 2;
+    return [...relevant].sort((a, b) => {
+      const byRank = rank(a) - rank(b);
+      if (byRank !== 0) return byRank;
+      if (a.startDate !== b.startDate) return a.startDate.localeCompare(b.startDate);
+      return a.projectName.localeCompare(b.projectName);
+    });
+  }, [myPlannings, todayIso]);
+
+  const myActiveToday = personalPlannings.filter((item) =>
+    isDateBooked(todayIso, item.startDate, item.endDate),
+  );
+  const myOpenConflictCount = personalPlannings.reduce(
+    (sum, item) => sum + (item.openConflictCount ?? 0),
+    0,
+  );
+  const nextPersonalPlanning = personalPlannings.find((item) => item.startDate > todayIso);
+  const visiblePersonalPlannings = personalPlannings.slice(0, 5);
+  const hiddenPersonalCount = personalPlannings.length - visiblePersonalPlannings.length;
+
+  // Tage des aktuellen Monats, an denen mindestens ein persönlicher Einsatz läuft.
+  const markedCalendarDays = useMemo(() => {
+    const days = new Set<number>();
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const iso = toIsoDate(new Date(now.getFullYear(), now.getMonth(), day));
+      if (personalPlannings.some((item) => isDateBooked(iso, item.startDate, item.endDate))) {
+        days.add(day);
+      }
+    }
+    return days;
+  }, [personalPlannings]);
+
+  const formatPersonalCount = (value: number): string =>
+    myPlanningsState === 'ready' ? String(value) : '—';
 
   // Engpässe & Risiken: bevorzugt echte Planungs-Fehlmengen, sonst
   // Bestandskategorien mit <= 1 verfügbarem Gerät.
@@ -379,7 +455,6 @@ export function DashboardPage({
   const bottleneckCount = shortageItems.length || localBottlenecks.length;
 
   const todayPlannedQty = planningSummary?.todayPlannedQty ?? 0;
-  const openConflictCount = planningSummary?.openConflictCount ?? 0;
 
   const recentActivities = activities.slice(0, 6);
   const hasActivities = recentActivities.length > 0;
@@ -458,19 +533,6 @@ export function DashboardPage({
       disabled: !canPlanning,
     },
   ];
-
-  const timelineReservations = upcomingReservations.slice(0, 5).map((reservation, index) => {
-    const seed = hashText(`${reservation.id}-${reservation.team}-${reservation.period}`);
-    const left = Math.min(48, 4 + index * 8 + (seed % 7));
-    const rawWidth = 42 + Math.min(28, reservation.assets.length * 6) + (seed % 8);
-    const width = Math.max(24, Math.min(rawWidth, 92 - left));
-    return {
-      reservation,
-      left,
-      width,
-      accent: getTimelineAccent(index, theme),
-    };
-  });
 
   return (
     <section className="space-y-5 pb-2">
@@ -584,7 +646,7 @@ export function DashboardPage({
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-[1.35rem] font-semibold tracking-tight text-ink">Planungsüberblick</h3>
-                <p className="mt-1 text-sm text-ink-muted">Aktive Einsätze, Kalender und erkannte Engpässe auf einen Blick.</p>
+                <p className="mt-1 text-sm text-ink-muted">Deine zugewiesenen Einsätze, Termine und erkannte Engpässe auf einen Blick.</p>
               </div>
               {canPlanning ? (
                 <button
@@ -602,66 +664,136 @@ export function DashboardPage({
                 className="relative overflow-hidden rounded-[24px] border border-line px-4 py-4"
                 style={insetShellStyle}
               >
-                <div className="absolute inset-y-4 left-[11%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[24%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[37%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[50%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[63%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[76%] w-px bg-white/6" />
-                <div className="absolute inset-y-4 left-[89%] w-px bg-white/6" />
-                {timelineReservations.length ? (
+                {myPlanningsState === 'loading' ? (
+                  <div aria-hidden className="min-h-[280px] space-y-3 py-1">
+                    <div className="h-4 w-40 animate-pulse rounded-full bg-surface-2" />
+                    {[0, 1, 2, 3].map((row) => (
+                      <div key={row} className="h-14 animate-pulse rounded-2xl bg-surface-2" />
+                    ))}
+                  </div>
+                ) : myPlanningsState === 'error' ? (
+                  <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-center">
+                    <TriangleAlert className="h-8 w-8 text-amber-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-ink">Persönliche Einsätze konnten nicht geladen werden.</p>
+                      <p className="mt-1 text-xs text-ink-muted">Bitte Verbindung prüfen und erneut versuchen.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadMyPlannings()}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-3 py-1.5 text-xs font-semibold text-ink-muted transition hover:border-line-strong hover:text-ink"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" /> Erneut laden
+                    </button>
+                  </div>
+                ) : personalPlannings.length ? (
                   <div className="relative">
                     <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-ink-faint">
-                      <span>Aktive Projektbahnen</span>
-                      <span>{timelineReservations.length} Einträge</span>
+                      <span>Meine Einsätze</span>
+                      <span>
+                        {personalPlannings.length} {personalPlannings.length === 1 ? 'Eintrag' : 'Einträge'}
+                      </span>
                     </div>
-                    <div className="space-y-3">
-                      {timelineReservations.map(({ reservation, left, width, accent }, index) => (
-                        <div key={reservation.id} className="relative h-12">
-                          <div
-                            className="absolute inset-y-0 rounded-2xl border px-3 py-2 shadow-[0_10px_30px_rgba(2,8,23,0.14)]"
-                            style={{
-                              left: `${left}%`,
-                              width: `${width}%`,
-                              background: accent.background,
-                              borderColor: accent.borderColor,
-                            }}
-                          >
-                            <p className={`truncate text-xs font-semibold ${accent.textClass}`}>
-                              {reservation.team || reservation.requestedBy}
-                            </p>
-                            <p className={`truncate text-[11px] ${accent.textClass} ${accent.textClass === 'text-white' ? 'opacity-90' : 'opacity-75'}`}>
-                              {reservation.assets.length} Geräte · {reservation.location || reservation.period}
-                            </p>
+                    <ul className="space-y-2.5">
+                      {visiblePersonalPlannings.map((planning) => {
+                        const timing = getPlanningTiming(planning, todayIso);
+                        const myRole = getMyPlanningRole(planning, currentUserId);
+                        const fallbackAccent = getAssetAccentStyle(planning.id, theme);
+                        const barColor = planning.responsibleUser?.signatureColor || fallbackAccent.border;
+                        const conflictCount = planning.openConflictCount ?? 0;
+                        const rowInner = (
+                          <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface/70 px-3 py-2.5 transition group-hover:border-line-strong">
+                            <span aria-hidden className="h-9 w-1 shrink-0 rounded-full" style={{ backgroundColor: barColor }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p className="truncate text-sm font-semibold text-ink">{planning.projectName}</p>
+                                {myRole ? (
+                                  <span className="inline-flex shrink-0 items-center rounded-full bg-sky-500/12 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300">
+                                    {myRole}
+                                  </span>
+                                ) : null}
+                                {conflictCount > 0 ? (
+                                  <span className="inline-flex shrink-0 items-center rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-bold text-rose-600 dark:text-rose-300">
+                                    {conflictCount} {conflictCount === 1 ? 'Konflikt' : 'Konflikte'}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-0.5 truncate text-[11px] text-ink-muted">
+                                {planning.customerName}
+                                {planning.eventName ? ` · ${planning.eventName}` : ''}
+                                {` · ${planning.totalQty ?? 0} Geräte`}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <p className="text-xs font-semibold text-ink">
+                                {formatShortDate(planning.startDate)} – {formatShortDate(planning.endDate)}
+                              </p>
+                              <p
+                                className={`mt-0.5 text-[11px] font-medium ${
+                                  timing.tone === 'now'
+                                    ? 'text-emerald-600 dark:text-emerald-300'
+                                    : timing.tone === 'soon'
+                                      ? 'text-sky-600 dark:text-sky-300'
+                                      : 'text-ink-muted'
+                                }`}
+                              >
+                                {timing.label}
+                              </p>
+                            </div>
                           </div>
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-ink-faint">
-                            {index + 1}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                        );
+                        return (
+                          <li key={planning.id}>
+                            {canPlanning ? (
+                              <button
+                                type="button"
+                                onClick={() => navigate(planningDetailPath(planning.id))}
+                                className="group block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              >
+                                {rowInner}
+                              </button>
+                            ) : (
+                              rowInner
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {hiddenPersonalCount > 0 && canPlanning ? (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('planning')}
+                        className="mt-3 text-xs font-semibold text-primary hover:underline"
+                      >
+                        +{hiddenPersonalCount} weitere in der Einsatzplanung
+                      </button>
+                    ) : null}
                     <div className="mt-4 grid gap-2 border-t border-line/70 pt-3 text-xs text-ink-muted sm:grid-cols-3">
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Heute geplant</p>
-                        <p className="mt-1 font-semibold text-ink">{todayPlannedQty} Geräte</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Offene Konflikte</p>
-                        <p className={`mt-1 font-semibold ${openConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
-                          {openConflictCount}
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Heute im Einsatz</p>
+                        <p className="mt-1 font-semibold text-ink">
+                          {myActiveToday.length} {myActiveToday.length === 1 ? 'Einsatz' : 'Einsätze'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Engpass-Kategorien</p>
-                        <p className="mt-1 font-semibold text-ink">{bottleneckCount}</p>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Offene Konflikte</p>
+                        <p className={`mt-1 font-semibold ${myOpenConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
+                          {myOpenConflictCount}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Nächster Einsatz</p>
+                        <p className="mt-1 font-semibold text-ink">
+                          {nextPersonalPlanning ? formatGermanDate(nextPersonalPlanning.startDate) : '—'}
+                        </p>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <EmptyState
                     icon={CalendarRange}
-                    title="Noch keine geplanten Einsätze"
-                    message="Sobald Reservierungen oder Planungen aktiv sind, erscheint hier das Einsatzboard."
+                    title="Keine persönlichen Einsätze geplant"
+                    message="Sobald du einer Planung als Verantwortlicher, On-Site-Verantwortlicher oder Mitarbeiter zugewiesen wirst, erscheint sie hier."
                     className="min-h-[280px]"
                   />
                 )}
@@ -671,16 +803,20 @@ export function DashboardPage({
                 className="rounded-[24px] border border-line px-4 py-4"
                 style={insetShellStyle}
               >
-                <MiniCalendar />
+                <MiniCalendar markedDays={markedCalendarDays} />
                 <div className="mt-4 space-y-2 border-t border-line pt-4 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-ink-muted">Heute geplant</span>
-                    <span className="font-semibold text-ink">{todayPlannedQty} Geräte</span>
+                    <span className="text-ink-muted">Meine Einsätze</span>
+                    <span className="font-semibold text-ink">{formatPersonalCount(personalPlannings.length)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink-muted">Heute im Einsatz</span>
+                    <span className="font-semibold text-ink">{formatPersonalCount(myActiveToday.length)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-ink-muted">Offene Konflikte</span>
-                    <span className={`font-semibold ${openConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
-                      {openConflictCount}
+                    <span className={`font-semibold ${myOpenConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
+                      {formatPersonalCount(myOpenConflictCount)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">

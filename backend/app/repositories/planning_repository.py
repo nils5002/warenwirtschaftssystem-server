@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from ..database.models import (
@@ -1386,6 +1386,7 @@ def list_plannings(
     status: str | None = None,
     from_date: date | None = None,
     to_date: date | None = None,
+    assigned_user_id: str | None = None,
 ) -> list[PlanningListItem]:
     stmt = select(PlanningRecord).order_by(PlanningRecord.updated_at.desc())
     if status:
@@ -1394,6 +1395,15 @@ def list_plannings(
         stmt = stmt.where(PlanningRecord.end_date >= from_date)
     if to_date:
         stmt = stmt.where(PlanningRecord.start_date <= to_date)
+    if assigned_user_id:
+        # Persönliche Sicht: Planungen, in denen der Benutzer als
+        # Projektverantwortlicher ODER On-Site-Verantwortlicher hinterlegt ist.
+        stmt = stmt.where(
+            or_(
+                PlanningRecord.project_manager_user_id == assigned_user_id,
+                PlanningRecord.on_site_responsible_user_id == assigned_user_id,
+            )
+        )
     records = db.scalars(stmt).all()
     handover_summary_map = _build_handover_list_summary_map(db, records)
     # Konfliktzahlen + Fehlmengen-Übersicht in einem Batch-Durchlauf. Spart

@@ -22,8 +22,15 @@ class PlanningService:
         status: str | None = None,
         from_date: date | None = None,
         to_date: date | None = None,
+        assigned_user_id: str | None = None,
     ) -> list[PlanningListItem]:
-        return planning_repository.list_plannings(db, status=status, from_date=from_date, to_date=to_date)
+        return planning_repository.list_plannings(
+            db,
+            status=status,
+            from_date=from_date,
+            to_date=to_date,
+            assigned_user_id=assigned_user_id,
+        )
 
     @staticmethod
     def get_planning(db: Session, planning_id: str) -> PlanningResponse | None:

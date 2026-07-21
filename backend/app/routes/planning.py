@@ -68,11 +68,26 @@ def list_plannings(
     status: str | None = Query(default=None),
     from_date: date | None = Query(default=None, alias="fromDate"),
     to_date: date | None = Query(default=None, alias="toDate"),
+    assigned_to_me: bool = Query(default=False, alias="assignedToMe"),
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> list[PlanningListItem]:
     _ensure_planning_read_access(context)
-    items = PlanningService.list_plannings(db, status=status, from_date=from_date, to_date=to_date)
+    assigned_user_id: str | None = None
+    if assigned_to_me:
+        # Persönliche Dashboard-Sicht: nur Planungen, denen der eingeloggte
+        # Benutzer zugewiesen ist (PM oder On-Site). Ohne auflösbare User-ID
+        # (z. B. Legacy-Header-Auth) ehrlich leere Liste statt aller Planungen.
+        if not context.user_id:
+            return []
+        assigned_user_id = context.user_id
+    items = PlanningService.list_plannings(
+        db,
+        status=status,
+        from_date=from_date,
+        to_date=to_date,
+        assigned_user_id=assigned_user_id,
+    )
     return items
 
 
