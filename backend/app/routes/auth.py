@@ -195,8 +195,8 @@ def login(
 
 
 # Generische Erfolgsmeldung der Registrierung. Bewusst identisch für: echte
-# Neuanlage, Duplikat, deaktivierte Registrierung und Honeypot-Treffer —
-# von außen ist nicht unterscheidbar, ob ein Konto entstanden ist.
+# Neuanlage, Duplikat und Honeypot-Treffer — von außen ist nicht
+# unterscheidbar, ob ein Konto entstanden ist.
 _REGISTER_GENERIC_MESSAGE = (
     "Registrierung erfolgreich. Dein Konto muss erst von einem Admin freigegeben werden."
 )
@@ -231,14 +231,16 @@ def register(
         )
         return AuthRegisterResponse(message=_REGISTER_GENERIC_MESSAGE)
 
-    # Admin-Schalter (system_settings, Default AUS): kein Insert, aber die
-    # gleiche generische Antwort — der Endpunkt verrät nicht, dass er zu ist.
+    # Admin-Schalter (system_settings, Default AUS): serverseitig hart
+    # blockieren. Bewusst ein ehrlicher 403 statt der generischen Antwort —
+    # der Schalter-Zustand ist keine schutzwürdige Information, und externe
+    # Prüfungen (Security-Smoke-Tests) sollen die Sperre erkennen können.
     if not sec.registration_enabled(db):
         sec.record_event(
             db, sec.REGISTER_BLOCKED_DISABLED, request=request, severity="warning",
             identifier=email, reason="registration_disabled",
         )
-        return AuthRegisterResponse(message=_REGISTER_GENERIC_MESSAGE)
+        raise HTTPException(status_code=403, detail="Registrierung ist deaktiviert.")
 
     try:
         outcome = register_user(db, payload.name, payload.email, payload.password)

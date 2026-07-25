@@ -64,21 +64,40 @@ def test_register_invalid_email_is_rejected() -> None:
         assert db.scalar(select(UserRecord).where(UserRecord.email == "supman")) is None
 
 
-def test_register_disabled_returns_generic_and_creates_no_account() -> None:
+def test_register_disabled_returns_403_and_creates_no_account() -> None:
     client = TestClient(app)
     email = f"disabled-{uuid4().hex}@conventex.com"
     with SessionLocal() as db:
         sec.set_registration_enabled(db, False)
     try:
         res = _register(client, email)
-        # Generische Erfolgsmeldung, aber KEIN Konto.
-        assert res.status_code == 201
+        # Ehrlicher 403: serverseitige Sperre ist von außen erkennbar,
+        # und es entsteht KEIN Konto.
+        assert res.status_code == 403
+        assert res.json()["detail"] == "Registrierung ist deaktiviert."
         with SessionLocal() as db:
             assert db.scalar(select(UserRecord).where(UserRecord.email == email)) is None
         assert _events_for(email, sec.REGISTER_BLOCKED_DISABLED)
     finally:
         with SessionLocal() as db:
             sec.set_registration_enabled(db, True)
+
+
+def test_register_enabled_flow_unchanged_after_toggle() -> None:
+    # Schalter aus- und wieder einschalten: danach funktioniert der
+    # reguläre Registrierungsflow (pending + Freigabe durch Admin) unverändert.
+    client = TestClient(app)
+    email = f"reenabled-{uuid4().hex}@conventex.com"
+    with SessionLocal() as db:
+        sec.set_registration_enabled(db, False)
+        sec.set_registration_enabled(db, True)
+    res = _register(client, email)
+    assert res.status_code == 201
+    with SessionLocal() as db:
+        user = db.scalar(select(UserRecord).where(UserRecord.email == email))
+        assert user is not None
+        assert user.is_active is False
+        assert user.status == "Wartet auf Freigabe"
 
 
 def test_register_honeypot_is_silently_dropped() -> None:
