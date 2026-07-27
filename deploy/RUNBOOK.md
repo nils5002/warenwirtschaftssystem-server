@@ -56,8 +56,18 @@ Voraussetzungen in der serverlokalen `.env` bzw. den Portainer-Stack-Variablen:
   (Anzeige zeigt dann den alten Commit) — Variable mitziehen oder das naechste
   Update aus dem WWS heraus starten.
 
+Erreichbarkeit: Die Webhook-URL wird aus dem **Backend-Container** aufgerufen,
+nicht vom Host — anderer DNS, anderer Zertifikatsspeicher. Test ohne Redeploy:
+`GET` auf die URL aus dem Container (Portainer antwortet `405`). Bei lokaler CA
+bewaehrt: Portainer ins Netz des WWS-Stacks haengen (in Portainers eigener
+Compose-Datei, `external: true` — ein `docker network connect` von Hand
+ueberlebt kein Neuerstellen) und `http://portainer:9000/...` als URL nutzen.
+Details in `DEPLOYMENT.md`, Abschnitt A2/2a.
+
 Stoerungsfaelle:
 - Backup fehlgeschlagen -> kein Redeploy, Vorgang als fehlgeschlagen protokolliert
+- „TLS-Zertifikat konnte nicht geprueft werden" -> lokale CA, siehe oben
+- „Portainer ist nicht erreichbar" -> DNS/Route aus dem Container heraus pruefen
 - Portainer nicht erreichbar -> kein Redeploy, Lock sofort frei
 - Backend kommt nicht zurueck -> nach `SYSTEM_UPDATE_TIMEOUT_SECONDS` „Zeitueberschreitung";
   Stack in Portainer pruefen, im Ernstfall Pre-Update-Backup aus `BACKUP_PATH`

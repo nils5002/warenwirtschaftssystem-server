@@ -32,7 +32,15 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   `APP_GIT_BRANCH` bleiben unter Portainer gesetzt und werden beim Update
   automatisch aktualisiert; `APP_BUILD_TIME` ist eine reine Überschreibung.
 
+- Verbindungsfehler beim Redeploy werden benannt statt pauschal als „nicht
+  erreichbar" gemeldet: TLS-Zertifikat, Zeitüberschreitung, ungültige URL und
+  fehlende Route sind jetzt unterscheidbar. Die URL bleibt in Meldung und Log
+  maskiert, geloggt wird zusätzlich der Ausnahmetyp.
+
 ### Hinweise
+- Die Webhook-URL muss aus dem **Backend-Container** erreichbar sein, nicht nur
+  vom Host (eigener DNS, eigener Zertifikatsspeicher). Bei lokaler CA siehe
+  `DEPLOYMENT.md`, Abschnitt A2/2a.
 - Das WWS greift weiterhin **nicht** auf den Docker-Socket zu und führt keine
   Shell-Befehle aus; es löst ausschließlich den fest konfigurierten
   Portainer-Webhook aus. Portainer bleibt der Verwalter des Stacks.

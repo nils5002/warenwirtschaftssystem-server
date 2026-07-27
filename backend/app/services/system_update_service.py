@@ -37,6 +37,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import requests
 from fastapi import HTTPException
+from requests import exceptions as _requests_exceptions
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -514,6 +515,27 @@ def redeploy_url(webhook_url: str, target_sha: str, settings: Settings | None = 
     )
 
 
+def _unreachable_detail(exc: Exception) -> str:
+    """Uebersetzt einen Verbindungsfehler in eine Meldung, die weiterhilft.
+
+    Ein blosses „nicht erreichbar" laesst offen, ob der Name nicht aufloest, das
+    Zertifikat abgelehnt wird oder die Gegenstelle schweigt — drei voellig
+    verschiedene Ursachen. Die URL selbst taucht nie in der Meldung auf.
+    """
+    if isinstance(exc, _requests_exceptions.SSLError):
+        return (
+            "Portainer wurde erreicht, aber das TLS-Zertifikat konnte nicht geprüft werden. "
+            "Das Update wurde nicht gestartet."
+        )
+    if isinstance(exc, _requests_exceptions.Timeout):
+        return (
+            "Portainer hat nicht rechtzeitig geantwortet. Das Update wurde nicht gestartet."
+        )
+    if isinstance(exc, _requests_exceptions.InvalidURL | _requests_exceptions.MissingSchema):
+        return "Die konfigurierte Portainer-URL ist ungültig. Das Update wurde nicht gestartet."
+    return "Portainer ist nicht erreichbar. Das Update wurde nicht gestartet."
+
+
 def _trigger_webhook(url: str) -> None:
     """Ruft den Portainer-Webhook GENAU EINMAL auf (kein Retry).
 
@@ -523,10 +545,14 @@ def _trigger_webhook(url: str) -> None:
     try:
         response = requests.post(url, timeout=_WEBHOOK_TIMEOUT)
     except requests.RequestException as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Portainer ist nicht erreichbar. Das Update wurde nicht gestartet.",
-        ) from exc
+        # Nur Ausnahmetyp und maskierte URL ins Log — die Fehlermeldung selbst
+        # koennte die vollstaendige URL samt Token enthalten.
+        logger.error(
+            "Portainer-Webhook nicht erreichbar: %s (%s)",
+            type(exc).__name__,
+            mask_webhook_url(url),
+        )
+        raise HTTPException(status_code=502, detail=_unreachable_detail(exc)) from exc
 
     if response.status_code >= 400:
         logger.error(

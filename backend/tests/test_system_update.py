@@ -467,6 +467,46 @@ def test_portainer_unreachable_releases_lock(monkeypatch, fake_requests, backup_
     assert status["inProgress"] is False
 
 
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (requests.exceptions.SSLError("self signed certificate"), "TLS-Zertifikat"),
+        (requests.exceptions.ConnectTimeout("zu langsam"), "nicht rechtzeitig"),
+        (requests.exceptions.ConnectionError("name or service not known"), "nicht erreichbar"),
+        (requests.exceptions.MissingSchema("portainer.example.com"), "ungültig"),
+    ],
+)
+def test_unreachable_portainer_names_the_cause(
+    monkeypatch, fake_requests, backup_dir, error, expected
+):
+    """Ein blosses „nicht erreichbar" laesst DNS, TLS und Timeout ununterscheidbar."""
+    _use_settings(monkeypatch)
+    fake_requests.post_error = error
+
+    client = TestClient(app)
+    response = client.post("/api/admin/system/update", headers=_admin(client))
+    assert response.status_code == 502
+    detail = response.json()["detail"]
+    assert expected in detail
+    # Auch im Fehlerfall verlaesst die URL den Server nicht.
+    assert WEBHOOK_SECRET not in detail
+    run = _last_run()
+    assert run is not None and run.error_details == "webhook_failed"
+
+
+def test_unreachable_portainer_logs_type_but_not_token(
+    monkeypatch, fake_requests, backup_dir, caplog
+):
+    _use_settings(monkeypatch)
+    fake_requests.post_error = requests.exceptions.SSLError("self signed certificate")
+    client = TestClient(app)
+    with caplog.at_level(logging.ERROR):
+        client.post("/api/admin/system/update", headers=_admin(client))
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "SSLError" in logged
+    assert WEBHOOK_SECRET not in logged
+
+
 def test_portainer_http_error_releases_lock(monkeypatch, fake_requests, backup_dir):
     _use_settings(monkeypatch)
     fake_requests.post_response = _FakeResponse(404)

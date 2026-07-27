@@ -60,6 +60,53 @@ Fehlt `PORTAINER_STACK_WEBHOOK_URL` oder ist `SYSTEM_UPDATE_ENABLED=false`,
 bleibt die Seite sichtbar, meldet aber lediglich „Systemupdates sind auf diesem
 Server nicht aktiviert." Die uebrige Anwendung ist davon nicht betroffen.
 
+### 2a. Die URL muss aus dem *Container* erreichbar sein
+
+Haeufigste Stolperfalle: Die Webhook-URL funktioniert auf dem Host, aber nicht im
+Backend-Container. Das WWS ruft sie aus dem Container heraus auf — dort gelten
+andere DNS-Server und ein anderer Zertifikatsspeicher.
+
+Pruefen (ohne einen Redeploy auszuloesen — `GET` statt `POST`, Portainer
+antwortet mit `405`; die URL nie ausgeben, sie enthaelt das Token):
+
+```sh
+docker exec <backend> python -c "
+import os, requests
+print(requests.get(os.environ['PORTAINER_STACK_WEBHOOK_URL'], timeout=10).status_code)"
+```
+
+Typische Ursachen und was die Adminseite dazu meldet:
+
+| Meldung | Ursache |
+| --- | --- |
+| „TLS-Zertifikat konnte nicht geprüft werden" | Portainer hinter einem Reverse Proxy mit lokaler/selbstsignierter CA |
+| „Portainer ist nicht erreichbar" | Name loest im Container nicht auf, oder keine Route |
+| „Portainer hat nicht rechtzeitig geantwortet" | Gegenstelle blockiert/haengt |
+
+Bewaehrte Loesung fuer eine lokale CA: Portainer in **dasselbe Docker-Netz** wie
+das Backend haengen und die interne Adresse verwenden — dann faellt TLS ganz
+weg, der Aufruf verlaesst das Docker-Netz nicht:
+
+```dotenv
+PORTAINER_STACK_WEBHOOK_URL=http://portainer:9000/api/stacks/webhooks/<uuid>
+```
+
+Zwei Dinge sind dabei zu beachten:
+
+* Das Netz muss in Portainers **eigener** Compose-Definition stehen
+  (`external: true`). Ein `docker network connect` von Hand ueberlebt zwar einen
+  Neustart, aber **nicht** das Neuerstellen des Portainer-Containers — also
+  spaetestens das naechste Portainer-Update.
+* Damit haengt Portainer an einem Netz, das dem WWS-Stack gehoert. Wird der
+  Stack geloescht oder **umbenannt**, startet Portainer nicht mehr. Recovery:
+  `docker network create <netzname>`, dann Portainer starten.
+
+Die Alternative ohne gemeinsames Netz waere, die lokale Root-CA in den Container
+zu mounten und `REQUESTS_CA_BUNDLE` darauf zu setzen. Dann aber ein **kombiniertes**
+Bundle (oeffentliche Roots + eigene CA) verwenden: Die Variable ersetzt den
+Trust-Store vollstaendig, mit der eigenen CA allein scheitert die
+GitHub-Versionspruefung.
+
 ### 3. Build-Metadaten (woher das WWS seine Version kennt)
 
 Die Anwendung muss wissen, welchen Commit sie ausfuehrt — sonst laesst sich nach
