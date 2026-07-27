@@ -99,3 +99,7 @@ artifacts/
 
 # graphify-Wissensgraph (per-user, lokal generiert, nie committen)
 graphify-out/
+
+# Beim Image-Build erzeugte Build-Version (Commit/Branch/Buildzeit).
+# Entsteht nur im Container bzw. bei lokalen Builds — nie committen.
+backend/build_info.json

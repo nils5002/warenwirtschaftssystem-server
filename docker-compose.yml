@@ -1,13 +1,17 @@
 services:
   backend:
+    # Kontext ist BEWUSST das Repo-Root (nicht ./backend): nur so liegen die
+    # Git-Metadaten im Build-Kontext und das Image kann seinen eigenen Commit
+    # selbst ermitteln — ohne dass jemand bei jedem Update eine Variable
+    # nachziehen muss. Der Kontext ist ueber .dockerignore reduziert; .git
+    # landet nur in der Build-Stufe, nie im Laufzeit-Image.
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
       args:
-        # Build-Metadaten des laufenden Stands. Bewusst BUILD-ARGS (nicht
-        # environment): Sie beschreiben das Image, nicht die Laufzeit. Ohne
-        # Werte bleibt die installierte Version "unbekannt" — die App laeuft
-        # normal, meldet nach einem Update aber niemals faelschlich Erfolg.
+        # Optionale Ueberschreibung der automatisch ermittelten Build-Metadaten
+        # — nur noetig, wenn ohne Git-Kontext gebaut wird. Leer lassen ist der
+        # Normalfall.
         APP_GIT_COMMIT: ${APP_GIT_COMMIT:-}
         APP_GIT_BRANCH: ${APP_GIT_BRANCH:-}
         APP_BUILD_TIME: ${APP_BUILD_TIME:-}

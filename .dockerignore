@@ -1,0 +1,59 @@
+# Build-Kontext des Backend-Images (Repo-Root, siehe docker-compose.yml).
+#
+# WICHTIG: `.git` wird BEWUSST NICHT ausgeschlossen — daraus liest die
+# Build-Stufe `buildmeta` den ausgelieferten Commit (backend/Dockerfile,
+# backend/scripts/derive_build_info.py). Ohne die Git-Metadaten koennte die
+# Anwendung nach einem Redeploy ihre eigene Version nicht mehr pruefen.
+#
+# Diese Datei gilt nur fuer das Backend-Image. Das Frontend-Image hat den
+# Kontext ./frontend und damit seine eigene frontend/.dockerignore.
+
+# Frontend wird separat gebaut und im Backend-Kontext nicht benoetigt.
+frontend/
+
+# Doku, Deploy-Skripte, Werkzeuge — nicht Teil des Images.
+docs/
+deploy/
+scripts/
+.github/
+.claude/
+graphify-out/
+*.md
+
+# Sensible lokale Bestandsdateien (duerfen nie in ein Image gelangen).
+Hardwarebestand/
+
+# Virtuelle Umgebungen / Bytecode
+.venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# Node-Artefakte (falls im Root vorhanden)
+node_modules/
+
+# Test-/Typcheck-/Lint-Caches und Coverage
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# SQLite-Datenbanken + Laufzeit-Journale (nie ins Image)
+backend/app/data/*.db
+backend/app/data/*.db-wal
+backend/app/data/*.db-shm
+backend/app/data/*.db-journal
+
+# Persistente Laufzeit-Daten (liegen im Volume /app/data, nicht im Image).
+# Hinweis: backend/app/data/wms_db.json (Legacy-Seed) bleibt BEWUSST drin.
+backend/app/data/logs/
+backend/app/data/product_images/
+backend/app/data/login_backgrounds/
+backend/app/data/backups/
+backend/app/data/hardware_imports/
+
+# Lokale Umgebungsdateien / Secrets
+.env
+.env.*
+!.env.example

@@ -1,3 +1,16 @@
+# Build-Kontext ist bewusst das REPO-ROOT (siehe docker-compose.yml), nicht
+# ./backend: nur so liegen die Git-Metadaten des ausgelieferten Standes im
+# Kontext und der laufende Commit laesst sich ohne manuelle Pflege ermitteln.
+# Der Kontext ist ueber die .dockerignore im Repo-Root auf das Noetige reduziert.
+
+# --- Stufe 1: Build-Version aus dem Checkout lesen ---------------------------
+# Laeuft getrennt vom Laufzeit-Image, damit .git niemals im ausgelieferten
+# Image landet. Schlaegt nie fehl — fehlt .git, gilt die Version als unbekannt.
+FROM python:3.12-slim AS buildmeta
+COPY . /repo
+RUN python /repo/backend/scripts/derive_build_info.py /repo /build_info.json
+
+# --- Stufe 2: Laufzeit-Image -------------------------------------------------
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -5,15 +18,17 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
+COPY backend/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY . /app
+COPY backend/ /app/
 
-# Build-Metadaten (Systemupdate). Werden beim Build durchgereicht — z. B.
-# docker build --build-arg APP_GIT_COMMIT=$(git rev-parse HEAD) ... — oder
-# ueber die Stack-Variablen in Portainer. Bleiben sie leer, gilt die
-# installierte Version als unbekannt; die App startet und laeuft normal.
+# Automatisch ermittelte Build-Version (Commit/Branch/Buildzeit).
+COPY --from=buildmeta /build_info.json /app/build_info.json
+
+# Optionale Ueberschreibung der Build-Metadaten, z. B. wenn ohne Git-Kontext
+# gebaut wird (Deploy via ``git archive``). Gesetzte ENV-Werte haben Vorrang
+# vor /app/build_info.json; leer = automatisch ermittelter Wert gilt.
 ARG APP_GIT_COMMIT=""
 ARG APP_GIT_BRANCH=""
 ARG APP_BUILD_TIME=""

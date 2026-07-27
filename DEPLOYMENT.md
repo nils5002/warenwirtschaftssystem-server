@@ -52,14 +52,29 @@ SYSTEM_UPDATE_TIMEOUT_SECONDS=600
 GITHUB_API_TOKEN=
 ```
 
+In Portainer werden diese Werte unter *Stacks → WWS-Stack → Environment
+variables* gesetzt; anschliessend einmal **Update the stack**, sonst greifen
+sie nicht.
+
 Fehlt `PORTAINER_STACK_WEBHOOK_URL` oder ist `SYSTEM_UPDATE_ENABLED=false`,
 bleibt die Seite sichtbar, meldet aber lediglich „Systemupdates sind auf diesem
 Server nicht aktiviert." Die uebrige Anwendung ist davon nicht betroffen.
 
-### 3. Build-Metadaten uebergeben (wichtig fuer die Erfolgskontrolle)
+### 3. Build-Metadaten (automatisch — kein Handgriff noetig)
 
-Das Backend erkennt seine eigene Version ueber `APP_GIT_COMMIT`. Der Wert wird
-als **Build-Arg** an das Backend-Image gereicht (siehe `docker-compose.yml`):
+Das Backend ermittelt seinen eigenen Commit **beim Image-Build selbst**: Der
+Build-Kontext des Backends ist das Repo-Root (`context: .`,
+`dockerfile: backend/Dockerfile`), eine vorgeschaltete Build-Stufe liest den
+Commit aus den Git-Metadaten des Checkouts
+(`backend/scripts/derive_build_info.py`) und legt ihn als `/app/build_info.json`
+ins Image. `.git` selbst landet **nicht** im Laufzeit-Image.
+
+Damit stimmt die angezeigte Version nach jedem Portainer-Redeploy automatisch —
+auch bei einem Update, das aus dem WWS heraus ausgeloest wurde. Eine
+Stack-Variable `APP_GIT_COMMIT` ist **nicht** noetig.
+
+Ueberschreiben laesst sich das trotzdem, z. B. wenn ohne Git-Kontext gebaut wird
+(Deploy ueber `deploy/server/deploy.sh` nutzt `git archive`, dort fehlt `.git`):
 
 ```dotenv
 APP_GIT_COMMIT=<voller 40-stelliger Commit-SHA>
@@ -67,17 +82,18 @@ APP_GIT_BRANCH=main
 APP_BUILD_TIME=2026-07-27T09:00:00Z
 ```
 
-In Portainer werden diese Werte als Stack-Environment-Variablen gesetzt und
-beim Build substituiert. Lokal/CI:
+Gesetzte Werte haben Vorrang vor der automatisch ermittelten Datei. Lokal/CI
+funktioniert beides:
 
 ```sh
-docker compose build --build-arg APP_GIT_COMMIT=$(git rev-parse HEAD) backend
+docker compose build backend                                             # automatisch aus .git
+docker compose build --build-arg APP_GIT_COMMIT=$(git rev-parse HEAD) backend   # explizit
 ```
 
-Ist `APP_GIT_COMMIT` **nicht** gesetzt, funktioniert das Update weiterhin —
-das WWS meldet den Vorgang danach aber bewusst **nicht** als erfolgreich,
-sondern als „Version nach Neustart nicht ueberpruefbar". Es wird nie
-faelschlich Erfolg gemeldet.
+Laesst sich die Version weder automatisch noch per ENV feststellen, funktioniert
+das Update weiterhin — das WWS meldet den Vorgang danach aber bewusst **nicht**
+als erfolgreich, sondern als „Version nach Neustart nicht ueberpruefbar". Es
+wird nie faelschlich Erfolg gemeldet.
 
 ### 4. Ablauf und Backupverhalten
 

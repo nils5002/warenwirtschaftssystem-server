@@ -44,8 +44,13 @@ SYSTEM_UPDATE_ENABLED=true
 PORTAINER_STACK_WEBHOOK_URL=https://portainer.example.com/api/stacks/webhooks/<uuid>
 GITHUB_REPOSITORY=nils5002/warenwirtschaftssystem-server
 GITHUB_BRANCH=main
-APP_GIT_COMMIT=<Commit-SHA des gebauten Stands>
 ```
+
+Der laufende Commit wird beim Image-Build automatisch aus dem Git-Checkout
+ermittelt (Build-Kontext ist das Repo-Root) — `APP_GIT_COMMIT` muss nur gesetzt
+werden, wenn ohne Git-Kontext gebaut wird. Genau das trifft auf `deploy.sh` zu:
+Es synchronisiert per `git archive`, dort fehlt `.git`. Auf diesem Weg gilt die
+Version ohne gesetztes `APP_GIT_COMMIT` als unbekannt.
 
 Vor jedem so ausgeloesten Update erstellt das WWS automatisch ein validiertes
 Backup unter `BACKUP_PATH`. Details siehe `DEPLOYMENT.md`, Abschnitt A2.

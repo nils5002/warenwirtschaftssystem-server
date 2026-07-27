@@ -37,6 +37,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config.build_info import get_build_info
 from ..config.settings import Settings, get_settings
 from ..database.models import SystemUpdateRunRecord
 from ..schemas.system_update import (
@@ -123,11 +124,17 @@ def _fmt(value: datetime | None) -> str | None:
 
 
 def installed_commit(settings: Settings | None = None) -> str | None:
+    """Commit des laufenden Builds — ``None``, wenn er nicht feststellbar ist.
+
+    Vorrang hat ein ausdruecklich gesetztes ``APP_GIT_COMMIT``; sonst greift die
+    beim Image-Build aus dem Git-Checkout ermittelte ``build_info.json``
+    (Portainer-Redeploy braucht dadurch keine manuell gepflegte Variable).
+    """
     settings = settings or get_settings()
     raw = (settings.app_git_commit or "").strip().lower()
-    if not raw or not _SHA_PATTERN.match(raw):
-        return None
-    return raw
+    if raw and _SHA_PATTERN.match(raw):
+        return raw
+    return get_build_info().commit
 
 
 def webhook_configured(settings: Settings | None = None) -> bool:
@@ -269,12 +276,15 @@ def resolve_target_commit(settings: Settings | None = None) -> CommitInfo:
 def version_info(settings: Settings | None = None) -> SystemVersionResponse:
     settings = settings or get_settings()
     commit = installed_commit(settings)
+    # Branch/Buildzeit analog zum Commit: ausdrueckliche ENV-Vorgabe schlaegt
+    # den beim Build ermittelten Wert.
+    baked = get_build_info()
     return SystemVersionResponse(
         appVersion=settings.app_version,
         installedCommit=commit,
         installedShortCommit=short_sha(commit),
-        installedBranch=(settings.app_git_branch or "").strip() or None,
-        buildTime=(settings.app_build_time or "").strip() or None,
+        installedBranch=(settings.app_git_branch or "").strip() or baked.branch,
+        buildTime=(settings.app_build_time or "").strip() or baked.build_time,
         repository=settings.github_repository,
         branch=settings.github_branch,
         repositoryUrl=repository_url(settings),

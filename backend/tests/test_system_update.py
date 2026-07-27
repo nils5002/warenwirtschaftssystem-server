@@ -26,6 +26,7 @@ import pytest
 import requests
 from fastapi.testclient import TestClient
 
+from app.config.build_info import BuildInfo
 from app.config.settings import Settings
 from app.database.models import SystemUpdateRunRecord
 from app.database.session import SessionLocal
@@ -114,6 +115,20 @@ def _clean_state():
         db.commit()
     system_update_rate_limiter.reset_all()
     system_update_check_rate_limiter.reset_all()
+
+
+@pytest.fixture(autouse=True)
+def _no_baked_build_info(monkeypatch: pytest.MonkeyPatch):
+    """Die beim Image-Build erzeugte build_info.json aus den Tests heraushalten.
+
+    Sonst haenge das Ergebnis davon ab, ob im Arbeitsverzeichnis zufaellig eine
+    solche Datei liegt. Der Datei-Fallback selbst wird unten gezielt geprueft.
+    """
+    monkeypatch.setattr(
+        system_update_service,
+        "get_build_info",
+        lambda: BuildInfo(commit=None, branch=None, build_time=None, source="unknown"),
+    )
 
 
 @pytest.fixture()
@@ -643,6 +658,43 @@ def test_logs_never_contain_webhook_or_token(monkeypatch, fake_requests, backup_
     assert GITHUB_TOKEN not in logged
     # Der maskierte Hinweis darf (und soll) im Log stehen.
     assert "portainer.example.com/…" in logged
+
+
+def test_installed_commit_falls_back_to_baked_build_info(monkeypatch):
+    """Ohne APP_GIT_COMMIT zaehlt der beim Image-Build ermittelte Commit."""
+    monkeypatch.setattr(
+        system_update_service,
+        "get_build_info",
+        lambda: BuildInfo(commit=LATEST_COMMIT, branch="main", build_time="t", source="file"),
+    )
+    settings = _settings(app_git_commit=None)
+    assert system_update_service.installed_commit(settings) == LATEST_COMMIT
+
+
+def test_explicit_env_commit_overrides_baked_build_info(monkeypatch):
+    monkeypatch.setattr(
+        system_update_service,
+        "get_build_info",
+        lambda: BuildInfo(commit=LATEST_COMMIT, branch="main", build_time="t", source="file"),
+    )
+    settings = _settings(app_git_commit=INSTALLED_COMMIT)
+    assert system_update_service.installed_commit(settings) == INSTALLED_COMMIT
+
+
+def test_version_endpoint_uses_baked_build_info(monkeypatch, fake_requests):
+    _use_settings(monkeypatch, app_git_commit=None, app_git_branch=None, app_build_time=None)
+    monkeypatch.setattr(
+        system_update_service,
+        "get_build_info",
+        lambda: BuildInfo(
+            commit=LATEST_COMMIT, branch="main", build_time="2026-07-27T09:00:00Z", source="file"
+        ),
+    )
+    client = TestClient(app)
+    body = client.get("/api/admin/system/version", headers=_admin(client)).json()
+    assert body["installedCommit"] == LATEST_COMMIT
+    assert body["installedBranch"] == "main"
+    assert body["buildTime"] == "2026-07-27T09:00:00Z"
 
 
 def test_mask_webhook_url_keeps_only_scheme_and_host():

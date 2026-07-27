@@ -15,17 +15,23 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   Datenverzeichnis; schlägt es fehl, wird kein Redeploy ausgelöst.
 - Updatehistorie inkl. ausführendem Admin, Quell-/Zielversion, Backup-Verweis
   und Ergebnis nach dem Neustart.
+- Automatische Erkennung der laufenden Version: Das Backend-Image liest den
+  Commit beim Build aus dem Git-Checkout (Build-Kontext ist jetzt das Repo-Root,
+  `dockerfile: backend/Dockerfile`) und legt ihn als `build_info.json` ins Image.
+  Damit stimmt die Versionsanzeige nach jedem Portainer-Redeploy ohne manuell
+  gepflegte Stack-Variable. `.git` landet nicht im Laufzeit-Image.
 - Neue Umgebungsvariablen: `SYSTEM_UPDATE_ENABLED` (Default **aus**),
   `PORTAINER_STACK_WEBHOOK_URL`, `GITHUB_REPOSITORY`, `GITHUB_BRANCH`,
-  `GITHUB_API_TOKEN`, `APP_GIT_COMMIT`, `APP_GIT_BRANCH`, `APP_BUILD_TIME`,
-  `SYSTEM_UPDATE_TIMEOUT_SECONDS`.
+  `GITHUB_API_TOKEN`, `SYSTEM_UPDATE_TIMEOUT_SECONDS`. `APP_GIT_COMMIT`,
+  `APP_GIT_BRANCH` und `APP_BUILD_TIME` sind nur noch eine Überschreibung für
+  Builds ohne Git-Kontext.
 
 ### Hinweise
 - Das WWS greift weiterhin **nicht** auf den Docker-Socket zu und führt keine
   Shell-Befehle aus; es löst ausschließlich den fest konfigurierten
   Portainer-Webhook aus. Portainer bleibt der Verwalter des Stacks.
-- Ohne gesetzte Build-Metadaten (`APP_GIT_COMMIT`) wird ein Update nach dem
-  Neustart bewusst nicht als erfolgreich gemeldet.
+- Lässt sich die Build-Version weder automatisch noch per ENV feststellen, wird
+  ein Update nach dem Neustart bewusst nicht als erfolgreich gemeldet.
 
 ## [v1.0.0] - 2026-05-03
 

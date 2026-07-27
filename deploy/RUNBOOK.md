@@ -45,10 +45,12 @@ Ablauf:
 - Portainer zieht den Git-Stand und baut den Stack neu
 - nach dem Neustart bewertet das WWS den Vorgang anhand von `APP_GIT_COMMIT`
 
-Voraussetzungen in der serverlokalen `.env`:
+Voraussetzungen in der serverlokalen `.env` bzw. den Portainer-Stack-Variablen:
 - `SYSTEM_UPDATE_ENABLED=true`
 - `PORTAINER_STACK_WEBHOOK_URL=<Webhook-URL des Stacks>` (Geheimnis)
-- `APP_GIT_COMMIT` als Build-Arg gesetzt (sonst „Version unbekannt")
+- `APP_GIT_COMMIT` nur noetig, wenn ohne Git-Kontext gebaut wird (z. B.
+  `deploy.sh` via `git archive`); beim Portainer-Git-Stack ermittelt das Image
+  den Commit selbst
 
 Stoerungsfaelle:
 - Backup fehlgeschlagen -> kein Redeploy, Vorgang als fehlgeschlagen protokolliert
