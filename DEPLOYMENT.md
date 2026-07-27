@@ -22,6 +22,110 @@ FRONTEND_PORT=8080
 BACKEND_PORT=8001
 ```
 
+## A2) Systemupdate aus dem WWS (Portainer-Webhook)
+
+Ein Admin kann den Redeploy direkt im WWS starten
+(`Administration → Systemupdate`). Das WWS verwaltet dabei **kein Docker**: Es
+ruft ausschliesslich einen fest konfigurierten Portainer-Stack-Webhook auf.
+Portainer zieht daraufhin selbst den aktuellen Git-Stand und baut den Stack neu.
+
+### 1. Webhook in Portainer aktivieren
+
+1. Portainer → Stacks → WWS-Stack → **Webhooks**.
+2. `Enable webhook` einschalten (bzw. bereits vorhandene URL kopieren).
+3. Die URL hat die Form
+   `https://<portainer-host>/api/stacks/webhooks/<uuid>` und ist ein Geheimnis:
+   Wer sie kennt, kann den Stack neu ausrollen.
+
+### 2. Webhook in der Server-`.env` eintragen
+
+Nur serverlokal (z. B. `/opt/web/cloud_web_runtime/.env`) — **niemals im
+Repository**:
+
+```dotenv
+SYSTEM_UPDATE_ENABLED=true
+PORTAINER_STACK_WEBHOOK_URL=https://portainer.example.com/api/stacks/webhooks/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+GITHUB_REPOSITORY=nils5002/warenwirtschaftssystem-server
+GITHUB_BRANCH=main
+SYSTEM_UPDATE_TIMEOUT_SECONDS=600
+# optional (privates Repo / hoeheres API-Rate-Limit):
+GITHUB_API_TOKEN=
+```
+
+Fehlt `PORTAINER_STACK_WEBHOOK_URL` oder ist `SYSTEM_UPDATE_ENABLED=false`,
+bleibt die Seite sichtbar, meldet aber lediglich „Systemupdates sind auf diesem
+Server nicht aktiviert." Die uebrige Anwendung ist davon nicht betroffen.
+
+### 3. Build-Metadaten uebergeben (wichtig fuer die Erfolgskontrolle)
+
+Das Backend erkennt seine eigene Version ueber `APP_GIT_COMMIT`. Der Wert wird
+als **Build-Arg** an das Backend-Image gereicht (siehe `docker-compose.yml`):
+
+```dotenv
+APP_GIT_COMMIT=<voller 40-stelliger Commit-SHA>
+APP_GIT_BRANCH=main
+APP_BUILD_TIME=2026-07-27T09:00:00Z
+```
+
+In Portainer werden diese Werte als Stack-Environment-Variablen gesetzt und
+beim Build substituiert. Lokal/CI:
+
+```sh
+docker compose build --build-arg APP_GIT_COMMIT=$(git rev-parse HEAD) backend
+```
+
+Ist `APP_GIT_COMMIT` **nicht** gesetzt, funktioniert das Update weiterhin —
+das WWS meldet den Vorgang danach aber bewusst **nicht** als erfolgreich,
+sondern als „Version nach Neustart nicht ueberpruefbar". Es wird nie
+faelschlich Erfolg gemeldet.
+
+### 4. Ablauf und Backupverhalten
+
+```text
+Admin oeffnet Systemupdate
+  -> WWS prueft den neuesten Commit auf GitHub
+  -> WWS vergleicht installierte und verfuegbare Version
+  -> Admin bestaetigt "Backup erstellen und Update installieren"
+  -> WWS erstellt ein vollstaendiges Backup und validiert es
+  -> WWS ruft den Portainer-Webhook GENAU EINMAL auf
+  -> Portainer zieht den Git-Stand, baut und startet den Stack neu
+  -> WWS erkennt nach dem Neustart die laufende Version
+```
+
+Das Backup entsteht **vor** dem Webhook-Aufruf und liegt als ZIP unter
+`BACKUP_PATH` (Default `/app/data/backups`, also im persistenten Volume). Es
+enthaelt `backup.json` mit dem kompletten Datenbestand (Assets, Kategorien,
+Benutzer, Planungen, Wartungen, Systemeinstellungen, ...) sowie unter `files/`
+die hochgeladenen Login-Hintergruende und den Produktbild-Cache. Standardmaessig
+werden die letzten 10 Pre-Update-Backups aufbewahrt
+(`SYSTEM_UPDATE_BACKUP_RETENTION`).
+
+**Schlaegt das Backup fehl, wird kein Webhook ausgeloest und das Update
+abgebrochen.**
+
+### 5. Verhalten bei Fehlern
+
+| Fall | Verhalten |
+| --- | --- |
+| GitHub nicht erreichbar | Versionspruefung meldet den Fehler; die App bleibt normal nutzbar |
+| Backup fehlgeschlagen | Update wird abgebrochen, **kein** Redeploy, Vorgang als „Fehlgeschlagen" protokolliert |
+| Portainer nicht erreichbar / lehnt ab | Kein Redeploy, Update-Lock wird sofort freigegeben |
+| Backend kommt nicht zurueck | Nach `SYSTEM_UPDATE_TIMEOUT_SECONDS` gilt der Vorgang als „Zeitueberschreitung" |
+| Nach Neustart laeuft ein anderer Commit | Vorgang wird als „Fehlgeschlagen" protokolliert — Stack in Portainer pruefen |
+
+Wiederherstellung im Ernstfall: Das Pre-Update-Backup aus `BACKUP_PATH`
+entpacken und `backup.json` ueber `Administration → Backup → Wiederherstellen`
+einspielen.
+
+### 6. Vorher in einer Staging-Umgebung testen
+
+Vor der ersten Nutzung produktiv einmal gegen einen Test-Stack pruefen:
+
+1. Zweiten Portainer-Stack (Staging) aus demselben Repository anlegen.
+2. Dessen Webhook-URL in der Staging-`.env` eintragen, `SYSTEM_UPDATE_ENABLED=true`.
+3. Update im Staging-WWS ausloesen und pruefen: Backup vorhanden, genau ein
+   Redeploy, Version nach dem Neustart korrekt erkannt, Historie plausibel.
+
 ## B) Domain wechseln
 
 Fuer eine neue Domain nur diese ENV-Werte anpassen:

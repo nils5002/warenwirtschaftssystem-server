@@ -262,6 +262,17 @@ def create_app() -> FastAPI:
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("Security-Event-Cleanup fehlgeschlagen — App startet trotzdem")
+        # Systemupdate: offene Updatevorgaenge bewerten. Genau hier — nach einem
+        # Portainer-Redeploy — laeuft der neue Container zum ersten Mal, und nur
+        # hier laesst sich pruefen, ob wirklich der Ziel-Commit aktiv ist. Ein
+        # Fehler darf den Start niemals verhindern.
+        with SessionLocal() as db:
+            try:
+                from .services import system_update_service
+
+                system_update_service.reconcile_pending_runs(db, settings)
+            except Exception:  # noqa: BLE001
+                logger.exception("Auswertung offener Systemupdates fehlgeschlagen — App startet trotzdem")
 
     def _recache_product_images_once() -> None:
         # Lazy-Import vermeidet Import-Zyklen beim Modul-Load.

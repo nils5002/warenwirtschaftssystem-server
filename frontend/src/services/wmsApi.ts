@@ -1773,3 +1773,123 @@ export async function updateRolePermissions(
   );
   return parseResponse<RolePermissions>(response);
 }
+
+// --- Systemupdate (Redeploy über den Portainer-Stack-Webhook, nur Admin) ---
+// Die Webhook-URL ist AUSSCHLIESSLICH serverseitig bekannt; das Frontend
+// erfährt nur, ob überhaupt eine hinterlegt ist (webhookConfigured).
+export type UpdateCheckState =
+  | 'up_to_date'
+  | 'update_available'
+  | 'check_failed'
+  | 'installed_version_unknown'
+  | 'disabled';
+
+export type UpdateRunStatus =
+  | 'idle'
+  | 'checking'
+  | 'backing_up'
+  | 'redeploy_requested'
+  | 'restarting'
+  | 'success'
+  | 'failed'
+  | 'timeout';
+
+export type SystemCommitInfo = {
+  sha: string;
+  shortSha: string;
+  message: string;
+  author?: string | null;
+  date?: string | null;
+  url?: string | null;
+};
+
+export type SystemVersion = {
+  appVersion: string;
+  installedCommit?: string | null;
+  installedShortCommit?: string | null;
+  installedBranch?: string | null;
+  buildTime?: string | null;
+  repository: string;
+  branch: string;
+  repositoryUrl: string;
+  updateEnabled: boolean;
+  webhookConfigured: boolean;
+};
+
+export type SystemUpdateCheck = {
+  state: UpdateCheckState;
+  updateAvailable: boolean;
+  installedCommit?: string | null;
+  installedShortCommit?: string | null;
+  latest?: SystemCommitInfo | null;
+  compareUrl?: string | null;
+  checkedAt?: string | null;
+  message: string;
+  updateEnabled: boolean;
+  webhookConfigured: boolean;
+};
+
+export type SystemUpdateRun = {
+  id: string;
+  status: UpdateRunStatus;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  startedByUserId?: string | null;
+  startedByName?: string | null;
+  sourceCommit?: string | null;
+  sourceShortCommit?: string | null;
+  targetCommit?: string | null;
+  targetShortCommit?: string | null;
+  detectedCommitAfterRestart?: string | null;
+  backupReference?: string | null;
+  message?: string | null;
+  errorDetails?: string | null;
+};
+
+export type SystemUpdateStatus = {
+  status: UpdateRunStatus;
+  inProgress: boolean;
+  run?: SystemUpdateRun | null;
+  installedCommit?: string | null;
+  installedShortCommit?: string | null;
+  updateEnabled: boolean;
+  webhookConfigured: boolean;
+  timeoutSeconds: number;
+};
+
+export type SystemUpdateStartResult = {
+  accepted: boolean;
+  status: UpdateRunStatus;
+  targetCommit?: string | null;
+  message: string;
+  run?: SystemUpdateRun | null;
+};
+
+export async function fetchSystemVersion(): Promise<SystemVersion> {
+  const response = await apiFetch('/api/admin/system/version');
+  return parseResponse<SystemVersion>(response);
+}
+
+export async function checkSystemUpdate(): Promise<SystemUpdateCheck> {
+  const response = await apiFetch('/api/admin/system/update/check');
+  return parseResponse<SystemUpdateCheck>(response);
+}
+
+export async function startSystemUpdate(): Promise<SystemUpdateStartResult> {
+  // Bewusst OHNE Body: Branch/Commit/URL kommen ausschließlich aus der
+  // Serverkonfiguration.
+  const response = await apiFetch('/api/admin/system/update', { method: 'POST' });
+  return parseResponse<SystemUpdateStartResult>(response);
+}
+
+export async function fetchSystemUpdateStatus(): Promise<SystemUpdateStatus> {
+  const response = await apiFetch('/api/admin/system/update/status');
+  return parseResponse<SystemUpdateStatus>(response);
+}
+
+export async function fetchSystemUpdateHistory(
+  limit = 20,
+): Promise<{ items: SystemUpdateRun[]; total: number }> {
+  const response = await apiFetch(`/api/admin/system/update/history?limit=${limit}`);
+  return parseResponse<{ items: SystemUpdateRun[]; total: number }>(response);
+}

@@ -36,7 +36,8 @@ export type AppPage =
   | 'loginBackground'
   | 'rolesPermissions'
   | 'telecomPass'
-  | 'securityLogs';
+  | 'securityLogs'
+  | 'systemUpdate';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 

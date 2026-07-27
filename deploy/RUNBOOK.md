@@ -32,6 +32,34 @@ Verhalten:
 - externer Health-Check optional ueber `EXTERNAL_HEALTH_URL`
 - Auto-Rollback bei Fehler
 
+## 3b) Update aus dem WWS (Portainer-Webhook)
+
+Alternative zum Skript-Deploy, ausschliesslich fuer Admins im WWS unter
+`Administration → Systemupdate`.
+
+Ablauf:
+- Versionspruefung gegen `GITHUB_REPOSITORY` / `GITHUB_BRANCH`
+- vollstaendiges, validiertes Backup unter `BACKUP_PATH` (ZIP mit `backup.json`
+  plus Login-Hintergruende und Produktbild-Cache)
+- genau EIN Aufruf des Portainer-Stack-Webhooks (kein Retry)
+- Portainer zieht den Git-Stand und baut den Stack neu
+- nach dem Neustart bewertet das WWS den Vorgang anhand von `APP_GIT_COMMIT`
+
+Voraussetzungen in der serverlokalen `.env`:
+- `SYSTEM_UPDATE_ENABLED=true`
+- `PORTAINER_STACK_WEBHOOK_URL=<Webhook-URL des Stacks>` (Geheimnis)
+- `APP_GIT_COMMIT` als Build-Arg gesetzt (sonst „Version unbekannt")
+
+Stoerungsfaelle:
+- Backup fehlgeschlagen -> kein Redeploy, Vorgang als fehlgeschlagen protokolliert
+- Portainer nicht erreichbar -> kein Redeploy, Lock sofort frei
+- Backend kommt nicht zurueck -> nach `SYSTEM_UPDATE_TIMEOUT_SECONDS` „Zeitueberschreitung";
+  Stack in Portainer pruefen, im Ernstfall Pre-Update-Backup aus `BACKUP_PATH`
+  ueber `Administration → Backup` wiederherstellen
+- Es laeuft immer nur EIN Update gleichzeitig (persistenter Lock in der Datenbank)
+
+Vor der ersten produktiven Nutzung einmal gegen einen Staging-Stack testen.
+
 ## 4) Domainwechsel
 
 Nur ENV anpassen:

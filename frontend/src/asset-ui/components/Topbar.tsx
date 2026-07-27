@@ -47,6 +47,7 @@ const PAGE_GROUP_MAP: Record<AppPage, string> = {
   rolesPermissions: 'Verwaltung',
   telecomPass: 'Verwaltung',
   securityLogs: 'Verwaltung',
+  systemUpdate: 'System',
 };
 
 const ICON_BUTTON =

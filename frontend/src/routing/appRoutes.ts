@@ -19,6 +19,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   rolesPermissions: '/rollen-rechte',
   telecomPass: '/telekompass',
   securityLogs: '/sicherheit-protokolle',
+  systemUpdate: '/systemupdate',
   assetDetail: '/inventar',
 };
 
@@ -81,6 +82,9 @@ const PATH_ALIASES: Record<string, AppPage> = {
   '/sicherheit-protokolle': 'securityLogs',
   '/sicherheit': 'securityLogs',
   '/security-logs': 'securityLogs',
+
+  '/systemupdate': 'systemUpdate',
+  '/system-update': 'systemUpdate',
 };
 
 function safeDecode(value: string): string {

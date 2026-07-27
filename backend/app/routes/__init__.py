@@ -16,6 +16,7 @@ from . import (
     qr_groups,
     roles,
     security,
+    system_update,
     telecom_pass,
     update_notes,
     wms,
@@ -46,5 +47,6 @@ api_router.include_router(label_audit.router)
 api_router.include_router(qr_groups.router)
 api_router.include_router(roles.router)
 api_router.include_router(security.router)
+api_router.include_router(system_update.router)
 api_router.include_router(telecom_pass.router)
 api_router.include_router(mobile.router)

@@ -156,6 +156,21 @@ refresh_rate_limiter = RateLimiter(
     window_seconds=10 * 60,
     block_seconds=10 * 60,
 )
+# Systemupdate ausloesen: harte Bremse gegen wiederholte Redeploy-Anforderungen
+# (jeder Aufruf erzeugt Backup + Stack-Neustart). Gilt zusaetzlich zum
+# DB-Update-Lock, der parallele Laeufe ohnehin verhindert.
+system_update_rate_limiter = RateLimiter(
+    max_attempts=5,
+    window_seconds=60 * 60,
+    block_seconds=15 * 60,
+)
+# Versionspruefung: schuetzt das GitHub-API-Rate-Limit vor einem zu eifrig
+# pollenden Client, bleibt fuer normales Nachschauen aber grosszuegig.
+system_update_check_rate_limiter = RateLimiter(
+    max_attempts=60,
+    window_seconds=10 * 60,
+    block_seconds=5 * 60,
+)
 
 
 def client_ip(request: Request) -> str:

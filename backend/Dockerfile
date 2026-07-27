@@ -10,6 +10,17 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
+# Build-Metadaten (Systemupdate). Werden beim Build durchgereicht — z. B.
+# docker build --build-arg APP_GIT_COMMIT=$(git rev-parse HEAD) ... — oder
+# ueber die Stack-Variablen in Portainer. Bleiben sie leer, gilt die
+# installierte Version als unbekannt; die App startet und laeuft normal.
+ARG APP_GIT_COMMIT=""
+ARG APP_GIT_BRANCH=""
+ARG APP_BUILD_TIME=""
+ENV APP_GIT_COMMIT=$APP_GIT_COMMIT
+ENV APP_GIT_BRANCH=$APP_GIT_BRANCH
+ENV APP_BUILD_TIME=$APP_BUILD_TIME
+
 EXPOSE 8000
 
 # Uvicorn-Flags bewusst minimal:

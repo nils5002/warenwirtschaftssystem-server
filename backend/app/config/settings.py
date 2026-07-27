@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     hardware_import_path: str = "/app/data/hardware_imports"
     product_image_cache_path: str = "app/data/product_images/assets"
     login_background_path: str = "app/data/login_backgrounds"
+    # Zielverzeichnis fuer serverseitig erzeugte Backup-Archive (Systemupdate).
+    # Muss wie die uebrigen Datenpfade im persistenten Volume liegen, sonst ist
+    # das Pre-Update-Backup nach genau dem Redeploy weg, den es absichern soll.
+    backup_path: str = "app/data/backups"
     # Einmalige Selbstheilung nach dem Start: fehlt zu einem Datensatz mit
     # Bild-Status "ready" die Cache-Datei (z. B. nach Redeploy/Restore), wird
     # sie aus der gespeicherten Quell-URL neu geladen. In Tests abschaltbar.
@@ -51,6 +55,35 @@ class Settings(BaseSettings):
     # (HANDOVER_AUTORUN_ENABLED=0), damit kein Background-Task die DB mutiert.
     handover_autorun_enabled: bool = True
     handover_autorun_interval_seconds: int = 3600
+
+    # --- Systemupdate ueber den Portainer-Stack-Webhook -----------------------
+    # Default AUS: ohne bewusste Freischaltung darf aus dem WWS heraus kein
+    # Redeploy ausgeloest werden. Fehlt die gesamte Konfiguration, verhaelt sich
+    # die App exakt wie bisher — die Update-Seite meldet lediglich "nicht
+    # aktiviert".
+    system_update_enabled: bool = False
+    # Vollstaendige Portainer-Webhook-URL des WWS-Stacks. NUR serverseitig
+    # verwendet, wird nie an das Frontend ausgeliefert und nie vollstaendig
+    # geloggt (siehe system_update_service.mask_webhook_url).
+    portainer_stack_webhook_url: str | None = None
+    # Fest konfiguriertes Repository/Branch — bewusst KEINE freie Eingabe aus
+    # dem Request (weder Branch noch Commit noch URL).
+    github_repository: str = "nils5002/warenwirtschaftssystem-server"
+    github_branch: str = "main"
+    # Optionales Token fuer die GitHub-API (privates Repo / hoeheres Rate-Limit).
+    github_api_token: str | None = None
+    # Build-Metadaten des laufenden Containers. Werden beim Image-Build bzw.
+    # per Stack-ENV gesetzt; fehlen sie, gilt die installierte Version als
+    # "unbekannt" (es wird dann NIE faelschlich Erfolg gemeldet).
+    app_git_commit: str | None = None
+    app_git_branch: str | None = None
+    app_build_time: str | None = None
+    # Nach dieser Zeit gilt ein angestossenes Update als abgelaufen; der
+    # Update-Lock wird dann automatisch als veraltet erkannt und freigegeben.
+    system_update_timeout_seconds: int = 600
+    # Wie viele automatisch erzeugte Pre-Update-Backups im Datenverzeichnis
+    # aufbewahrt werden. 0 oder negativ = keine Bereinigung.
+    system_update_backup_retention: int = 10
 
     model_config = SettingsConfigDict(
         env_file=(".env", "../.env"),
@@ -84,6 +117,12 @@ class Settings(BaseSettings):
 
     def resolve_login_background_path(self, base_dir: Path) -> Path:
         path = Path(self.login_background_path)
+        if path.is_absolute():
+            return path
+        return (base_dir / path).resolve()
+
+    def resolve_backup_path(self, base_dir: Path) -> Path:
+        path = Path(self.backup_path)
         if path.is_absolute():
             return path
         return (base_dir / path).resolve()

@@ -3,6 +3,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # Build-Metadaten des laufenden Stands. Bewusst BUILD-ARGS (nicht
+        # environment): Sie beschreiben das Image, nicht die Laufzeit. Ohne
+        # Werte bleibt die installierte Version "unbekannt" — die App laeuft
+        # normal, meldet nach einem Update aber niemals faelschlich Erfolg.
+        APP_GIT_COMMIT: ${APP_GIT_COMMIT:-}
+        APP_GIT_BRANCH: ${APP_GIT_BRANCH:-}
+        APP_BUILD_TIME: ${APP_BUILD_TIME:-}
     restart: unless-stopped
     environment:
       APP_NAME: ${APP_NAME:-Warehouse-System}
@@ -35,6 +43,17 @@ services:
       # Container-Filesystem (/app/app/data/...) und waren nach jedem Redeploy
       # weg (Symptom: Galerie-Metadaten vorhanden, Bilddatei 404).
       LOGIN_BACKGROUND_PATH: ${LOGIN_BACKGROUND_PATH:-/app/data/login_backgrounds}
+
+      # Systemupdate ueber den Portainer-Stack-Webhook. Default AUS — ohne
+      # bewusste Freischaltung kann aus dem WWS kein Redeploy ausgeloest
+      # werden. Die Webhook-URL enthaelt ein Token und gehoert ausschliesslich
+      # in die serverlokale .env, niemals ins Repository.
+      SYSTEM_UPDATE_ENABLED: ${SYSTEM_UPDATE_ENABLED:-false}
+      PORTAINER_STACK_WEBHOOK_URL: ${PORTAINER_STACK_WEBHOOK_URL:-}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-nils5002/warenwirtschaftssystem-server}
+      GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
+      GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
+      SYSTEM_UPDATE_TIMEOUT_SECONDS: ${SYSTEM_UPDATE_TIMEOUT_SECONDS:-600}
 
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}

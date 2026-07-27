@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
+import zipfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from ..config.settings import get_settings
 from ..database.models import (
     ActivityRecord,
     AssetRecord,
@@ -39,6 +45,180 @@ from ..repositories.wms_repository import (
 from ..repositories.planning_repository import _normalize_status as _normalize_planning_status
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
 from .auth_service import ROLE_ADMIN, hash_password, normalize_role_for_db
+
+logger = logging.getLogger("cloud_web.backup")
+
+# Grenzen fuer die im Archiv mitgesicherten Dateien (Login-Hintergruende,
+# Produktbild-Cache). Sie verhindern, dass ein versehentlich falsch
+# konfiguriertes Bildverzeichnis das Archiv unbegrenzt aufblaeht.
+_MAX_ARCHIVE_FILE_BYTES = 25 * 1024 * 1024
+_MAX_ARCHIVE_EXTRA_BYTES = 250 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class BackupArtifact:
+    """Ergebnis eines serverseitig geschriebenen Backup-Archivs."""
+
+    file_name: str
+    path: Path
+    size_bytes: int
+    counts: dict[str, int]
+
+
+def _backup_dir() -> Path:
+    # parents[2] = backend-Wurzel (Datei liegt unter app/services/). Ein
+    # relativer Settings-Pfad muss dort landen und nicht unter app/app/... —
+    # sonst liegt das Backup im Container ausserhalb des persistenten Volumes
+    # und ist nach genau dem Redeploy weg, den es absichern soll.
+    base_dir = Path(__file__).resolve().parents[2]
+    target = get_settings().resolve_backup_path(base_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _upload_source_dirs() -> list[tuple[str, Path]]:
+    """Verzeichnisse mit hochgeladenen/gecachten Dateien fuer das Archiv."""
+    settings = get_settings()
+    base_dir = Path(__file__).resolve().parents[2]
+    sources: list[tuple[str, Path]] = []
+
+    login_dir = settings.resolve_login_background_path(base_dir)
+    if login_dir.is_dir():
+        sources.append(("login_backgrounds", login_dir))
+
+    # Der konfigurierte Pfad zeigt auf das Asset-Unterverzeichnis; das
+    # Eltern-Verzeichnis enthaelt zusaetzlich die Kategoriebilder.
+    image_dir = settings.resolve_product_image_cache_path(base_dir).parent
+    if image_dir.is_dir():
+        sources.append(("product_images", image_dir))
+
+    return sources
+
+
+def _add_directory_to_archive(
+    archive: zipfile.ZipFile, arc_prefix: str, source: Path, *, skip_dir: Path
+) -> int:
+    """Legt ein Verzeichnis rekursiv ins Archiv. Liefert die Nettogroesse."""
+    written = 0
+    for entry in sorted(source.rglob("*")):
+        if not entry.is_file():
+            continue
+        resolved = entry.resolve()
+        # Niemals das Backup-Verzeichnis selbst mitsichern — sonst wuerde eine
+        # ungluecklich konfigurierte Verzeichnisstruktur alte Archive (und im
+        # Extremfall das gerade entstehende) rekursiv einpacken.
+        if skip_dir == resolved or skip_dir in resolved.parents:
+            continue
+        try:
+            size = entry.stat().st_size
+        except OSError:
+            continue
+        if size > _MAX_ARCHIVE_FILE_BYTES:
+            logger.warning("Backup: Datei uebersprungen (zu gross): %s", entry.name)
+            continue
+        if written + size > _MAX_ARCHIVE_EXTRA_BYTES:
+            logger.warning(
+                "Backup: Groessenlimit fuer Dateien erreicht — weitere Dateien aus %s "
+                "wurden NICHT mitgesichert.",
+                arc_prefix,
+            )
+            break
+        archive.write(entry, f"files/{arc_prefix}/{entry.relative_to(source).as_posix()}")
+        written += size
+    return written
+
+
+def _cleanup_old_archives(directory: Path, prefix: str, keep: int) -> None:
+    if keep <= 0:
+        return
+    archives = sorted(
+        (path for path in directory.glob(f"{prefix}-*.zip") if path.is_file()),
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    for stale in archives[keep:]:
+        try:
+            stale.unlink()
+            logger.info("Backup-Retention: altes Archiv geloescht (%s)", stale.name)
+        except OSError:
+            logger.warning("Backup-Retention: %s konnte nicht geloescht werden", stale.name)
+
+
+def create_backup_archive(
+    db: Session, *, prefix: str = "wms-update-backup", retention: int | None = None
+) -> BackupArtifact:
+    """Schreibt ein vollstaendiges, validiertes Backup ins Datenverzeichnis.
+
+    Enthaelt ``backup.json`` (identischer Inhalt wie der Backup-Export der
+    Adminoberflaeche: Datenbank inkl. Assets, Kategorien, Benutzer, Planungen,
+    Wartungen, Systemeinstellungen ...) sowie unter ``files/`` die im Volume
+    liegenden Uploads (Login-Hintergruende, Produktbild-Cache).
+
+    Das geschriebene Archiv wird anschliessend erneut geoeffnet, geparst und
+    gegen das Backup-Schema validiert. Schlaegt irgendetwas davon fehl, wird die
+    unvollstaendige Datei entfernt und eine ``HTTPException`` geworfen — der
+    Aufrufer darf dann kein Update ausloesen.
+    """
+    payload = export_backup(db)
+    content = payload.model_dump(mode="json")
+    body = json.dumps(content, ensure_ascii=False, indent=2)
+
+    directory = _backup_dir()
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+    file_name = f"{prefix}-{timestamp}.zip"
+    target = directory / file_name
+
+    try:
+        with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("backup.json", body)
+            for arc_prefix, source in _upload_source_dirs():
+                _add_directory_to_archive(
+                    archive, arc_prefix, source, skip_dir=directory.resolve()
+                )
+    except OSError as exc:
+        target.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Backup konnte nicht geschrieben werden. Das Update wurde abgebrochen.",
+        ) from exc
+
+    # --- Validierung des geschriebenen Archivs --------------------------------
+    try:
+        with zipfile.ZipFile(target, "r") as archive:
+            broken = archive.testzip()
+            if broken is not None:
+                raise ValueError(f"defekter Archiveintrag: {broken}")
+            restored = json.loads(archive.read("backup.json").decode("utf-8"))
+        validated = WarehouseBackupPayload.model_validate(restored)
+        if (
+            len(validated.assets) != len(payload.assets)
+            or len(validated.users) != len(payload.users)
+            or len(validated.plannings) != len(payload.plannings)
+        ):
+            raise ValueError("Datensatzanzahl im Archiv weicht vom Export ab")
+    except Exception as exc:  # noqa: BLE001
+        target.unlink(missing_ok=True)
+        logger.exception("Backup-Validierung fehlgeschlagen (%s)", file_name)
+        raise HTTPException(
+            status_code=500,
+            detail="Das erstellte Backup ist ungültig. Das Update wurde abgebrochen.",
+        ) from exc
+
+    size_bytes = target.stat().st_size
+    counts = {
+        "assets": len(payload.assets),
+        "users": len(payload.users),
+        "categories": len(payload.categories),
+        "plannings": len(payload.plannings),
+        "maintenanceItems": len(payload.maintenanceItems),
+        "systemSettings": len(payload.systemSettings),
+    }
+    logger.info("Backup-Archiv erstellt: %s (%s Bytes)", file_name, size_bytes)
+
+    keep = get_settings().system_update_backup_retention if retention is None else retention
+    _cleanup_old_archives(directory, prefix, keep)
+
+    return BackupArtifact(file_name=file_name, path=target, size_bytes=size_bytes, counts=counts)
 
 
 def export_backup(db: Session) -> WarehouseBackupPayload:

@@ -17,6 +17,7 @@ import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
 import { SecurityLogsPage } from '../asset-ui/pages/SecurityLogsPage';
+import { SystemUpdatePage } from '../asset-ui/pages/SystemUpdatePage';
 import { TelecomPassSettingsPage } from '../asset-ui/pages/TelecomPassSettingsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
 import type {
@@ -574,6 +575,13 @@ export function WmsPageView({
         return renderAccessDenied('Sicherheit & Protokolle nur für Admin / Techniker.');
       }
       return <SecurityLogsPage />;
+    case 'systemUpdate':
+      // Backstop für direkte URL-Aufrufe: Das Backend prüft zusätzlich Rolle
+      // UND Recht system.update — dieser Guard ist nur die UI-Bequemlichkeit.
+      if (!can('system.update', isAdmin)) {
+        return renderAccessDenied('Systemupdate nur für Admin / Techniker.');
+      }
+      return <SystemUpdatePage />;
     case 'telecomPass':
       if (!isAdmin) {
         return renderAccessDenied('Telekompass-Einstellungen nur für Admin / Techniker.');

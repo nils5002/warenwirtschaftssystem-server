@@ -669,6 +669,51 @@ class TelecomPassBookingRecord(Base):
     )
 
 
+class SystemUpdateRunRecord(Base):
+    """Protokollzeile eines Systemupdates (Portainer-Redeploy aus dem WWS).
+
+    Eine Zeile je Updatevorgang. Die Tabelle ist zugleich der **persistente
+    Update-Lock**: hoechstens ein Lauf darf einen aktiven Status tragen
+    (``checking``/``backing_up``/``redeploy_requested``/``restarting``). Weil
+    der Lock in der DB liegt, ueberlebt er den durch das Update ausgeloesten
+    Backend-Neustart; laeuft ein Vorgang laenger als das konfigurierte Timeout,
+    wird er als veraltet erkannt und auf ``timeout`` gesetzt.
+
+    Bewusst NIEMALS gespeichert: die Portainer-Webhook-URL (auch nicht gekuerzt
+    mit Token), das GitHub-Token oder sonstige Secrets. ``error_details``
+    enthaelt nur eine technische, secret-freie Kurzbeschreibung.
+
+    Neue Tabelle -> wird beim Startup per ``Base.metadata.create_all`` angelegt;
+    es ist kein Spalten-Patch in ``session.py`` noetig.
+    """
+
+    __tablename__ = "system_update_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # external_id + denormalisierter Name des ausloesenden Admins (der Name
+    # ueberlebt so auch das spaetere Loeschen des Benutzers).
+    started_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_by_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Commit, der zum Startzeitpunkt lief (None = Build-Version unbekannt).
+    source_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Commit, auf den aktualisiert werden soll (Branch-HEAD zum Startzeitpunkt).
+    target_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Nach dem Neustart tatsaechlich laufender Commit — Grundlage der
+    # Erfolgs-/Fehlerbewertung.
+    detected_commit_after_restart: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Dateiname des Pre-Update-Backups im persistenten Datenverzeichnis
+    # (kein absoluter Pfad — der ist umgebungsabhaengig).
+    backup_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="checking", index=True)
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error_details: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class LoginBackgroundRecord(TimestampMixin, Base):
     """Admin-verwaltete Hintergrundbilder der (öffentlichen) Login-Seite.
 

@@ -14,6 +14,7 @@ export const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
   users: 'users.manage',
   rolesPermissions: 'roles.manage',
   securityLogs: 'logs.read',
+  systemUpdate: 'system.update',
 };
 
 // Heutiges, hartkodiertes Rollen-Verhalten als sicherer Fallback — greift, wenn
@@ -21,10 +22,10 @@ export const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
 export function legacyVisible(key: AppPage, role: AppRole): boolean {
   if (role === 'Admin') return true;
   if (role === 'Projektmanager') {
-    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs'].includes(key);
+    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate'].includes(key);
   }
   // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
-  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs'].includes(key);
+  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate'].includes(key);
 }
 
 // Kanonische "darf diese Rolle/dieser Nutzer Seite X sehen?"-Prüfung — exakt

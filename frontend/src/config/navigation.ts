@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   PackagePlus,
   QrCode,
+  RefreshCw,
   ScanLine,
   Printer,
   Shapes,
@@ -147,5 +148,12 @@ export const navigation: NavItem[] = [
     icon: Signal,
     group: 'administration',
     hint: 'Preis pro Buchung',
+  },
+  {
+    key: 'systemUpdate',
+    label: 'Systemupdate',
+    icon: RefreshCw,
+    group: 'administration',
+    hint: 'Neue Version einspielen',
   },
 ];

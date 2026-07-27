@@ -67,6 +67,9 @@ SESSION_REVOKED = "session_revoked"
 SECURITY_EXPORT_CREATED = "security_export_created"
 BACKUP_EXPORTED = "backup_exported"
 BACKUP_IMPORTED = "backup_imported"
+# Systemupdate (Portainer-Redeploy aus dem Adminbereich).
+SYSTEM_UPDATE_REQUESTED = "system_update_requested"
+SYSTEM_UPDATE_FAILED = "system_update_failed"
 
 # Key im system_settings-Store: öffentliche Registrierung erlaubt?
 # Fehlender Key == AUS (sicherer Default nach dem Vorfall).

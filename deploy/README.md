@@ -30,6 +30,26 @@ Health-Checks:
 - lokal: `LOCAL_HEALTH_URL` (Default `http://127.0.0.1:8085/`)
 - extern: optional ueber `EXTERNAL_HEALTH_URL` in `.env`/Shell setzen
 
+## Systemupdate aus dem WWS (optional)
+
+Statt `deploy.sh` kann ein Admin den Redeploy auch direkt im WWS starten
+(`Administration → Systemupdate`). Das WWS ruft dafuer ausschliesslich einen
+fest konfigurierten Portainer-Stack-Webhook auf — kein Docker-Socket, keine
+Shell-Befehle, kein Portainer-Adminzugang im Backend.
+
+Serverlokale `.env` (Auszug, Webhook-URL ist ein Geheimnis):
+
+```dotenv
+SYSTEM_UPDATE_ENABLED=true
+PORTAINER_STACK_WEBHOOK_URL=https://portainer.example.com/api/stacks/webhooks/<uuid>
+GITHUB_REPOSITORY=nils5002/warenwirtschaftssystem-server
+GITHUB_BRANCH=main
+APP_GIT_COMMIT=<Commit-SHA des gebauten Stands>
+```
+
+Vor jedem so ausgeloesten Update erstellt das WWS automatisch ein validiertes
+Backup unter `BACKUP_PATH`. Details siehe `DEPLOYMENT.md`, Abschnitt A2.
+
 ## Domainwechsel
 
 Nur ENV-Werte aendern, z. B.:
