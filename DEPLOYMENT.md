@@ -156,6 +156,22 @@ Wiederherstellung im Ernstfall: Das Pre-Update-Backup aus `BACKUP_PATH`
 entpacken und `backup.json` ueber `Administration → Backup → Wiederherstellen`
 einspielen.
 
+### 5a. Am Live-Stack bestaetigtes Verhalten (Stand 2026-07-27)
+
+Gegen Portainer 2.39.1 (Stack `warenwirtschaftssystem`, ID 11) geprueft:
+
+| Beobachtung | Ergebnis |
+| --- | --- |
+| `.git` im Checkout `/data/compose/11` | **nicht vorhanden**, auch nach „Pull and redeploy" |
+| `build_info.json` im dortigen Image | `commit: null` — Ableitung greift nur mit Git-Kontext |
+| `APP_GIT_COMMIT` aus den Stack-Variablen | kommt als Build-Arg **und** zur Laufzeit im Container an |
+| Versionsanzeige mit gesetzter Variable | korrekt, inkl. Buildzeit aus `build_info.json` |
+
+Noch offen (erst mit dem ersten echten Update belegbar): ob Portainer die
+Query-Parameter des Webhooks als Stack-Variablen uebernimmt. Als Nachweis dient,
+dass `APP_GIT_COMMIT` in den Stack-Variablen nach dem Lauf auf dem Zielcommit
+steht und die Historie `success` zeigt.
+
 ### 6. Vorher in einer Staging-Umgebung testen
 
 Vor der ersten Nutzung produktiv einmal gegen einen Test-Stack pruefen:
