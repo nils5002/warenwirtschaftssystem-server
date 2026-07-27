@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     app_git_commit: str | None = None
     app_git_branch: str | None = None
     app_build_time: str | None = None
+    # Beim Redeploy die Zielversion als Query-Parameter an den Portainer-Webhook
+    # uebergeben (``?APP_GIT_COMMIT=…&APP_GIT_BRANCH=…``). Portainer uebernimmt
+    # solche Parameter als Stack-Umgebungsvariablen, die docker-compose als
+    # Build-Args weiterreicht — dadurch kennt das neu gebaute Image seine
+    # Version auch dann, wenn im Build-Kontext kein ``.git`` liegt (Portainer
+    # legt bei Git-Stacks keines ab, geprueft mit 2.39). Abschaltbar, falls eine
+    # Gegenstelle keine Query-Parameter akzeptiert.
+    system_update_pass_build_metadata: bool = True
     # Nach dieser Zeit gilt ein angestossenes Update als abgelaufen; der
     # Update-Lock wird dann automatisch als veraltet erkannt und freigegeben.
     system_update_timeout_seconds: int = 600

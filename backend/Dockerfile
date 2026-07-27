@@ -26,9 +26,11 @@ COPY backend/ /app/
 # Automatisch ermittelte Build-Version (Commit/Branch/Buildzeit).
 COPY --from=buildmeta /build_info.json /app/build_info.json
 
-# Optionale Ueberschreibung der Build-Metadaten, z. B. wenn ohne Git-Kontext
-# gebaut wird (Deploy via ``git archive``). Gesetzte ENV-Werte haben Vorrang
-# vor /app/build_info.json; leer = automatisch ermittelter Wert gilt.
+# Build-Metadaten aus der Umgebung. Haben Vorrang vor /app/build_info.json;
+# leer = automatisch ermittelter Wert gilt. Unter Portainer ist DAS der aktive
+# Weg (Checkout ohne .git): Das WWS uebergibt die Zielversion beim Redeploy als
+# Webhook-Parameter, Portainer macht daraus Stack-Variablen und compose reicht
+# sie hier als Build-Arg herein. Ebenso beim Deploy via ``git archive``.
 ARG APP_GIT_COMMIT=""
 ARG APP_GIT_BRANCH=""
 ARG APP_BUILD_TIME=""

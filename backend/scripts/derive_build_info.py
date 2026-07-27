@@ -1,11 +1,15 @@
 """Ermittelt beim Image-Build den Commit des ausgelieferten Git-Standes.
 
-Hintergrund: Portainer baut den Stack aus einem frischen Git-Clone, reicht den
-gezogenen Commit aber nirgends als Variable durch. Ohne diesen Wert koennte die
-Anwendung nach einem Redeploy nicht pruefen, ob wirklich die Zielversion laeuft
-(siehe ``services/system_update_service.py``). Dieses Skript liest den Commit
-deshalb direkt aus den Git-Metadaten des Build-Kontexts und legt ihn als kleine
+Hintergrund: Die Anwendung muss wissen, welchen Commit sie ausfuehrt — sonst
+laesst sich nach einem Redeploy nicht pruefen, ob die Zielversion laeuft (siehe
+``services/system_update_service.py``). Dieses Skript liest den Commit deshalb
+direkt aus den Git-Metadaten des Build-Kontexts und legt ihn als kleine
 JSON-Datei ins Image.
+
+Greift bei Builds MIT Git-Kontext (lokal, CI). **Nicht** unter Portainer:
+Dessen Git-Stacks werden ohne ``.git`` ausgecheckt (2.39 geprueft), dort bleibt
+die Datei leer und die Version kommt ueber ``APP_GIT_COMMIT``, das das WWS beim
+Redeploy als Webhook-Parameter setzt.
 
 Bewusste Eigenschaften:
 * **Nur Standardbibliothek** — im Build-Image ist kein ``git`` installiert.

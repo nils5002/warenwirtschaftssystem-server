@@ -18,13 +18,19 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 - Automatische Erkennung der laufenden Version: Das Backend-Image liest den
   Commit beim Build aus dem Git-Checkout (Build-Kontext ist jetzt das Repo-Root,
   `dockerfile: backend/Dockerfile`) und legt ihn als `build_info.json` ins Image.
-  Damit stimmt die Versionsanzeige nach jedem Portainer-Redeploy ohne manuell
-  gepflegte Stack-Variable. `.git` landet nicht im Laufzeit-Image.
+  `.git` landet nicht im Laufzeit-Image.
+- Zielversion beim Redeploy als Webhook-Parameter: Der Update-Aufruf hängt
+  `?APP_GIT_COMMIT=<sha>&APP_GIT_BRANCH=<branch>` an den Portainer-Stack-Webhook.
+  Portainer übernimmt beides als Stack-Variablen, `docker-compose.yml` reicht sie
+  als Build-Args ins Image. Nötig, weil Portainer Git-Stacks **ohne `.git`**
+  auscheckt (2.39 geprüft) und die Ableitung beim Build dort leer bleibt.
+  Abschaltbar über `SYSTEM_UPDATE_PASS_BUILD_METADATA=false`.
 - Neue Umgebungsvariablen: `SYSTEM_UPDATE_ENABLED` (Default **aus**),
   `PORTAINER_STACK_WEBHOOK_URL`, `GITHUB_REPOSITORY`, `GITHUB_BRANCH`,
-  `GITHUB_API_TOKEN`, `SYSTEM_UPDATE_TIMEOUT_SECONDS`. `APP_GIT_COMMIT`,
-  `APP_GIT_BRANCH` und `APP_BUILD_TIME` sind nur noch eine Überschreibung für
-  Builds ohne Git-Kontext.
+  `GITHUB_API_TOKEN`, `SYSTEM_UPDATE_TIMEOUT_SECONDS`,
+  `SYSTEM_UPDATE_PASS_BUILD_METADATA` (Default **an**). `APP_GIT_COMMIT` und
+  `APP_GIT_BRANCH` bleiben unter Portainer gesetzt und werden beim Update
+  automatisch aktualisiert; `APP_BUILD_TIME` ist eine reine Überschreibung.
 
 ### Hinweise
 - Das WWS greift weiterhin **nicht** auf den Docker-Socket zu und führt keine
@@ -32,6 +38,9 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   Portainer-Webhook aus. Portainer bleibt der Verwalter des Stacks.
 - Lässt sich die Build-Version weder automatisch noch per ENV feststellen, wird
   ein Update nach dem Neustart bewusst nicht als erfolgreich gemeldet.
+- Ein Redeploy **außerhalb** des WWS (z. B. „Pull and redeploy" in Portainer)
+  aktualisiert `APP_GIT_COMMIT` nicht: Die Versionsanzeige bleibt dann auf dem
+  vorherigen Commit stehen, bis wieder aus dem WWS heraus aktualisiert wird.
 
 ## [v1.0.0] - 2026-05-03
 

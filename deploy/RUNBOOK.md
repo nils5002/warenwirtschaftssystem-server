@@ -41,16 +41,20 @@ Ablauf:
 - Versionspruefung gegen `GITHUB_REPOSITORY` / `GITHUB_BRANCH`
 - vollstaendiges, validiertes Backup unter `BACKUP_PATH` (ZIP mit `backup.json`
   plus Login-Hintergruende und Produktbild-Cache)
-- genau EIN Aufruf des Portainer-Stack-Webhooks (kein Retry)
+- genau EIN Aufruf des Portainer-Stack-Webhooks (kein Retry), mit der
+  Zielversion als Query-Parameter `?APP_GIT_COMMIT=<sha>&APP_GIT_BRANCH=<branch>`
 - Portainer zieht den Git-Stand und baut den Stack neu
 - nach dem Neustart bewertet das WWS den Vorgang anhand von `APP_GIT_COMMIT`
 
 Voraussetzungen in der serverlokalen `.env` bzw. den Portainer-Stack-Variablen:
 - `SYSTEM_UPDATE_ENABLED=true`
 - `PORTAINER_STACK_WEBHOOK_URL=<Webhook-URL des Stacks>` (Geheimnis)
-- `APP_GIT_COMMIT` nur noetig, wenn ohne Git-Kontext gebaut wird (z. B.
-  `deploy.sh` via `git archive`); beim Portainer-Git-Stack ermittelt das Image
-  den Commit selbst
+- `APP_GIT_COMMIT`/`APP_GIT_BRANCH` als Stack-Variablen vorhanden lassen: das
+  WWS ueberschreibt sie beim Redeploy. Portainer checkt Git-Stacks ohne `.git`
+  aus, die Ableitung beim Image-Build greift dort nicht.
+- Achtung: Ein Redeploy **ausserhalb** des WWS laesst `APP_GIT_COMMIT` veralten
+  (Anzeige zeigt dann den alten Commit) — Variable mitziehen oder das naechste
+  Update aus dem WWS heraus starten.
 
 Stoerungsfaelle:
 - Backup fehlgeschlagen -> kein Redeploy, Vorgang als fehlgeschlagen protokolliert

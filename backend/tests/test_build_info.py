@@ -125,6 +125,25 @@ def test_env_variable_wins_over_file(monkeypatch, tmp_path):
     assert info.source == "env"
 
 
+def test_env_commit_still_takes_build_time_from_file(monkeypatch, tmp_path):
+    """Feldweiser Vorrang: Portainer liefert nur den Commit, nicht die Buildzeit.
+
+    Ohne diesen Rueckfall bliebe die Buildzeit im Adminbereich dauerhaft leer,
+    sobald APP_GIT_COMMIT gesetzt ist — und genau das ist unter Portainer der
+    Normalfall.
+    """
+    info = _build_info(
+        monkeypatch,
+        env_commit=SHA,
+        file_payload={"commit": None, "branch": "main", "buildTime": "2026-07-27T09:00:00Z"},
+        tmp_path=tmp_path,
+    )
+    assert info.commit == SHA
+    assert info.branch == "main"
+    assert info.build_time == "2026-07-27T09:00:00Z"
+    assert info.source == "env"
+
+
 def test_file_is_used_when_env_is_empty(monkeypatch, tmp_path):
     info = _build_info(
         monkeypatch,

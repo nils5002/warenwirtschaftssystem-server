@@ -17,6 +17,9 @@ Sicherheits-Leitplanken dieses Moduls:
 * Nach dem Neustart wird nur dann Erfolg gemeldet, wenn der tatsaechlich
   laufende Commit dem Zielcommit entspricht. Ist die Build-Version unbekannt,
   gilt der Lauf als fehlgeschlagen — niemals als Erfolg.
+* Damit der neue Container seinen Commit ueberhaupt kennt, wird die Zielversion
+  beim Redeploy als Query-Parameter an den Webhook uebergeben (``redeploy_url``)
+  — Portainer legt bei Git-Stacks kein ``.git`` im Build-Kontext ab.
 
 Erweiterbarkeit (bewusst vorbereitet, aber noch nicht freigegeben): Die
 Aufloesung "welcher Commit ist das Ziel" liegt gekapselt in
@@ -30,7 +33,7 @@ import logging
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import requests
 from fastapi import HTTPException
@@ -127,8 +130,12 @@ def installed_commit(settings: Settings | None = None) -> str | None:
     """Commit des laufenden Builds — ``None``, wenn er nicht feststellbar ist.
 
     Vorrang hat ein ausdruecklich gesetztes ``APP_GIT_COMMIT``; sonst greift die
-    beim Image-Build aus dem Git-Checkout ermittelte ``build_info.json``
-    (Portainer-Redeploy braucht dadurch keine manuell gepflegte Variable).
+    beim Image-Build aus dem Git-Checkout ermittelte ``build_info.json``.
+
+    Unter Portainer greift der erste Weg: Der Redeploy uebergibt die
+    Zielversion als Query-Parameter an den Stack-Webhook (siehe
+    ``redeploy_url``), weil Portainer im Checkout kein ``.git`` ablegt. Die
+    ``build_info.json`` bleibt der Weg fuer Builds mit Git-Kontext (lokal, CI).
     """
     settings = settings or get_settings()
     raw = (settings.app_git_commit or "").strip().lower()
@@ -463,6 +470,50 @@ def _fail_run(db: Session, record: SystemUpdateRunRecord, message: str, details:
     db.commit()
 
 
+def redeploy_url(webhook_url: str, target_sha: str, settings: Settings | None = None) -> str:
+    """Haengt die Zielversion als Query-Parameter an die Webhook-URL.
+
+    Hintergrund: Portainer legt im Checkout eines Git-Stacks **kein** ``.git``
+    ab (geprueft mit Portainer 2.39). Die beim Image-Build vorgesehene
+    Ableitung aus den Git-Metadaten laeuft dort deshalb leer, und der Container
+    wuesste nach dem Redeploy nicht, welchen Commit er ausfuehrt — die
+    Erfolgspruefung nach dem Neustart koennte nie greifen.
+
+    Portainer uebernimmt Query-Parameter eines Stack-Webhooks als
+    Umgebungsvariablen des Stacks. ``docker-compose.yml`` reicht
+    ``APP_GIT_COMMIT``/``APP_GIT_BRANCH`` als Build-Args weiter, sodass genau
+    die angeforderte Zielversion im neuen Image landet.
+
+    Bewusst eng gehalten: Es werden ausschliesslich der bereits validierte
+    Ziel-Commit und der serverseitig konfigurierte Branch angehaengt — keine
+    Werte aus dem Request. Vorhandene Parameter der konfigurierten URL bleiben
+    erhalten, gleichnamige werden ersetzt.
+    """
+    settings = settings or get_settings()
+    if not settings.system_update_pass_build_metadata:
+        return webhook_url
+
+    sha = (target_sha or "").strip().lower()
+    if not _SHA_PATTERN.match(sha):
+        # Ohne plausiblen Commit lieber nichts anhaengen als etwas Falsches in
+        # die Stack-Konfiguration schreiben.
+        return webhook_url
+
+    parts = urlsplit(webhook_url)
+    query = [
+        (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key not in {"APP_GIT_COMMIT", "APP_GIT_BRANCH"}
+    ]
+    query.append(("APP_GIT_COMMIT", sha))
+    branch = (settings.github_branch or "").strip()
+    if _BRANCH_PATTERN.match(branch):
+        query.append(("APP_GIT_BRANCH", branch))
+    return urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
+    )
+
+
 def _trigger_webhook(url: str) -> None:
     """Ruft den Portainer-Webhook GENAU EINMAL auf (kein Retry).
 
@@ -598,7 +649,7 @@ def start_update(
         artifact.file_name,
     )
     try:
-        _trigger_webhook(webhook_url)
+        _trigger_webhook(redeploy_url(webhook_url, latest.sha, settings))
     except HTTPException as exc:
         _fail_run(db, record, str(exc.detail), "webhook_failed")
         raise

@@ -2,9 +2,13 @@ services:
   backend:
     # Kontext ist BEWUSST das Repo-Root (nicht ./backend): nur so liegen die
     # Git-Metadaten im Build-Kontext und das Image kann seinen eigenen Commit
-    # selbst ermitteln — ohne dass jemand bei jedem Update eine Variable
-    # nachziehen muss. Der Kontext ist ueber .dockerignore reduziert; .git
+    # selbst ermitteln. Der Kontext ist ueber .dockerignore reduziert; .git
     # landet nur in der Build-Stufe, nie im Laufzeit-Image.
+    #
+    # ACHTUNG Portainer: Bei Git-Stacks checkt Portainer den Stand OHNE .git
+    # aus (2.39 geprueft) — dort bleibt die Ableitung leer und die Version
+    # kommt stattdessen ueber die Build-Args unten, die das WWS beim Redeploy
+    # als Webhook-Parameter setzt.
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -54,9 +58,22 @@ services:
       # in die serverlokale .env, niemals ins Repository.
       SYSTEM_UPDATE_ENABLED: ${SYSTEM_UPDATE_ENABLED:-false}
       PORTAINER_STACK_WEBHOOK_URL: ${PORTAINER_STACK_WEBHOOK_URL:-}
+
+      # Build-Metadaten AUCH zur Laufzeit durchreichen, nicht nur als Build-Arg
+      # oben: Ein Redeploy ohne Neubau (unveraendertes Image) wuerde die per
+      # Webhook gesetzte Zielversion sonst nie im Container sichtbar machen.
+      # Leer = die beim Build ermittelte build_info.json gilt weiter.
+      APP_GIT_COMMIT: ${APP_GIT_COMMIT:-}
+      APP_GIT_BRANCH: ${APP_GIT_BRANCH:-}
+      APP_BUILD_TIME: ${APP_BUILD_TIME:-}
       GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:-nils5002/warenwirtschaftssystem-server}
       GITHUB_BRANCH: ${GITHUB_BRANCH:-main}
       GITHUB_API_TOKEN: ${GITHUB_API_TOKEN:-}
+      # Uebergibt die Zielversion beim Redeploy als Webhook-Parameter, damit das
+      # neu gebaute Image seinen Commit kennt (Portainer legt bei Git-Stacks
+      # kein .git im Build-Kontext ab). Ohne das kann ein Update nach dem
+      # Neustart nicht als erfolgreich bestaetigt werden.
+      SYSTEM_UPDATE_PASS_BUILD_METADATA: ${SYSTEM_UPDATE_PASS_BUILD_METADATA:-true}
       SYSTEM_UPDATE_TIMEOUT_SECONDS: ${SYSTEM_UPDATE_TIMEOUT_SECONDS:-600}
 
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}

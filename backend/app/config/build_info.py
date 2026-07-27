@@ -3,11 +3,17 @@
 Zwei Quellen, in dieser Reihenfolge:
 
 1. Die Umgebungsvariablen ``APP_GIT_COMMIT`` / ``APP_GIT_BRANCH`` /
-   ``APP_BUILD_TIME`` — ausdrueckliche Vorgabe des Betreibers, hat immer Vorrang.
+   ``APP_BUILD_TIME`` — ausdrueckliche Vorgabe des Betreibers, hat Vorrang.
+   Unter Portainer ist das der Normalfall: Das WWS setzt den Commit beim
+   Redeploy als Webhook-Parameter (Portainer checkt Git-Stacks ohne ``.git``
+   aus, siehe ``services/system_update_service.redeploy_url``).
 2. ``build_info.json`` im Backend-Wurzelverzeichnis. Die Datei entsteht beim
    Image-Build aus den Git-Metadaten des Checkouts
-   (``scripts/derive_build_info.py``) und macht das manuelle Pflegen einer
-   Stack-Variable ueberfluessig.
+   (``scripts/derive_build_info.py``) und traegt bei Builds mit Git-Kontext
+   (lokal, CI).
+
+Der Vorrang gilt **feldweise**: Ist nur der Commit per ENV gesetzt, stammen
+Branch und Buildzeit weiterhin aus der Datei.
 
 Fehlt beides, gilt die Version als **unbekannt**. Das ist ein gueltiger
 Zustand: Die Anwendung laeuft normal, meldet ein Update nach dem Neustart aber
@@ -68,18 +74,21 @@ def get_build_info() -> BuildInfo:
     env_branch = (settings.app_git_branch or "").strip() or None
     env_build_time = (settings.app_build_time or "").strip() or None
 
-    if env_commit:
-        return BuildInfo(
-            commit=env_commit,
-            branch=env_branch,
-            build_time=env_build_time,
-            source="env",
-        )
-
     data = _read_file()
     file_commit = _clean_commit(data.get("commit"))
     file_branch = (data.get("branch") or "").strip() or None
     file_build_time = (data.get("buildTime") or "").strip() or None
+
+    if env_commit:
+        # Feldweise, nicht als Block: Unter Portainer kommt der Commit per
+        # Stack-Variable, die Buildzeit aber nur aus der Datei — sonst bliebe
+        # die Buildzeit dort dauerhaft leer.
+        return BuildInfo(
+            commit=env_commit,
+            branch=env_branch or file_branch,
+            build_time=env_build_time or file_build_time,
+            source="env",
+        )
 
     return BuildInfo(
         commit=file_commit,

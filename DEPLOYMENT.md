@@ -60,30 +60,53 @@ Fehlt `PORTAINER_STACK_WEBHOOK_URL` oder ist `SYSTEM_UPDATE_ENABLED=false`,
 bleibt die Seite sichtbar, meldet aber lediglich „Systemupdates sind auf diesem
 Server nicht aktiviert." Die uebrige Anwendung ist davon nicht betroffen.
 
-### 3. Build-Metadaten (automatisch — kein Handgriff noetig)
+### 3. Build-Metadaten (woher das WWS seine Version kennt)
 
-Das Backend ermittelt seinen eigenen Commit **beim Image-Build selbst**: Der
-Build-Kontext des Backends ist das Repo-Root (`context: .`,
-`dockerfile: backend/Dockerfile`), eine vorgeschaltete Build-Stufe liest den
-Commit aus den Git-Metadaten des Checkouts
-(`backend/scripts/derive_build_info.py`) und legt ihn als `/app/build_info.json`
-ins Image. `.git` selbst landet **nicht** im Laufzeit-Image.
+Die Anwendung muss wissen, welchen Commit sie ausfuehrt — sonst laesst sich nach
+einem Redeploy nicht pruefen, ob wirklich die Zielversion laeuft. Dafuer gibt es
+zwei Wege, in dieser Reihenfolge:
 
-Damit stimmt die angezeigte Version nach jedem Portainer-Redeploy automatisch —
-auch bei einem Update, das aus dem WWS heraus ausgeloest wurde. Eine
-Stack-Variable `APP_GIT_COMMIT` ist **nicht** noetig.
+1. **`APP_GIT_COMMIT` / `APP_GIT_BRANCH`** (Stack-Variable bzw. Build-Arg) —
+   hat Vorrang.
+2. **`/app/build_info.json`**, beim Image-Build aus den Git-Metadaten des
+   Build-Kontexts abgeleitet (`backend/scripts/derive_build_info.py`, Kontext
+   ist das Repo-Root). `.git` landet dabei nur in der Build-Stufe, **nicht** im
+   Laufzeit-Image.
 
-Ueberschreiben laesst sich das trotzdem, z. B. wenn ohne Git-Kontext gebaut wird
-(Deploy ueber `deploy/server/deploy.sh` nutzt `git archive`, dort fehlt `.git`):
+Welcher Weg greift, haengt an der Umgebung:
 
-```dotenv
-APP_GIT_COMMIT=<voller 40-stelliger Commit-SHA>
-APP_GIT_BRANCH=main
-APP_BUILD_TIME=2026-07-27T09:00:00Z
+| Umgebung | Quelle |
+| --- | --- |
+| Lokal / CI (`docker compose build`) | automatisch aus `.git` |
+| **Portainer-Git-Stack** | `APP_GIT_COMMIT`, vom WWS beim Redeploy gesetzt |
+| `deploy/server/deploy.sh` (`git archive`) | `APP_GIT_COMMIT` von Hand |
+
+**Wichtig fuer Portainer:** Portainer checkt Git-Stacks **ohne `.git`** aus
+(geprueft mit 2.39.1 — in `/data/compose/<id>` liegt nur der Dateibaum). Die
+Ableitung beim Build laeuft dort deshalb leer. Damit die Version trotzdem stimmt,
+haengt das WWS die Zielversion beim Redeploy an den Webhook an:
+
+```text
+POST https://<portainer>/api/stacks/webhooks/<uuid>?APP_GIT_COMMIT=<sha>&APP_GIT_BRANCH=main
 ```
 
-Gesetzte Werte haben Vorrang vor der automatisch ermittelten Datei. Lokal/CI
-funktioniert beides:
+Portainer uebernimmt Query-Parameter eines Stack-Webhooks als Stack-Variablen,
+`docker-compose.yml` reicht sie als Build-Args ins Image. Damit das
+funktioniert:
+
+* `APP_GIT_COMMIT` und `APP_GIT_BRANCH` **in den Stack-Variablen belassen**
+  (Startwert: aktuell laufender Commit). Das WWS ueberschreibt sie bei jedem
+  Update.
+* Abschaltbar ueber `SYSTEM_UPDATE_PASS_BUILD_METADATA=false` — dann kann ein
+  Update aber nicht mehr als erfolgreich bestaetigt werden.
+
+**Bekannte Grenze:** Wird der Stack **ausserhalb** des WWS neu ausgerollt (z. B.
+„Pull and redeploy" in Portainer), bleibt `APP_GIT_COMMIT` auf dem alten Wert
+stehen — die Anzeige zeigt dann eine veraltete Version und bietet dasselbe
+Update erneut an. Ein Update aus dem WWS heraus setzt den Wert wieder gerade.
+Wer manuell redeployt, zieht die Variable am besten mit.
+
+Lokal/CI funktioniert beides:
 
 ```sh
 docker compose build backend                                             # automatisch aus .git

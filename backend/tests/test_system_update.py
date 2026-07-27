@@ -21,6 +21,7 @@ import json
 import logging
 import zipfile
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qsl, urlsplit
 
 import pytest
 import requests
@@ -43,6 +44,10 @@ INSTALLED_COMMIT = "1111111111111111111111111111111111111111"
 LATEST_COMMIT = "2222222222222222222222222222222222222222"
 WEBHOOK_SECRET = "5f5c9d0e-secret-webhook-token"
 WEBHOOK_URL = f"https://portainer.example.com/api/stacks/webhooks/{WEBHOOK_SECRET}"
+# Der Redeploy uebergibt die Zielversion als Query-Parameter — Portainer legt
+# bei Git-Stacks kein .git ab, ohne diese Angabe kennt das neue Image seinen
+# Commit nicht (siehe system_update_service.redeploy_url).
+REDEPLOY_URL = f"{WEBHOOK_URL}?APP_GIT_COMMIT={LATEST_COMMIT}&APP_GIT_BRANCH=main"
 GITHUB_TOKEN = "ghp_supersecrettoken0000000000000000000"
 
 
@@ -355,8 +360,9 @@ def test_start_update_creates_backup_then_calls_webhook_once(
     assert body["targetCommit"] == LATEST_COMMIT
     assert body["message"] == "Das Update wurde an Portainer übergeben."
 
-    # Genau EIN Webhook-Aufruf, an die konfigurierte URL.
-    assert fake_requests.post_calls == [WEBHOOK_URL]
+    # Genau EIN Webhook-Aufruf, an die konfigurierte URL — mit der Zielversion
+    # als Query-Parameter fuer den Rebuild.
+    assert fake_requests.post_calls == [REDEPLOY_URL]
 
     # Backup liegt im persistenten Datenverzeichnis und ist ein gültiges Archiv.
     archives = list(backup_dir.glob("wms-update-backup-*.zip"))
@@ -484,7 +490,7 @@ def test_parallel_update_is_blocked_by_lock(monkeypatch, fake_requests, backup_d
     assert second.status_code == 409
     assert "läuft bereits" in second.json()["detail"]
     # Der zweite Versuch darf keinen zweiten Redeploy ausgelöst haben.
-    assert fake_requests.post_calls == [WEBHOOK_URL]
+    assert fake_requests.post_calls == [REDEPLOY_URL]
     assert len(list(backup_dir.glob("*.zip"))) == 1
 
 
@@ -627,6 +633,83 @@ def test_reconcile_is_noop_without_pending_runs():
         assert system_update_service.reconcile_pending_runs(db, _settings()) == 0
 
 
+# --- Zielversion an Portainer uebergeben --------------------------------------
+
+
+def _query_of(url: str) -> dict[str, str]:
+    return dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+
+
+def test_redeploy_url_appends_target_version(monkeypatch):
+    settings = _settings()
+    url = system_update_service.redeploy_url(WEBHOOK_URL, LATEST_COMMIT, settings)
+    assert _query_of(url) == {"APP_GIT_COMMIT": LATEST_COMMIT, "APP_GIT_BRANCH": "main"}
+    # Host und Token-Pfad bleiben unangetastet.
+    assert url.startswith(WEBHOOK_URL + "?")
+
+
+def test_redeploy_url_keeps_other_parameters_and_replaces_stale_ones():
+    settings = _settings()
+    configured = f"{WEBHOOK_URL}?pullimage=false&APP_GIT_COMMIT={INSTALLED_COMMIT}"
+    url = system_update_service.redeploy_url(configured, LATEST_COMMIT, settings)
+    assert _query_of(url) == {
+        "pullimage": "false",
+        "APP_GIT_COMMIT": LATEST_COMMIT,
+        "APP_GIT_BRANCH": "main",
+    }
+
+
+def test_redeploy_url_uses_configured_branch():
+    settings = _settings(github_branch="release/2026-07")
+    url = system_update_service.redeploy_url(WEBHOOK_URL, LATEST_COMMIT, settings)
+    assert _query_of(url)["APP_GIT_BRANCH"] == "release/2026-07"
+
+
+def test_redeploy_url_can_be_switched_off():
+    settings = _settings(system_update_pass_build_metadata=False)
+    assert system_update_service.redeploy_url(WEBHOOK_URL, LATEST_COMMIT, settings) == WEBHOOK_URL
+
+
+def test_redeploy_url_ignores_implausible_commit():
+    """Lieber nichts anhaengen als Unsinn in die Stack-Konfiguration schreiben."""
+    settings = _settings()
+    for value in ("", "   ", "nicht-hex", "12345"):
+        assert system_update_service.redeploy_url(WEBHOOK_URL, value, settings) == WEBHOOK_URL
+
+
+def test_start_update_without_build_metadata_calls_plain_webhook(
+    monkeypatch, fake_requests, backup_dir
+):
+    _use_settings(monkeypatch, system_update_pass_build_metadata=False)
+    client = TestClient(app)
+    assert client.post("/api/admin/system/update", headers=_admin(client)).status_code == 202
+    assert fake_requests.post_calls == [WEBHOOK_URL]
+
+
+def test_target_version_from_webhook_makes_restart_check_succeed(
+    monkeypatch, fake_requests, backup_dir
+):
+    """Der Vollkreis: Was Portainer mitgegeben wird, bestaetigt spaeter den Erfolg.
+
+    Ohne diesen Parameter kaeme der neue Container unter Portainer ohne
+    Commit-Kenntnis hoch (kein ``.git`` im Checkout) und der Lauf wuerde als
+    fehlgeschlagen bewertet, obwohl das Update sauber lief.
+    """
+    _use_settings(monkeypatch)
+    client = TestClient(app)
+    assert client.post("/api/admin/system/update", headers=_admin(client)).status_code == 202
+
+    # Genau dieser Wert landet als Stack-Variable im neu gebauten Image.
+    baked = _query_of(fake_requests.post_calls[0])["APP_GIT_COMMIT"]
+    after_restart = _settings(app_git_commit=baked)
+
+    with SessionLocal() as db:
+        assert system_update_service.reconcile_pending_runs(db, after_restart) == 1
+        run = db.query(SystemUpdateRunRecord).order_by(SystemUpdateRunRecord.id.desc()).first()
+        assert run.status == "success"
+        assert run.detected_commit_after_restart == LATEST_COMMIT
+
+
 # --- Secrets ------------------------------------------------------------------
 
 
@@ -721,7 +804,7 @@ def test_update_endpoint_ignores_request_body(monkeypatch, fake_requests, backup
     )
     assert response.status_code == 202
     # Es wurde ausschließlich die konfigurierte URL aufgerufen ...
-    assert fake_requests.post_calls == [WEBHOOK_URL]
+    assert fake_requests.post_calls == [REDEPLOY_URL]
     # ... und ausschließlich der konfigurierte Branch abgefragt.
     assert fake_requests.get_calls == [
         "https://api.github.com/repos/nils5002/warenwirtschaftssystem-server/commits/main"
