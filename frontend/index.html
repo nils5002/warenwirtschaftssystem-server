@@ -14,9 +14,15 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <title>ERP-System</title>
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!--
+      Reihenfolge ist Absicht: Browser mit SVG-Unterstuetzung nehmen die
+      Vektorvariante (scharf auf jedem Zoom/DPI), aeltere fallen auf die PNG
+      zurueck. Alle drei Dateien zeigen dieselbe Bildmarke wie die Sidebar
+      (Kachel in Primaerblau mit drei Kartons) — Geometrie siehe favicon.svg.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <!-- Replace /public/favicon.png and /public/apple-touch-icon.png with your own logo files. -->
     <script>
       (() => {
         const storageKey = 'asset-console-theme';
