@@ -867,6 +867,83 @@ def test_confirmed_version_survives_a_restart(monkeypatch, fake_requests, backup
     assert system_update_service.installed_commit(_settings(app_git_commit=None)) == LATEST_COMMIT
 
 
+def test_legacy_run_without_source_build_time_uses_the_build_timestamp(monkeypatch):
+    """Laeufe aelterer Versionen kennen die Spalte nicht — Bauzeit vs. Startzeit.
+
+    Betrifft genau das Update, das diese Logik ausliefert: Ausgeloest hat es noch
+    die Vorversion, bewertet wird es vom neuen Container.
+    """
+    started = datetime.now(UTC) - timedelta(minutes=3)
+    with SessionLocal() as db:
+        db.add(
+            SystemUpdateRunRecord(
+                external_id="upd-legacy-run",
+                started_at=started,
+                target_commit=LATEST_COMMIT,
+                status="redeploy_requested",
+                source_build_time=None,
+            )
+        )
+        db.commit()
+
+    # Image wurde NACH dem Ausloesen gebaut -> der Redeploy hat gegriffen.
+    _use_image_info(
+        monkeypatch,
+        _image_info(build_time=(started + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")),
+    )
+    with SessionLocal() as db:
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=None))
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id="upd-legacy-run").one()
+        assert run.status == "success"
+        assert run.detected_commit_after_restart == LATEST_COMMIT
+
+
+def test_legacy_run_with_older_image_is_not_success(monkeypatch):
+    """Ein Image von vor dem Ausloesen beweist nichts — kein Erfolg."""
+    started = datetime.now(UTC) - timedelta(minutes=3)
+    with SessionLocal() as db:
+        db.add(
+            SystemUpdateRunRecord(
+                external_id="upd-legacy-old-image",
+                started_at=started,
+                target_commit=LATEST_COMMIT,
+                status="redeploy_requested",
+                source_build_time=None,
+            )
+        )
+        db.commit()
+
+    _use_image_info(
+        monkeypatch,
+        _image_info(build_time=(started - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")),
+    )
+    with SessionLocal() as db:
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=None))
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id="upd-legacy-old-image").one()
+        assert run.status != "success"
+
+
+def test_unparsable_build_time_is_not_taken_as_proof(monkeypatch):
+    started = datetime.now(UTC) - timedelta(minutes=3)
+    with SessionLocal() as db:
+        db.add(
+            SystemUpdateRunRecord(
+                external_id="upd-legacy-broken-time",
+                started_at=started,
+                target_commit=LATEST_COMMIT,
+                status="redeploy_requested",
+                source_build_time=None,
+            )
+        )
+        db.commit()
+
+    _use_image_info(monkeypatch, _image_info(build_time="irgendwann"))
+    with SessionLocal() as db:
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=None))
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id="upd-legacy-broken-time").one()
+        assert run.status != "success"
+
+
 def test_broken_confirmed_version_is_ignored(monkeypatch):
     with SessionLocal() as db:
         db.add(

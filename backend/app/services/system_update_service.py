@@ -780,6 +780,39 @@ def start_update(
 
 # --- Auswertung nach dem Neustart ---------------------------------------------
 
+def _parse_build_time(value: str | None) -> datetime | None:
+    """Liest die Buildzeit aus ``build_info.json`` (``2026-07-28T00:15:07Z``)."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _was_rebuilt(
+    record: SystemUpdateRunRecord, current_build_time: str | None, started: datetime | None
+) -> bool:
+    """Wurde seit dem Ausloesen ein neues Image gebaut?
+
+    Zwei Wege, weil der erste bei Altlaeufen ausfaellt:
+
+    * Die beim Ausloesen notierte Buildzeit unterscheidet sich von der jetzigen.
+    * ``source_build_time`` fehlt (Lauf wurde von einer aelteren Version
+      angelegt, die diese Spalte noch nicht kannte): Dann zaehlt, ob das
+      laufende Image *nach* dem Ausloesen gebaut wurde. Sonst waere ausgerechnet
+      das Update, das diese Logik einfuehrt, nicht bewertbar.
+    """
+    if not current_build_time:
+        return False
+    if record.source_build_time:
+        return current_build_time != record.source_build_time
+    built_at = _parse_build_time(current_build_time)
+    return bool(built_at and started and built_at >= started)
+
+
 def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int:
     """Bewertet beim Start offene Updatevorgaenge. Liefert die Anzahl.
 
@@ -820,11 +853,7 @@ def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int
         record.finished_at = now
         started = _as_utc(record.started_at)
         expired = started is not None and now - started > timedelta(seconds=timeout)
-        rebuilt = bool(
-            current_build_time
-            and record.source_build_time
-            and current_build_time != record.source_build_time
-        )
+        rebuilt = _was_rebuilt(record, current_build_time, started)
 
         if installed is not None and record.target_commit and installed == record.target_commit:
             record.status = "success"
