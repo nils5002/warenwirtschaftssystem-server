@@ -110,48 +110,49 @@ GitHub-Versionspruefung.
 ### 3. Build-Metadaten (woher das WWS seine Version kennt)
 
 Die Anwendung muss wissen, welchen Commit sie ausfuehrt — sonst laesst sich nach
-einem Redeploy nicht pruefen, ob wirklich die Zielversion laeuft. Dafuer gibt es
-zwei Wege, in dieser Reihenfolge:
+einem Redeploy nicht pruefen, ob wirklich die Zielversion laeuft. Die installierte
+Version wird in dieser Reihenfolge bestimmt:
 
-1. **`APP_GIT_COMMIT` / `APP_GIT_BRANCH`** (Stack-Variable bzw. Build-Arg) —
-   hat Vorrang.
-2. **`/app/build_info.json`**, beim Image-Build aus den Git-Metadaten des
-   Build-Kontexts abgeleitet (`backend/scripts/derive_build_info.py`, Kontext
-   ist das Repo-Root). `.git` landet dabei nur in der Build-Stufe, **nicht** im
-   Laufzeit-Image.
+| Rang | Quelle | Greift bei |
+| --- | --- | --- |
+| 1 | `/app/build_info.json` (beim Build aus `.git` abgeleitet) | Build mit Git-Kontext: lokal, CI |
+| 2 | bestaetigte Version in der Datenbank | nach einem Update aus dem WWS heraus (Portainer) |
+| 3 | `APP_GIT_COMMIT` / `APP_GIT_BRANCH` | Deploy ganz ohne Git-Kontext (`git archive`) |
 
-Welcher Weg greift, haengt an der Umgebung:
-
-| Umgebung | Quelle |
-| --- | --- |
-| Lokal / CI (`docker compose build`) | automatisch aus `.git` |
-| **Portainer-Git-Stack** | `APP_GIT_COMMIT`, vom WWS beim Redeploy gesetzt |
-| `deploy/server/deploy.sh` (`git archive`) | `APP_GIT_COMMIT` von Hand |
+`APP_GIT_COMMIT` steht bewusst hinten: Eine von Hand gepflegte Variable veraltet
+mit dem naechsten Redeploy, die beiden Quellen darueber sind an das laufende
+Image gebunden. `.git` landet dabei nur in der Build-Stufe, **nicht** im
+Laufzeit-Image.
 
 **Wichtig fuer Portainer:** Portainer checkt Git-Stacks **ohne `.git`** aus
-(geprueft mit 2.39.1 — in `/data/compose/<id>` liegt nur der Dateibaum). Die
-Ableitung beim Build laeuft dort deshalb leer. Damit die Version trotzdem stimmt,
-haengt das WWS die Zielversion beim Redeploy an den Webhook an:
+(geprueft mit 2.39.1 — in `/data/compose/<id>` liegt nur der Dateibaum). Rang 1
+faellt dort also aus, das Image kennt seinen Commit nicht. Zwei Mechanismen
+fangen das auf:
+
+*Erstens* haengt das WWS die Zielversion beim Redeploy an den Webhook an:
 
 ```text
 POST https://<portainer>/api/stacks/webhooks/<uuid>?APP_GIT_COMMIT=<sha>&APP_GIT_BRANCH=main
 ```
 
-Portainer uebernimmt Query-Parameter eines Stack-Webhooks als Stack-Variablen,
-`docker-compose.yml` reicht sie als Build-Args ins Image. Damit das
-funktioniert:
+Bei klassischen Stack-Webhooks macht Portainer daraus Stack-Variablen, die
+`docker-compose.yml` als Build-Args weiterreicht. **Am GitOps-Webhook eines
+Git-Stacks passiert das nicht** (2.39.1 am Live-Stack geprueft: Redeploy und
+Rebuild laufen, die Parameter werden ignoriert). Abschaltbar ueber
+`SYSTEM_UPDATE_PASS_BUILD_METADATA=false`.
 
-* `APP_GIT_COMMIT` und `APP_GIT_BRANCH` **in den Stack-Variablen belassen**
-  (Startwert: aktuell laufender Commit). Das WWS ueberschreibt sie bei jedem
-  Update.
-* Abschaltbar ueber `SYSTEM_UPDATE_PASS_BUILD_METADATA=false` — dann kann ein
-  Update aber nicht mehr als erfolgreich bestaetigt werden.
+*Zweitens* — und das ist der Weg, der unter Portainer traegt — dient die
+**Buildzeit als Beleg**: `build_info.json` enthaelt immer eine Buildzeit, auch
+ohne `.git`. Das WWS merkt sie sich beim Ausloesen; laeuft nach dem Neustart ein
+Image mit anderer Buildzeit, ist belegt, dass der Redeploy gegriffen hat. Der
+Zielcommit wird dann als bestaetigte Version gespeichert (Rang 2) und gilt genau
+so lange, wie ein Image mit dieser Buildzeit laeuft.
 
-**Bekannte Grenze:** Wird der Stack **ausserhalb** des WWS neu ausgerollt (z. B.
-„Pull and redeploy" in Portainer), bleibt `APP_GIT_COMMIT` auf dem alten Wert
-stehen — die Anzeige zeigt dann eine veraltete Version und bietet dasselbe
-Update erneut an. Ein Update aus dem WWS heraus setzt den Wert wieder gerade.
-Wer manuell redeployt, zieht die Variable am besten mit.
+**Bekannte Grenze:** Wird der Stack **ausserhalb** des WWS neu gebaut (z. B.
+„Pull and redeploy"), passt die gespeicherte Buildzeit nicht mehr und die
+Version gilt als *unbekannt* — bewusst so, statt einen veralteten Commit zu
+behaupten. Das naechste Update aus dem WWS heraus stellt sie wieder her. Wer
+ueberwiegend manuell ausrollt, pflegt stattdessen `APP_GIT_COMMIT`.
 
 Lokal/CI funktioniert beides:
 
@@ -213,11 +214,14 @@ Gegen Portainer 2.39.1 (Stack `warenwirtschaftssystem`, ID 11) geprueft:
 | `build_info.json` im dortigen Image | `commit: null` — Ableitung greift nur mit Git-Kontext |
 | `APP_GIT_COMMIT` aus den Stack-Variablen | kommt als Build-Arg **und** zur Laufzeit im Container an |
 | Versionsanzeige mit gesetzter Variable | korrekt, inkl. Buildzeit aus `build_info.json` |
+| Query-Parameter am GitOps-Webhook | werden **ignoriert** — Redeploy und Rebuild laufen trotzdem |
+| Buildzeit im Image nach dem Redeploy | aendert sich zuverlaessig (Beleg fuer die Erfolgspruefung) |
 
-Noch offen (erst mit dem ersten echten Update belegbar): ob Portainer die
-Query-Parameter des Webhooks als Stack-Variablen uebernimmt. Als Nachweis dient,
-dass `APP_GIT_COMMIT` in den Stack-Variablen nach dem Lauf auf dem Zielcommit
-steht und die Historie `success` zeigt.
+Ebenfalls geprueft: Die Webhook-URL muss aus dem Backend-Container erreichbar
+sein — ueber den Reverse Proxy scheiterte sie an der lokalen CA. In Betrieb ist
+deshalb die interne Adresse `http://portainer:9000/...`, wofuer Portainer im
+Docker-Netz des Stacks haengt (deklarativ in Portainers eigener Compose-Datei,
+sonst ueberlebt es kein Neuerstellen).
 
 ### 6. Vorher in einer Staging-Umgebung testen
 

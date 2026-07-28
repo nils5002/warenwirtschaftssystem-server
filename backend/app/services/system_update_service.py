@@ -14,12 +14,15 @@ Sicherheits-Leitplanken dieses Moduls:
 * Der Update-Lock liegt in der Datenbank und ueberlebt damit den durch das
   Update ausgeloesten Backend-Neustart. Ein haengengebliebener Lauf wird nach
   ``SYSTEM_UPDATE_TIMEOUT_SECONDS`` als veraltet erkannt.
-* Nach dem Neustart wird nur dann Erfolg gemeldet, wenn der tatsaechlich
-  laufende Commit dem Zielcommit entspricht. Ist die Build-Version unbekannt,
-  gilt der Lauf als fehlgeschlagen — niemals als Erfolg.
-* Damit der neue Container seinen Commit ueberhaupt kennt, wird die Zielversion
-  beim Redeploy als Query-Parameter an den Webhook uebergeben (``redeploy_url``)
-  — Portainer legt bei Git-Stacks kein ``.git`` im Build-Kontext ab.
+* Nach dem Neustart wird Erfolg nur mit Beleg gemeldet: entweder laeuft der
+  Zielcommit, oder das Image wurde nachweislich neu gebaut (andere Buildzeit in
+  ``build_info.json``). Fehlt beides, gilt der Lauf als fehlgeschlagen.
+* Unter Portainer kennt der Container seinen Commit nicht: Git-Stacks werden
+  ohne ``.git`` ausgecheckt, und der GitOps-Webhook uebernimmt entgegen der
+  Dokumentation keine Query-Parameter als Stack-Variablen (2.39.1 geprueft).
+  Deshalb der Buildzeit-Beleg — der Zielcommit wird danach als bestaetigte
+  Version festgeschrieben (``CONFIRMED_VERSION_KEY``) und gilt genau so lange,
+  wie das Image mit dieser Buildzeit laeuft.
 
 Erweiterbarkeit (bewusst vorbereitet, aber noch nicht freigegeben): Die
 Aufloesung "welcher Commit ist das Ziel" liegt gekapselt in
@@ -29,6 +32,7 @@ Verifikation) bleibt unveraendert.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -41,9 +45,9 @@ from requests import exceptions as _requests_exceptions
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..config.build_info import get_build_info
+from ..config.build_info import get_build_info, get_image_build_info
 from ..config.settings import Settings, get_settings
-from ..database.models import SystemUpdateRunRecord
+from ..database.models import SystemSettingRecord, SystemUpdateRunRecord
 from ..schemas.system_update import (
     CommitInfo,
     SystemUpdateCheckResponse,
@@ -127,22 +131,91 @@ def _fmt(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
+# Key im Key/Value-Store: Version, die ein abgeschlossenes Update bestaetigt
+# hat. Wert ist JSON mit commit/branch/buildTime.
+CONFIRMED_VERSION_KEY = "system_update_confirmed_version"
+
+# Im Prozess gehaltene Kopie des obigen Eintrags. Der Wert kann sich zur
+# Laufzeit nur aendern, wenn ein Update abgeschlossen wird — und das schliesst
+# einen Neustart ein. Deshalb genuegt es, ihn beim Start zu laden, statt bei
+# jeder Versionsabfrage die Datenbank zu befragen.
+_confirmed_version: dict[str, str | None] | None = None
+
+
+def load_confirmed_version(db: Session) -> None:
+    """Laedt die bestaetigte Version beim Start in den Prozess."""
+    global _confirmed_version
+    record = db.scalar(
+        select(SystemSettingRecord).where(SystemSettingRecord.key == CONFIRMED_VERSION_KEY)
+    )
+    if record is None:
+        _confirmed_version = None
+        return
+    try:
+        payload = json.loads(record.value or "{}")
+    except ValueError:
+        logger.warning("Bestaetigte Version ist unlesbar — wird ignoriert")
+        _confirmed_version = None
+        return
+    _confirmed_version = payload if isinstance(payload, dict) else None
+
+
+def _store_confirmed_version(db: Session, *, commit: str, branch: str | None, build_time: str | None) -> None:
+    """Haelt fest, welcher Commit im Image mit dieser Buildzeit steckt."""
+    global _confirmed_version
+    payload = {"commit": commit, "branch": branch, "buildTime": build_time}
+    record = db.scalar(
+        select(SystemSettingRecord).where(SystemSettingRecord.key == CONFIRMED_VERSION_KEY)
+    )
+    if record is None:
+        db.add(SystemSettingRecord(key=CONFIRMED_VERSION_KEY, value=json.dumps(payload)))
+    else:
+        record.value = json.dumps(payload)
+    _confirmed_version = payload
+
+
+def confirmed_commit() -> str | None:
+    """Bestaetigter Commit — nur, wenn er zum laufenden Image gehoert.
+
+    Die Zuordnung laeuft ueber die Buildzeit aus ``build_info.json``. Wird der
+    Stack ausserhalb des WWS neu gebaut, passt sie nicht mehr und der Eintrag
+    verfaellt automatisch: Die Version gilt dann als unbekannt statt falsch.
+    """
+    if not _confirmed_version:
+        return None
+    build_time = get_image_build_info().build_time
+    if not build_time or _confirmed_version.get("buildTime") != build_time:
+        return None
+    commit = (_confirmed_version.get("commit") or "").strip().lower()
+    return commit if _SHA_PATTERN.match(commit) else None
+
+
 def installed_commit(settings: Settings | None = None) -> str | None:
     """Commit des laufenden Builds — ``None``, wenn er nicht feststellbar ist.
 
-    Vorrang hat ein ausdruecklich gesetztes ``APP_GIT_COMMIT``; sonst greift die
-    beim Image-Build aus dem Git-Checkout ermittelte ``build_info.json``.
+    Reihenfolge, absteigend nach Beweiskraft:
 
-    Unter Portainer greift der erste Weg: Der Redeploy uebergibt die
-    Zielversion als Query-Parameter an den Stack-Webhook (siehe
-    ``redeploy_url``), weil Portainer im Checkout kein ``.git`` ablegt. Die
-    ``build_info.json`` bleibt der Weg fuer Builds mit Git-Kontext (lokal, CI).
+    1. ``build_info.json`` — beim Image-Build aus dem echten ``.git`` abgeleitet
+       (lokal, CI). Nicht uebersteuerbar, weil per Konstruktion korrekt.
+    2. Die von einem abgeschlossenen Update bestaetigte Version, sofern ihre
+       Buildzeit zum laufenden Image passt. Das ist der Portainer-Fall: Dort
+       liegt im Build-Kontext kein ``.git``, wohl aber eine Buildzeit.
+    3. ``APP_GIT_COMMIT`` — Angabe des Betreibers, noetig bei Deploys ganz ohne
+       Git-Kontext (``git archive``). Steht bewusst hinten: Eine von Hand
+       gepflegte Variable veraltet mit dem naechsten Redeploy, die beiden
+       Quellen darueber sind an das laufende Image gebunden.
     """
     settings = settings or get_settings()
+    baked = get_image_build_info().commit
+    if baked:
+        return baked
+    confirmed = confirmed_commit()
+    if confirmed:
+        return confirmed
     raw = (settings.app_git_commit or "").strip().lower()
     if raw and _SHA_PATTERN.match(raw):
         return raw
-    return get_build_info().commit
+    return None
 
 
 def webhook_configured(settings: Settings | None = None) -> bool:
@@ -346,8 +419,9 @@ def check_update(settings: Settings | None = None) -> SystemUpdateCheckResponse:
             latest=latest,
             compareUrl=f"{repository_url(settings)}/commits/{settings.github_branch}",
             message=(
-                "Die installierte Version ist unbekannt (APP_GIT_COMMIT ist nicht gesetzt). "
-                "Ein Vergleich mit GitHub ist deshalb nicht möglich."
+                "Die installierte Version ist unbekannt — ein Vergleich mit GitHub ist "
+                "deshalb nicht möglich. Nach dem nächsten Update aus dem WWS heraus ist "
+                "sie wieder bekannt."
             ),
             **base,
         )
@@ -480,10 +554,17 @@ def redeploy_url(webhook_url: str, target_sha: str, settings: Settings | None = 
     wuesste nach dem Redeploy nicht, welchen Commit er ausfuehrt — die
     Erfolgspruefung nach dem Neustart koennte nie greifen.
 
-    Portainer uebernimmt Query-Parameter eines Stack-Webhooks als
-    Umgebungsvariablen des Stacks. ``docker-compose.yml`` reicht
-    ``APP_GIT_COMMIT``/``APP_GIT_BRANCH`` als Build-Args weiter, sodass genau
-    die angeforderte Zielversion im neuen Image landet.
+    Fuer klassische Stack-Webhooks uebernimmt Portainer Query-Parameter als
+    Umgebungsvariablen des Stacks; ``docker-compose.yml`` reicht
+    ``APP_GIT_COMMIT``/``APP_GIT_BRANCH`` als Build-Args weiter, sodass die
+    Zielversion im neuen Image landet.
+
+    **Am GitOps-Webhook eines Git-Stacks passiert das nicht** (Portainer 2.39.1
+    am Live-Stack geprueft: Redeploy und Rebuild laufen, die Parameter werden
+    ignoriert). Die Parameter bleiben trotzdem dran — sie kosten nichts und
+    greifen in Setups, die den klassischen Webhook nutzen. Verlassen darf sich
+    die Erfolgspruefung darauf aber nicht; dafuer dient der Buildzeit-Beleg in
+    ``reconcile_pending_runs``.
 
     Bewusst eng gehalten: Es werden ausschliesslich der bereits validierte
     Ziel-Commit und der serverseitig konfigurierte Branch angehaengt — keine
@@ -609,6 +690,10 @@ def start_update(
         started_by_user_id=actor_id,
         started_by_name=actor_name,
         source_commit=installed,
+        # Buildzeit des jetzt laufenden Images festhalten: Aendert sie sich nach
+        # dem Neustart, ist belegt, dass der Redeploy ein neues Image gebracht
+        # hat — auch ohne bekannten Commit.
+        source_build_time=get_image_build_info().build_time,
         status="checking",
         message="Version wird geprüft.",
     )
@@ -698,11 +783,24 @@ def start_update(
 def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int:
     """Bewertet beim Start offene Updatevorgaenge. Liefert die Anzahl.
 
-    Regeln:
-    * laufender Commit == Zielcommit -> ``success``
-    * Build-Version unbekannt -> ``failed`` (niemals faelschlich Erfolg melden)
-    * anderer Commit + Zeitfenster ueberschritten -> ``timeout``
-    * anderer Commit innerhalb des Zeitfensters -> ``failed`` (unerwarteter Stand)
+    Zwei Belege, in dieser Reihenfolge:
+
+    1. **Commit**: laufender Commit == Zielcommit -> ``success``. Der starke
+       Beleg; verfuegbar, wenn das Image seinen Commit kennt.
+    2. **Buildzeit**: Der Commit ist unbekannt oder passt nicht, aber das Image
+       wurde neu gebaut (``build_info.json`` traegt eine andere Buildzeit als
+       beim Ausloesen) -> ``success``, und der Zielcommit wird als bestaetigte
+       Version festgeschrieben.
+
+       Noetig, weil Portainer Git-Stacks ohne ``.git`` auscheckt: Dort kann das
+       Image seinen Commit nicht kennen, wohl aber belegen, dass es neu gebaut
+       wurde. Portainer baut dabei den HEAD des konfigurierten Branches — also
+       den Stand, der beim Ausloesen als Ziel ermittelt wurde. Restrisiko: Wird
+       in genau diesem Zeitfenster erneut gepusht, laeuft ein neuerer Commit als
+       protokolliert. Die naechste Versionspruefung zieht das gerade.
+
+    Ohne beide Belege: ``timeout`` bei ueberschrittenem Zeitfenster, sonst
+    ``failed``. Erfolg wird nie ohne Beleg gemeldet.
     """
     settings = settings or get_settings()
     records = db.scalars(
@@ -712,24 +810,46 @@ def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int
         return 0
 
     installed = installed_commit(settings)
+    current_build_time = get_image_build_info().build_time
     timeout = max(60, int(settings.system_update_timeout_seconds))
     now = _now()
 
     for record in records:
         record.detected_commit_after_restart = installed
+        record.detected_build_time = current_build_time
         record.finished_at = now
         started = _as_utc(record.started_at)
         expired = started is not None and now - started > timedelta(seconds=timeout)
+        rebuilt = bool(
+            current_build_time
+            and record.source_build_time
+            and current_build_time != record.source_build_time
+        )
 
         if installed is not None and record.target_commit and installed == record.target_commit:
             record.status = "success"
             record.message = "Das Update wurde erfolgreich installiert."
             record.error_details = None
+        elif rebuilt and record.target_commit:
+            record.status = "success"
+            record.message = (
+                "Das Update wurde installiert. Bestätigt über den neuen Build des Images — "
+                "die Version meldet dieser Stack nicht selbst."
+            )
+            record.error_details = None
+            record.detected_commit_after_restart = record.target_commit
+            _store_confirmed_version(
+                db,
+                commit=record.target_commit,
+                branch=(settings.github_branch or "").strip() or None,
+                build_time=current_build_time,
+            )
+            installed = record.target_commit
         elif installed is None:
             record.status = "failed"
             record.message = (
                 "Der Neustart wurde erkannt, die laufende Version lässt sich aber nicht "
-                "überprüfen (APP_GIT_COMMIT ist nicht gesetzt)."
+                "überprüfen (weder Commit noch neue Buildzeit erkennbar)."
             )
             record.error_details = "installed_version_unknown"
         elif expired:

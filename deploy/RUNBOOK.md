@@ -49,12 +49,12 @@ Ablauf:
 Voraussetzungen in der serverlokalen `.env` bzw. den Portainer-Stack-Variablen:
 - `SYSTEM_UPDATE_ENABLED=true`
 - `PORTAINER_STACK_WEBHOOK_URL=<Webhook-URL des Stacks>` (Geheimnis)
-- `APP_GIT_COMMIT`/`APP_GIT_BRANCH` als Stack-Variablen vorhanden lassen: das
-  WWS ueberschreibt sie beim Redeploy. Portainer checkt Git-Stacks ohne `.git`
-  aus, die Ableitung beim Image-Build greift dort nicht.
-- Achtung: Ein Redeploy **ausserhalb** des WWS laesst `APP_GIT_COMMIT` veralten
-  (Anzeige zeigt dann den alten Commit) — Variable mitziehen oder das naechste
-  Update aus dem WWS heraus starten.
+- `APP_GIT_COMMIT`/`APP_GIT_BRANCH` sind unter Portainer nur noch Rueckfallebene:
+  Der Erfolg wird ueber die Buildzeit des Images belegt, der Zielcommit danach
+  als bestaetigte Version in der Datenbank gefuehrt.
+- Achtung: Ein Rebuild **ausserhalb** des WWS entwertet diesen Eintrag — die
+  Version gilt dann als unbekannt (bewusst, statt einen alten Commit zu
+  behaupten) und ist nach dem naechsten WWS-Update wieder da.
 
 Erreichbarkeit: Die Webhook-URL wird aus dem **Backend-Container** aufgerufen,
 nicht vom Host — anderer DNS, anderer Zertifikatsspeicher. Test ohne Redeploy:

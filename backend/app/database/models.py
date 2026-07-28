@@ -683,8 +683,10 @@ class SystemUpdateRunRecord(Base):
     mit Token), das GitHub-Token oder sonstige Secrets. ``error_details``
     enthaelt nur eine technische, secret-freie Kurzbeschreibung.
 
-    Neue Tabelle -> wird beim Startup per ``Base.metadata.create_all`` angelegt;
-    es ist kein Spalten-Patch in ``session.py`` noetig.
+    Die Tabelle entsteht beim Startup per ``Base.metadata.create_all``. Spaeter
+    ergaenzte Spalten (``source_build_time``/``detected_build_time``) brauchen
+    dagegen einen Eintrag in ``_NEW_COLUMNS`` in ``database/session.py`` —
+    ``create_all`` aendert bestehende Tabellen nicht.
     """
 
     __tablename__ = "system_update_runs"
@@ -706,6 +708,12 @@ class SystemUpdateRunRecord(Base):
     # Nach dem Neustart tatsaechlich laufender Commit — Grundlage der
     # Erfolgs-/Fehlerbewertung.
     detected_commit_after_restart: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Buildzeit des Images beim Ausloesen bzw. nach dem Neustart. Unter Portainer
+    # ist das der einzige verlaessliche Beleg, dass der Redeploy gegriffen hat:
+    # Der Commit steht dort im Image nicht (Checkout ohne .git), die Buildzeit
+    # aber immer. Aendert sie sich, laeuft ein neu gebautes Image.
+    source_build_time: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    detected_build_time: Mapped[str | None] = mapped_column(String(40), nullable=True)
     # Dateiname des Pre-Update-Backups im persistenten Datenverzeichnis
     # (kein absoluter Pfad — der ist umgebungsabhaengig).
     backup_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)

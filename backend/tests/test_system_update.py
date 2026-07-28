@@ -29,7 +29,7 @@ from fastapi.testclient import TestClient
 
 from app.config.build_info import BuildInfo
 from app.config.settings import Settings
-from app.database.models import SystemUpdateRunRecord
+from app.database.models import SystemSettingRecord, SystemUpdateRunRecord
 from app.database.session import SessionLocal
 from app.main import app
 from app.services import backup_service, system_update_service
@@ -122,18 +122,47 @@ def _clean_state():
     system_update_check_rate_limiter.reset_all()
 
 
+def _image_info(commit=None, branch=None, build_time=None) -> BuildInfo:
+    return BuildInfo(
+        commit=commit,
+        branch=branch,
+        build_time=build_time,
+        source="file" if commit else "unknown",
+    )
+
+
+def _use_image_info(monkeypatch: pytest.MonkeyPatch, info: BuildInfo) -> None:
+    """Ersetzt beide Sichten auf die Build-Metadaten des laufenden Images."""
+    monkeypatch.setattr(system_update_service, "get_image_build_info", lambda: info)
+    monkeypatch.setattr(system_update_service, "get_build_info", lambda: info)
+
+
 @pytest.fixture(autouse=True)
 def _no_baked_build_info(monkeypatch: pytest.MonkeyPatch):
     """Die beim Image-Build erzeugte build_info.json aus den Tests heraushalten.
 
     Sonst haenge das Ergebnis davon ab, ob im Arbeitsverzeichnis zufaellig eine
-    solche Datei liegt. Der Datei-Fallback selbst wird unten gezielt geprueft.
+    solche Datei liegt. Datei- und Buildzeit-Pfad werden unten gezielt geprueft.
     """
-    monkeypatch.setattr(
-        system_update_service,
-        "get_build_info",
-        lambda: BuildInfo(commit=None, branch=None, build_time=None, source="unknown"),
-    )
+    _use_image_info(monkeypatch, _image_info())
+
+
+@pytest.fixture(autouse=True)
+def _clean_confirmed_version():
+    """Die bestaetigte Version ist Prozesszustand — zwischen Tests zuruecksetzen."""
+    with SessionLocal() as db:
+        db.query(SystemSettingRecord).filter_by(
+            key=system_update_service.CONFIRMED_VERSION_KEY
+        ).delete()
+        db.commit()
+    system_update_service._confirmed_version = None
+    yield
+    with SessionLocal() as db:
+        db.query(SystemSettingRecord).filter_by(
+            key=system_update_service.CONFIRMED_VERSION_KEY
+        ).delete()
+        db.commit()
+    system_update_service._confirmed_version = None
 
 
 @pytest.fixture()
@@ -729,25 +758,123 @@ def test_start_update_without_build_metadata_calls_plain_webhook(
 def test_target_version_from_webhook_makes_restart_check_succeed(
     monkeypatch, fake_requests, backup_dir
 ):
-    """Der Vollkreis: Was Portainer mitgegeben wird, bestaetigt spaeter den Erfolg.
-
-    Ohne diesen Parameter kaeme der neue Container unter Portainer ohne
-    Commit-Kenntnis hoch (kein ``.git`` im Checkout) und der Lauf wuerde als
-    fehlgeschlagen bewertet, obwohl das Update sauber lief.
-    """
+    """Der Vollkreis, wenn die Zielversion im Image ankommt (klassischer Webhook)."""
     _use_settings(monkeypatch)
     client = TestClient(app)
     assert client.post("/api/admin/system/update", headers=_admin(client)).status_code == 202
 
     # Genau dieser Wert landet als Stack-Variable im neu gebauten Image.
     baked = _query_of(fake_requests.post_calls[0])["APP_GIT_COMMIT"]
-    after_restart = _settings(app_git_commit=baked)
+    _use_image_info(monkeypatch, _image_info(commit=baked, branch="main", build_time="t2"))
 
     with SessionLocal() as db:
-        assert system_update_service.reconcile_pending_runs(db, after_restart) == 1
+        assert system_update_service.reconcile_pending_runs(db, _settings()) == 1
         run = db.query(SystemUpdateRunRecord).order_by(SystemUpdateRunRecord.id.desc()).first()
         assert run.status == "success"
         assert run.detected_commit_after_restart == LATEST_COMMIT
+
+
+# --- Erfolg ueber die Buildzeit (Portainer ohne .git) --------------------------
+
+
+def _run_update_and_restart(
+    monkeypatch, client, *, build_time_before: str, build_time_after: str | None
+):
+    """Loest ein Update aus und simuliert den Neustart mit neuem/gleichem Image."""
+    _use_image_info(monkeypatch, _image_info(build_time=build_time_before))
+    assert client.post("/api/admin/system/update", headers=_admin(client)).status_code == 202
+    _use_image_info(monkeypatch, _image_info(build_time=build_time_after))
+    with SessionLocal() as db:
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=None))
+        return db.query(SystemUpdateRunRecord).order_by(SystemUpdateRunRecord.id.desc()).first()
+
+
+def test_new_build_time_confirms_update_without_known_commit(
+    monkeypatch, fake_requests, backup_dir
+):
+    """Portainer liefert keinen Commit ins Image — der neue Build ist der Beleg."""
+    _use_settings(monkeypatch, app_git_commit=None)
+    client = TestClient(app)
+    run = _run_update_and_restart(
+        monkeypatch, client, build_time_before="2026-07-27T20:00:00Z",
+        build_time_after="2026-07-27T21:00:00Z",
+    )
+    assert run.status == "success"
+    assert run.detected_commit_after_restart == LATEST_COMMIT
+    assert run.source_build_time == "2026-07-27T20:00:00Z"
+    assert run.detected_build_time == "2026-07-27T21:00:00Z"
+    assert "Build" in run.message
+
+
+def test_unchanged_build_time_is_never_reported_as_success(
+    monkeypatch, fake_requests, backup_dir
+):
+    """Gleiches Image nach dem Neustart = kein Redeploy = kein Erfolg."""
+    _use_settings(monkeypatch, app_git_commit=None)
+    client = TestClient(app)
+    run = _run_update_and_restart(
+        monkeypatch, client, build_time_before="2026-07-27T20:00:00Z",
+        build_time_after="2026-07-27T20:00:00Z",
+    )
+    assert run.status == "failed"
+    assert run.error_details == "installed_version_unknown"
+
+
+def test_confirmed_version_becomes_the_installed_version(
+    monkeypatch, fake_requests, backup_dir
+):
+    """Nach dem bestaetigten Update meldet die Anwendung den Zielcommit."""
+    _use_settings(monkeypatch, app_git_commit=None)
+    client = TestClient(app)
+    _run_update_and_restart(
+        monkeypatch, client, build_time_before="2026-07-27T20:00:00Z",
+        build_time_after="2026-07-27T21:00:00Z",
+    )
+    assert system_update_service.installed_commit(_settings(app_git_commit=None)) == LATEST_COMMIT
+
+    body = client.get("/api/admin/system/version", headers=_admin(client)).json()
+    assert body["installedCommit"] == LATEST_COMMIT
+
+
+def test_confirmed_version_expires_when_the_image_changes(
+    monkeypatch, fake_requests, backup_dir
+):
+    """Ein Rebuild ausserhalb des WWS macht die Anzeige unbekannt, nicht falsch."""
+    _use_settings(monkeypatch, app_git_commit=None)
+    client = TestClient(app)
+    _run_update_and_restart(
+        monkeypatch, client, build_time_before="2026-07-27T20:00:00Z",
+        build_time_after="2026-07-27T21:00:00Z",
+    )
+    # Jemand rollt den Stack direkt in Portainer neu aus -> anderes Image.
+    _use_image_info(monkeypatch, _image_info(build_time="2026-07-27T22:00:00Z"))
+    assert system_update_service.installed_commit(_settings(app_git_commit=None)) is None
+
+
+def test_confirmed_version_survives_a_restart(monkeypatch, fake_requests, backup_dir):
+    """Der Wert liegt in der Datenbank und wird beim Start wieder geladen."""
+    _use_settings(monkeypatch, app_git_commit=None)
+    client = TestClient(app)
+    _run_update_and_restart(
+        monkeypatch, client, build_time_before="2026-07-27T20:00:00Z",
+        build_time_after="2026-07-27T21:00:00Z",
+    )
+    # Prozessneustart simulieren: Nur die DB bleibt.
+    system_update_service._confirmed_version = None
+    assert system_update_service.installed_commit(_settings(app_git_commit=None)) is None
+    with SessionLocal() as db:
+        system_update_service.load_confirmed_version(db)
+    assert system_update_service.installed_commit(_settings(app_git_commit=None)) == LATEST_COMMIT
+
+
+def test_broken_confirmed_version_is_ignored(monkeypatch):
+    with SessionLocal() as db:
+        db.add(
+            SystemSettingRecord(key=system_update_service.CONFIRMED_VERSION_KEY, value="kein json")
+        )
+        db.commit()
+        system_update_service.load_confirmed_version(db)
+    assert system_update_service.confirmed_commit() is None
 
 
 # --- Secrets ------------------------------------------------------------------
@@ -784,34 +911,35 @@ def test_logs_never_contain_webhook_or_token(monkeypatch, fake_requests, backup_
 
 
 def test_installed_commit_falls_back_to_baked_build_info(monkeypatch):
-    """Ohne APP_GIT_COMMIT zaehlt der beim Image-Build ermittelte Commit."""
-    monkeypatch.setattr(
-        system_update_service,
-        "get_build_info",
-        lambda: BuildInfo(commit=LATEST_COMMIT, branch="main", build_time="t", source="file"),
-    )
+    """Ohne andere Quelle zaehlt der beim Image-Build ermittelte Commit."""
+    _use_image_info(monkeypatch, _image_info(commit=LATEST_COMMIT, branch="main", build_time="t"))
     settings = _settings(app_git_commit=None)
     assert system_update_service.installed_commit(settings) == LATEST_COMMIT
 
 
-def test_explicit_env_commit_overrides_baked_build_info(monkeypatch):
-    monkeypatch.setattr(
-        system_update_service,
-        "get_build_info",
-        lambda: BuildInfo(commit=LATEST_COMMIT, branch="main", build_time="t", source="file"),
-    )
+def test_baked_build_info_wins_over_env_commit(monkeypatch):
+    """Der aus dem echten .git abgeleitete Commit schlaegt die ENV-Angabe.
+
+    Die Datei ist per Konstruktion korrekt, die Variable ist eine Behauptung,
+    die mit dem naechsten Redeploy veralten kann.
+    """
+    _use_image_info(monkeypatch, _image_info(commit=LATEST_COMMIT, branch="main", build_time="t"))
+    settings = _settings(app_git_commit=INSTALLED_COMMIT)
+    assert system_update_service.installed_commit(settings) == LATEST_COMMIT
+
+
+def test_env_commit_applies_without_image_metadata(monkeypatch):
+    """Deploy ganz ohne Git-Kontext (git archive): Nur die ENV-Angabe bleibt."""
+    _use_image_info(monkeypatch, _image_info())
     settings = _settings(app_git_commit=INSTALLED_COMMIT)
     assert system_update_service.installed_commit(settings) == INSTALLED_COMMIT
 
 
 def test_version_endpoint_uses_baked_build_info(monkeypatch, fake_requests):
     _use_settings(monkeypatch, app_git_commit=None, app_git_branch=None, app_build_time=None)
-    monkeypatch.setattr(
-        system_update_service,
-        "get_build_info",
-        lambda: BuildInfo(
-            commit=LATEST_COMMIT, branch="main", build_time="2026-07-27T09:00:00Z", source="file"
-        ),
+    _use_image_info(
+        monkeypatch,
+        _image_info(commit=LATEST_COMMIT, branch="main", build_time="2026-07-27T09:00:00Z"),
     )
     client = TestClient(app)
     body = client.get("/api/admin/system/version", headers=_admin(client)).json()

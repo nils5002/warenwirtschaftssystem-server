@@ -169,6 +169,10 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # On-Site-Verantwortlicher je Planung. Nullable -> Bestandsplanungen
     # verhalten sich unveraendert (keine Zuweisung).
     ("planning", "on_site_responsible_user_id", "VARCHAR(64)"),
+    # Buildzeit des Images vor/nach einem Systemupdate. Nullable -> Altlaeufe
+    # bleiben unveraendert und werden weiter ueber den Commit bewertet.
+    ("system_update_runs", "source_build_time", "VARCHAR(40)"),
+    ("system_update_runs", "detected_build_time", "VARCHAR(40)"),
 )
 
 

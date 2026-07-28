@@ -68,6 +68,26 @@ def _read_file() -> dict:
 
 
 @lru_cache
+def get_image_build_info() -> BuildInfo:
+    """Nur die Angaben aus ``build_info.json`` — ohne ENV-Ueberschreibung.
+
+    Die Buildzeit dieser Datei ist die **Identitaet des laufenden Images**: Sie
+    aendert sich bei jedem Neubau und ist auch dann vorhanden, wenn der Commit
+    unbekannt bleibt (Portainer checkt ohne ``.git`` aus). Genau darauf stuetzt
+    sich die Erfolgspruefung nach einem Redeploy
+    (``services/system_update_service``).
+    """
+    data = _read_file()
+    commit = _clean_commit(data.get("commit"))
+    return BuildInfo(
+        commit=commit,
+        branch=(data.get("branch") or "").strip() or None,
+        build_time=(data.get("buildTime") or "").strip() or None,
+        source="file" if commit else "unknown",
+    )
+
+
+@lru_cache
 def get_build_info() -> BuildInfo:
     settings = get_settings()
     env_commit = _clean_commit(settings.app_git_commit)

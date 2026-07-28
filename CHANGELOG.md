@@ -32,6 +32,18 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   `APP_GIT_BRANCH` bleiben unter Portainer gesetzt und werden beim Update
   automatisch aktualisiert; `APP_BUILD_TIME` ist eine reine Überschreibung.
 
+- Erfolgsnachweis über die **Buildzeit**: Lässt sich der laufende Commit nicht
+  feststellen (Portainer checkt Git-Stacks ohne `.git` aus, und der
+  GitOps-Webhook übernimmt entgegen der Dokumentation keine Query-Parameter),
+  belegt eine geänderte Buildzeit in `build_info.json`, dass der Redeploy
+  gegriffen hat. Der Zielcommit wird danach als bestätigte Version gespeichert
+  und gilt, solange ein Image mit dieser Buildzeit läuft — danach gilt die
+  Version wieder als unbekannt statt veraltet. Neue Spalten
+  `system_update_runs.source_build_time` / `.detected_build_time` (idempotenter
+  Startup-Patch).
+- Reihenfolge der Versionsermittlung neu: `build_info.json` → bestätigte Version
+  aus der Datenbank → `APP_GIT_COMMIT`. Die von Hand gepflegte Variable steht
+  bewusst hinten, weil sie mit dem nächsten Redeploy veraltet.
 - Verbindungsfehler beim Redeploy werden benannt statt pauschal als „nicht
   erreichbar" gemeldet: TLS-Zertifikat, Zeitüberschreitung, ungültige URL und
   fehlende Route sind jetzt unterscheidbar. Die URL bleibt in Meldung und Log

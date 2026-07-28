@@ -270,6 +270,10 @@ def create_app() -> FastAPI:
             try:
                 from .services import system_update_service
 
+                # Zuerst die bestaetigte Version laden: Sie beantwortet unter
+                # Portainer die Frage, welcher Commit im laufenden Image steckt,
+                # und wird von der folgenden Auswertung mitbenutzt.
+                system_update_service.load_confirmed_version(db)
                 system_update_service.reconcile_pending_runs(db, settings)
             except Exception:  # noqa: BLE001
                 logger.exception("Auswertung offener Systemupdates fehlgeschlagen — App startet trotzdem")
