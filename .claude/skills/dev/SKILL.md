@@ -7,15 +7,16 @@ description: App lokal starten (Backend + Frontend) — mit den realen Ports, En
 
 ## Realität zuerst (Stand 2026-07)
 
-Die dokumentierten npm-Skripte sind teilweise **kaputt** — nicht blind `npm run dev` ausführen:
-
-- Es existiert **kein venv** (weder `.venv/` im Root noch `backend/.venv/`). Die Skripte
-  `dev:backend` (in `frontend/package.json`) und damit auch `npm run dev` / `npm run dev:local`
-  referenzieren `..\.venv\Scripts\python.exe` und schlagen fehl.
-  Backend-Dependencies sind im **System-Python (3.12)** installiert.
-- `vite.config.ts` liest nur `VITE_PROXY_TARGET` (Default `http://127.0.0.1:8000`).
-  Das in `dev:frontend` gesetzte `VITE_DEV_API_TARGET` wird **ignoriert** — der Proxy geht
-  also immer auf **:8000**, nicht :8010.
+- Es existiert **kein venv** (weder `.venv/` im Root noch `backend/.venv/`).
+  Backend-Dependencies sind im **System-Python (3.12)** installiert. `dev:backend`
+  (in `frontend/package.json`) nimmt `..\.venv\Scripts\python.exe`, falls vorhanden, sonst `python`.
+- `vite.config.ts` nimmt als Proxy-Ziel `VITE_PROXY_TARGET`, sonst `VITE_DEV_API_TARGET`
+  (von `dev:frontend` auf :8010 gesetzt), sonst `http://127.0.0.1:8000`.
+  `npm run dev` ist damit konsistent: Backend :8010, Vite :4173 → Proxy :8010.
+  **Achtung:** `npm run dev` ohne `DATABASE_URL` nutzt die persistente `app.db` → lieber
+  `npm run dev:local` (setzt `app.local.db`) oder den Weg unten.
+- Parallele Task-Worktrees (`<repo>.tasks\<name>`): `task dev` aus dem externen Task Studio
+  (`C:\VS\TaskStudio`, nicht Teil dieses Repos) startet auf eigenen Ports und setzt `VITE_PROXY_TARGET`.
 
 ## Funktionierender Start
 
@@ -34,10 +35,11 @@ AUTH_TOKEN_SECRET=local-dev-secret-change-me \
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Frontend (Vite auf Port **4173**, Proxy `/api` + `/media` → :8000 per Default):
+Frontend (Vite auf Port **4173**, Proxy `/api` + `/media` → :8000 per Default; nicht `dev:frontend`,
+das zielt auf :8010):
 
 ```bash
-npm --prefix frontend run dev:frontend
+cd frontend && npx vite
 ```
 
 - Login danach: `admin@example.com` / `Admin123!`

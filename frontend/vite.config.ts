@@ -5,6 +5,9 @@ const allowedHostsEnv = (process.env.VITE_ALLOWED_HOSTS || '').trim();
 const previewAllowedHosts = allowedHostsEnv
   ? allowedHostsEnv.split(',').map((host) => host.trim()).filter(Boolean)
   : true;
+// Proxy-Ziel (auch fuer vite preview): VITE_PROXY_TARGET (Docker-Build, externes Task Studio, manuell)
+// vor VITE_DEV_API_TARGET (npm run dev:frontend -> :8010).
+const devProxyTarget = process.env.VITE_PROXY_TARGET || process.env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8000';
 
 export default defineConfig({
   plugins: [react()],
@@ -13,11 +16,11 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/api': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+        target: devProxyTarget,
         changeOrigin: true,
       },
       '/media': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+        target: devProxyTarget,
         changeOrigin: true,
       },
     },
