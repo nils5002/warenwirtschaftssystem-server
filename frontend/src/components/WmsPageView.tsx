@@ -18,6 +18,7 @@ import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
 import { SecurityLogsPage } from '../asset-ui/pages/SecurityLogsPage';
 import { EmailSettingsPage } from '../asset-ui/pages/EmailSettingsPage';
+import { AccountPage } from '../asset-ui/pages/AccountPage';
 import { SystemUpdatePage } from '../asset-ui/pages/SystemUpdatePage';
 import { TelecomPassSettingsPage } from '../asset-ui/pages/TelecomPassSettingsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
@@ -47,6 +48,7 @@ type WmsPageViewProps = {
   permissions?: string[];
   currentUserId: string;
   currentUserName: string;
+  currentUserEmail?: string;
   projectContext: string;
   theme: Theme;
   onProjectContextChange: (value: string) => void;
@@ -180,6 +182,7 @@ export function WmsPageView({
   permissions,
   currentUserId,
   currentUserName,
+  currentUserEmail,
   projectContext,
   theme,
   onProjectContextChange,
@@ -576,6 +579,8 @@ export function WmsPageView({
         return renderAccessDenied('Sicherheit & Protokolle nur für Admin / Techniker.');
       }
       return <SecurityLogsPage />;
+    case 'account':
+      return <AccountPage userName={currentUserName} userEmail={currentUserEmail} role={activeRole} />;
     case 'emailSettings':
       // Backstop für direkte URL-Aufrufe: Das Backend prüft zusätzlich Rolle
       // UND Recht mail.manage — dieser Guard ist nur die UI-Bequemlichkeit.

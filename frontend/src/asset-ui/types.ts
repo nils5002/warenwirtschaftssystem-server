@@ -38,7 +38,8 @@ export type AppPage =
   | 'telecomPass'
   | 'securityLogs'
   | 'emailSettings'
-  | 'systemUpdate';
+  | 'systemUpdate'
+  | 'account';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
 

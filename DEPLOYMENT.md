@@ -217,6 +217,69 @@ weder Token noch Bestaetigungs-URL.
   - Enthaelt ein Backup keine SMTP-Sektion, bleibt eine vorhandene
     Konfiguration unangetastet (statt still geloescht zu werden).
 
+## A1b) Warehouse Companion App (Smartphone)
+
+Installierbare PWA derselben Anwendung — gleiche Datenbank, gleiche API,
+gleiche Rollen und Rechte. **Keine neuen ENV-Variablen, keine App-Stores.**
+
+### Voraussetzungen
+- Die WWS-Domain laeuft ueber **HTTPS** (Passkeys und Installation verlangen
+  das; `localhost` ist nur fuer Entwicklung ausgenommen).
+- `FRONTEND_URL` (bzw. die oeffentliche WWS-Adresse in den E-Mail-
+  Einstellungen) entspricht der Adresse, unter der Benutzer das WWS aufrufen —
+  sie bestimmt, von welcher Herkunft Companion-Anfragen und Passkeys
+  akzeptiert werden.
+- Neue Tabellen (`companion_devices`, `companion_pairing_requests`,
+  `companion_passkeys`) entstehen beim Start ueber `init_db`
+  (`DB_AUTO_CREATE_SCHEMA=true`, Default) bzw. Alembic-Revision
+  `20260422_0008`.
+
+### Ablauf fuer Benutzer
+1. Am PC: **Mein Konto → Companion App** aktivieren (standardmaessig aus).
+2. **Neues Geraet verbinden** → QR-Code (120 s gueltig, einmalig).
+3. QR-Code mit dem Smartphone scannen (Kamera oder Scanner in der
+   installierten App). Am PC erscheint die Anfrage mit Geraet und
+   Abgleichcode → **Verbinden**.
+4. Auf dem Smartphone: **Zum Home-Bildschirm hinzufuegen** und
+   **Passkey einrichten** (Entsperren per Face ID/Fingerabdruck/Geraete-PIN —
+   die Methode bestimmt das Betriebssystem).
+5. Geraete einzeln oder alle entfernen: ebenfalls unter Mein Konto.
+
+**iOS-Hinweis:** Safari und die Home-Bildschirm-App haben getrennte Speicher.
+Am zuverlaessigsten: erst installieren, dann in der App ueber
+„QR-Code scannen" koppeln. Wurde in Safari gekoppelt, einmal in der App neu
+verbinden.
+
+### Sicherheitsmodell (Kurzfassung)
+- Der QR-Code enthaelt nur einen kurzlebigen Einmal-Code im URL-Fragment
+  (erscheint in keinem Server-/Proxy-Log). Eine Sitzung entsteht erst nach
+  Bestaetigung durch den angemeldeten PC-Benutzer; Kopplungen koennen nur
+  vom PC (nicht von einem Handy) gestartet und bestaetigt werden.
+- Jedes Geraet hat eine eigene Sitzung: Secret (256 Bit) im HttpOnly-Cookie
+  `wms_device` (`SameSite=Strict`, nur `/api/companion`), in der DB nur als
+  Hash, rotiert bei jeder Erneuerung; Wiederverwendung eines alten Secrets
+  sperrt das Geraet. Access-Tokens der Geraete leben 15 Minuten; jede
+  Anfrage prueft die Geraetezeile — **ein Widerruf wirkt sofort**.
+- Desktop- und Handy-Logout melden sich nicht gegenseitig ab. Passwort-Reset,
+  Rollenwechsel, Deaktivierung/Sperre, „Sitzungen widerrufen" (Admin) und
+  „Companion deaktivieren" beenden alle Geraete des Kontos.
+- Mit Passkey wird das Geraet nach 30 Minuten Inaktivitaet gesperrt — das
+  Backend lehnt dann jede Anfrage dieses Geraets ab, bis eine serverseitig
+  gepruefte Passkey-Bestaetigung (User Verification) vorliegt. Pruefung durch
+  die Bibliothek `webauthn` (py_webauthn); Passkeys sind an genau ein Geraet
+  gebunden.
+- Ohne Passkey (z. B. Browser ohne WebAuthn) gibt es keinen Sperrbildschirm;
+  das Geraet bleibt ueber den PC jederzeit widerrufbar.
+- Backup/Restore: Geraetesitzungen, Kopplungen und Passkeys werden **nie**
+  wiederhergestellt; nach einem Restore muessen Smartphones neu verbunden und
+  Companion pro Konto neu aktiviert werden.
+
+### Service Worker
+`/sw.js` cacht bewusst **weder** die App-Huelle **noch** API-Daten — nur eine
+Offline-Hinweisseite. Neue Deploys sind damit sofort aktiv; fremde/alte
+Service Worker und Caches werden beim Start weiterhin entfernt. Fuer
+`/sw.js` und `/manifest.webmanifest` sind keine besonderen Proxy-Regeln noetig.
+
 ## A2) Systemupdate aus dem WWS (Portainer-Webhook)
 
 Ein Admin kann den Redeploy direkt im WWS starten

@@ -5,6 +5,23 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Warehouse Companion App** (installierbare PWA für iPhone/Android):
+  Smartphone am PC unter *Mein Konto → Companion App* per QR-Code koppeln
+  (120 s, einmalig, Bestätigung am PC mit Abgleichcode), danach ohne
+  Passworteingabe arbeiten — mit denselben Funktionen und Rechten wie am PC.
+  Jedes Gerät ist einzeln und sofort widerrufbar; Companion ist pro Konto
+  standardmäßig aus. Entsperren per Passkey (WebAuthn, Face ID/Fingerabdruck/
+  Geräte-PIN je nach Gerät) mit echter serverseitiger Sperrwirkung nach
+  30 Minuten Inaktivität. Neue Seite *Mein Konto*, öffentliche Seite
+  `/verbinden`, Manifest, Icons und ein Service Worker, der bewusst weder
+  App-Hülle noch API-Daten cacht.
+- Mobile Oberfläche: untere Navigation *Start · Planung · Inventar · Scannen ·
+  Mehr* (alle weiteren, rollenabhängigen Bereiche im *Mehr*-Panel); behoben:
+  Viewport-Blowout der Inventar-Karten bei langen Gerätenamen und der
+  QR-Funktionen-Eingabezeile; größere Touch-Flächen (≥ 44 px) in Benutzer-,
+  Update-Notizen- und Fremdbestand-Ansicht.
+- Neue Abhängigkeiten: `webauthn` (Backend), `@simplewebauthn/browser`
+  (Frontend). Alembic-Revision `20260422_0008`.
 - **SMTP-Verwaltung im Adminbereich** (`Administration → E-Mail-Einstellungen`):
   Statuskarte, SMTP-Konfiguration, Verbindungstest, echte Test-E-Mail und die
   Auswahl des Registrierungsverfahrens — alles in der Anwendung, ohne
@@ -90,6 +107,11 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   `email_verified_at`; Alembic-Revision `20260420_0006`.
 
 ### Geändert
+- Ein Logout der Mobile-API (`/api/mobile/auth/logout`) hat bisher auch alle
+  Browser-Sitzungen desselben Benutzers beendet; Desktop- und Geräte-Logout
+  sind jetzt getrennt (Sicherheitsereignisse beenden weiterhin alles).
+- Der Profil-Button in der Kopfleiste öffnet jetzt *Mein Konto* (bisher
+  Benutzerverwaltung bzw. Dashboard).
 - `POST /api/auth/register` arbeitet nach dem aktiven Verfahren und liefert
   `verificationRequired` mit. Im klassischen Verfahren wird keine E-Mail
   versendet und kein Mail-Hinweis angezeigt.

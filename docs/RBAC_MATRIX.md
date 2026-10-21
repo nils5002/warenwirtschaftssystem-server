@@ -61,6 +61,11 @@ Legende: `erlaubt` = voll, `eingeschränkt` = nur Teilfunktionen, `nicht erlaubt
 - Projektmanager: CRUD im eigenen Scope erlaubt.
 - Mitarbeiter: Lesen nur mit Projektkontext; Erstellen/Bearbeiten/Status/Duplizieren/Löschen geblockt.
 
+### `/api/companion` (Companion App)
+- Alle Rollen: nur **eigene** Einstellungen und Geräte (fremde Geräte/Kopplungen → `404`).
+- Kopplung starten/bestätigen nur aus einer Browser-Sitzung am PC, nie von einem gekoppelten Gerät (`403`).
+- Gekoppelte Geräte nutzen die bestehenden Endpunkte mit exakt den Rechten der Rolle — keine Sonderrechte.
+
 ### `/api/wms/maintenance`
 - Admin: voll.
 - Projektmanager: erstellen/bearbeiten erlaubt.

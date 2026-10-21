@@ -1447,20 +1447,22 @@ export function AssetsPage({
             </div>
           </div>
 
-          <div className={`grid gap-3 ${isMobile ? '' : 'lg:hidden'}`}>
+          {/* grid-cols-1 = minmax(0, 1fr): ohne feste Spalte waechst die Karte
+              mit langen Geraetenamen ueber die Bildschirmbreite (Viewport-Blowout). */}
+          <div className={`grid grid-cols-1 gap-3 ${isMobile ? '' : 'lg:hidden'}`}>
           {filteredAssets.map((asset) => (
-            <article key={asset.id} className="surface-muted p-3">
+            <article key={asset.id} className="surface-muted min-w-0 p-3">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-start gap-3">
                     <AssetImage
                       asset={asset}
                       categoryImageUrl={resolveCategoryDefaultImageUrl(asset.category, backendCategories)}
                       size="sm"
                     />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <h4 className="truncate text-sm font-semibold text-ink">{asset.name}</h4>
+                    <h4 className="max-w-full truncate text-sm font-semibold text-ink">{asset.name}</h4>
                     {asset.availableForPlanning === false ? (
                       <span
                         className="inline-flex items-center rounded-full border border-white/10 bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-ink-muted"

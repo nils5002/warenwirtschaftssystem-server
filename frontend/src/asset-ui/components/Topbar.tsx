@@ -49,6 +49,7 @@ const PAGE_GROUP_MAP: Record<AppPage, string> = {
   securityLogs: 'Verwaltung',
   emailSettings: 'System',
   systemUpdate: 'System',
+  account: 'Konto',
 };
 
 const ICON_BUTTON =

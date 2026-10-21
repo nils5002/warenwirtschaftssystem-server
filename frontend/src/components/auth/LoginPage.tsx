@@ -389,6 +389,13 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                 )}
               </button>
             </form>
+            {/* Companion App: Smartphone ohne Passworteingabe über den PC verbinden. */}
+            <a
+              href="/verbinden"
+              className="mt-4 flex min-h-[44px] items-center justify-center rounded-xl text-sm font-medium text-primary hover:underline"
+            >
+              Smartphone per QR-Code mit dem Konto verbinden
+            </a>
               </>
             )}
           </div>

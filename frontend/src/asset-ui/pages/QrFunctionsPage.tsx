@@ -52,16 +52,17 @@ export function QrFunctionsPage({
       <article className="surface-card animate-fade-up">
         <label className="field">
           QR-Scanwert oder Inventarnummer
-          <div className="flex gap-2">
+          {/* Mobil: Feld volle Breite, Aktionen darunter (keine gesprengte Zeile). */}
+          <div className="flex flex-wrap gap-2 sm:flex-nowrap">
             <input
-              className="field-input"
+              className="field-input min-w-0 basis-full sm:basis-auto sm:flex-1"
               value={scanInput}
               onChange={(event) => setScanInput(event.target.value)}
               placeholder="z. B. WMS|asset-...|IMP-... oder Seriennummer"
             />
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:flex-none sm:shrink-0"
               onClick={() => {
                 void detectScan();
               }}
@@ -71,7 +72,7 @@ export function QrFunctionsPage({
             </button>
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 hover:bg-slate-100 sm:flex-none sm:shrink-0"
               onClick={() => setScannerOpen(true)}
             >
               <Camera className="h-3.5 w-3.5" />

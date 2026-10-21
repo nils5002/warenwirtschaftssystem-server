@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#050b16" />
+    <title>Keine Verbindung · Warehouse</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #050b16; --fg: #e6edf7; --muted: #94a3b8; --primary: #2f7df6; }
+      @media (prefers-color-scheme: light) { :root { --bg: #e9eef5; --fg: #0f172a; --muted: #475569; } }
+      body {
+        margin: 0; min-height: 100dvh; display: grid; place-items: center;
+        background: var(--bg); color: var(--fg);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+      }
+      main { max-width: 22rem; text-align: center; }
+      img { width: 64px; height: 64px; }
+      h1 { font-size: 1.25rem; margin: 1rem 0 .5rem; }
+      p { color: var(--muted); margin: 0 0 1.5rem; }
+      button {
+        min-height: 48px; width: 100%; border: 0; border-radius: 12px;
+        background: var(--primary); color: #fff; font: inherit; font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/pwa-192.png" alt="" />
+      <h1>Keine Verbindung zum Warehouse-System</h1>
+      <p>
+        Buchungen, Scans und Daten brauchen eine Internetverbindung. Es wurde nichts
+        gespeichert oder vorgemerkt. Bitte Verbindung prüfen und erneut versuchen.
+      </p>
+      <button type="button" onclick="location.reload()">Erneut versuchen</button>
+    </main>
+  </body>
+</html>

@@ -1,11 +1,16 @@
+import { MoreHorizontal, ScanLine } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './asset-ui/components/Sidebar';
 import { Topbar } from './asset-ui/components/Topbar';
 import { UpdateNotesModal } from './asset-ui/components/UpdateNotesModal';
 import { EmailVerificationPage } from './components/auth/EmailVerificationPage';
+import { CompanionLockScreen } from './components/companion/CompanionLockScreen';
+import { CompanionPairPage } from './components/companion/CompanionPairPage';
+import { isCompanionPairPath } from './components/companion/companionPairing';
 import { isVerifyEmailPath } from './components/auth/emailVerification';
 import { LoginPage, type RegisterOutcome } from './components/auth/LoginPage';
 import { InlineLoadingState } from './components/loading';
+import { MobileMoreSheet } from './components/MobileMoreSheet';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
 import { canAccessPage } from './config/pageAccess';
@@ -19,6 +24,7 @@ import {
   login,
   logout,
   register,
+  setCompanionLockedHandler,
   setUnauthorizedHandler,
   type AuthUser,
 } from './services/wmsApi';
@@ -37,6 +43,11 @@ function App() {
   // Einmalige Meldung nach einem Guard-Redirect (z. B. Mitarbeiter öffnet
   // /benutzer per Deep-Link) — statt einer weißen Seite oder stillem Sprung.
   const [accessNotice, setAccessNotice] = useState<string | null>(null);
+  // Companion-Gerät gesperrt (Passkey-Entsperrung nötig). Das Backend lehnt
+  // in diesem Zustand jede Anfrage dieses Geräts ab — der Sperrbildschirm
+  // ersetzt die gesamte App, damit keine geschützten Daten sichtbar bleiben.
+  const [companionLocked, setCompanionLocked] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   const activeRole = authUser?.role ?? 'Mitarbeiter';
   const isAuthenticated = !!authUser;
@@ -45,6 +56,8 @@ function App() {
   // Post-Login-Deep-Link gemerkt oder auf /login umgelenkt werden.
   const location = useAppLocation();
   const isPublicVerifyRoute = isVerifyEmailPath(location.pathname);
+  // Öffentliche Kopplungsseite der Companion App (QR-Code vom PC).
+  const isPublicPairRoute = isCompanionPairPath(location.pathname);
   const isMobile = useIsMobile();
   const controller = useWmsController({
     activeRole,
@@ -86,7 +99,13 @@ function App() {
     setUnauthorizedHandler(() => {
       setAuthUser(null);
     });
-    return () => setUnauthorizedHandler(null);
+    setCompanionLockedHandler(() => {
+      setCompanionLocked(true);
+    });
+    return () => {
+      setUnauthorizedHandler(null);
+      setCompanionLockedHandler(null);
+    };
   }, []);
 
   const visibleNavigation = useMemo(
@@ -125,8 +144,9 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || authBooting) return;
-    // Bestätigungsseite ist öffentlich — hier greift kein Auth-Redirect.
-    if (isPublicVerifyRoute) return;
+    // Bestätigungs- und Kopplungsseite sind öffentlich — kein Auth-Redirect.
+    // Gesperrtes Companion-Gerät: Ziel-URL behalten, bis entsperrt ist.
+    if (isPublicVerifyRoute || isPublicPairRoute || companionLocked) return;
     const currentPath = normalizePathname(window.location.pathname);
 
     if (!isAuthenticated) {
@@ -166,18 +186,23 @@ function App() {
     if (currentPath === '/login' || currentPath === '/') {
       navigate('/dashboard', { replace: true });
     }
-  }, [authBooting, isAuthenticated, isPublicVerifyRoute]);
+  }, [authBooting, isAuthenticated, isPublicVerifyRoute, isPublicPairRoute, companionLocked]);
 
   const activeItem = visibleNavigation.find((item) => item.key === controller.activePage);
-  const mobileNavItems = visibleNavigation.filter((item) =>
-    ['dashboard', 'checkinCheckout', 'inventory', 'planning', 'tickets'].includes(item.key),
+  // Untere Navigation (mobil): vier Hauptpunkte, alles Weitere unter "Mehr".
+  // Reihenfolge = Bedeutung im Lageralltag; welche davon erscheinen, entscheidet
+  // weiterhin die Rolle (z. B. kein "Scannen" für Projektmanager).
+  const MOBILE_PRIMARY: AppPage[] = ['dashboard', 'planning', 'inventory', 'checkinCheckout'];
+  const mobileNavItems = MOBILE_PRIMARY.map((key) => visibleNavigation.find((item) => item.key === key)).filter(
+    (item): item is (typeof visibleNavigation)[number] => Boolean(item),
   );
+  const mobileMoreItems = visibleNavigation.filter((item) => !MOBILE_PRIMARY.includes(item.key));
+  const mobileMoreActive = mobileMoreItems.some((item) => item.key === controller.activePage);
   const mobileNavLabelMap: Record<string, string> = {
     dashboard: 'Start',
-    checkinCheckout: 'Scan',
+    checkinCheckout: 'Scannen',
     inventory: 'Inventar',
     planning: 'Planung',
-    tickets: 'Defekte',
   };
   const sidebarStats = {
     availableAssets: controller.assets.filter((asset) => asset.status === 'Verfügbar').length,
@@ -233,6 +258,22 @@ function App() {
   // geprüft"-Zwischenschritt, kein Login-Flackern).
   if (isPublicVerifyRoute) {
     return <EmailVerificationPage />;
+  }
+
+  if (isPublicPairRoute) {
+    return <CompanionPairPage />;
+  }
+
+  if (companionLocked) {
+    return (
+      <CompanionLockScreen
+        onUnlocked={(user) => {
+          setCompanionLocked(false);
+          setAuthUser(user);
+          setAuthBooting(false);
+        }}
+      />
+    );
   }
 
   if (authBooting) {
@@ -308,6 +349,7 @@ function App() {
               permissions={authUser.permissions}
               currentUserId={authUser.userId}
               currentUserName={authUser.name}
+              currentUserEmail={authUser.email}
               projectContext={controller.projectContext}
               theme={controller.theme}
               onProjectContextChange={controller.setProjectContext}
@@ -363,8 +405,8 @@ function App() {
           </div>
         </main>
         {isMobile ? (
-          <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
-            <div className="grid grid-cols-5 gap-2">
+          <nav aria-label="Hauptnavigation" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${mobileNavItems.length + 1}, minmax(0, 1fr))` }}>
               {mobileNavItems.map((item) => {
                 const active = controller.activePage === item.key;
                 return (
@@ -376,15 +418,39 @@ function App() {
                         ? 'bg-primary-soft text-primary'
                         : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
                     }`}
+                    aria-current={active ? 'page' : undefined}
                     onClick={() => controller.setActivePage(item.key)}
                   >
-                    <item.icon className="h-5 w-5" />
+                    {item.key === 'checkinCheckout' ? <ScanLine className="h-5 w-5" /> : <item.icon className="h-5 w-5" />}
                     <span className="mt-1 truncate">{mobileNavLabelMap[item.key] ?? item.label}</span>
                   </button>
                 );
               })}
+              <button
+                type="button"
+                className={`flex min-h-[52px] flex-col items-center justify-center rounded-xl px-1 text-[10px] font-semibold leading-tight transition ${
+                  mobileMoreActive || mobileMoreOpen
+                    ? 'bg-primary-soft text-primary'
+                    : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+                }`}
+                aria-haspopup="dialog"
+                aria-expanded={mobileMoreOpen}
+                onClick={() => setMobileMoreOpen(true)}
+              >
+                <MoreHorizontal className="h-5 w-5" />
+                <span className="mt-1 truncate">Mehr</span>
+              </button>
             </div>
           </nav>
+        ) : null}
+        {isMobile && mobileMoreOpen ? (
+          <MobileMoreSheet
+            items={mobileMoreItems}
+            activePage={controller.activePage}
+            onSelect={controller.setActivePage}
+            onClose={() => setMobileMoreOpen(false)}
+            onLogout={() => void handleLogout()}
+          />
         ) : null}
       </div>
     </div>

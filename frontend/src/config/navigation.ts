@@ -19,6 +19,7 @@ import {
   Sparkles,
   TriangleAlert,
   UserCircle2,
+  UserCog,
 } from 'lucide-react';
 
 import type { NavItem } from '../asset-ui/types';
@@ -163,5 +164,12 @@ export const navigation: NavItem[] = [
     icon: RefreshCw,
     group: 'administration',
     hint: 'Neue Version einspielen',
+  },
+  {
+    key: 'account',
+    label: 'Mein Konto',
+    icon: UserCog,
+    group: 'operations',
+    hint: 'Profil & Companion App',
   },
 ];

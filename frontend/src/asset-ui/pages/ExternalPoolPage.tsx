@@ -743,7 +743,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
           <p className="text-xs text-slate-500">{filtered.length} von {externalAssets.length} angezeigt</p>
           <button
             type="button"
-            className="text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] px-2 text-xs font-semibold text-brand-700 hover:underline dark:text-brand-300 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:px-0"
             onClick={toggleSelectAllFiltered}
             disabled={filtered.length === 0}
           >

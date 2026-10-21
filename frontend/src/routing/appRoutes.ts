@@ -21,6 +21,7 @@ const CANONICAL_PAGE_PATHS: Record<AppPage, string> = {
   securityLogs: '/sicherheit-protokolle',
   emailSettings: '/e-mail-einstellungen',
   systemUpdate: '/systemupdate',
+  account: '/konto',
   assetDetail: '/inventar',
 };
 
@@ -90,6 +91,11 @@ const PATH_ALIASES: Record<string, AppPage> = {
   '/e-mail-einstellungen': 'emailSettings',
   '/email-einstellungen': 'emailSettings',
   '/smtp': 'emailSettings',
+
+  '/konto': 'account',
+  '/mein-konto': 'account',
+  '/profil': 'account',
+  '/einstellungen': 'account',
 };
 
 function safeDecode(value: string): string {

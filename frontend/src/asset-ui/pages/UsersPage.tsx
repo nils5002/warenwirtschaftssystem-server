@@ -838,7 +838,7 @@ export function UsersPage({
                       >
                         <ShieldAlert className="h-3.5 w-3.5" />
                       </button>
-                      <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
+                      <button type="button" className="btn-secondary min-h-[44px] px-2.5 py-1.5 text-xs md:min-h-0" onClick={() => openEdit(user)}>
                         Bearbeiten
                       </button>
                       <LoadingButton
@@ -949,7 +949,7 @@ export function UsersPage({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className="btn-secondary px-2.5 py-1.5 text-xs"
+                  className="btn-secondary min-h-[44px] px-2.5 py-1.5 text-xs md:min-h-0"
                   onClick={() => void openSecurityDetails(user)}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -957,13 +957,13 @@ export function UsersPage({
                     Sicherheitsdetails
                   </span>
                 </button>
-                <button type="button" className="btn-secondary px-2.5 py-1.5 text-xs" onClick={() => openEdit(user)}>
+                <button type="button" className="btn-secondary min-h-[44px] px-2.5 py-1.5 text-xs md:min-h-0" onClick={() => openEdit(user)}>
                   Bearbeiten
                 </button>
               </div>
               <LoadingButton
                 type="button"
-                className="btn-secondary mt-2 border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="btn-secondary mt-2 min-h-[44px] border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60 md:min-h-0"
                 onClick={() => {
                   void removeUser(user);
                 }}

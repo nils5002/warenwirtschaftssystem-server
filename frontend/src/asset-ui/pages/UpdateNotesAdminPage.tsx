@@ -310,7 +310,7 @@ export function UpdateNotesAdminPage() {
                   />
                   <button
                     type="button"
-                    className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-200"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-200 md:min-h-0 md:min-w-0"
                     onClick={() => removeItem(index)}
                     aria-label="Punkt entfernen"
                     title="Punkt entfernen"
@@ -320,7 +320,7 @@ export function UpdateNotesAdminPage() {
                 </div>
               ))}
             </div>
-            <button type="button" className="btn-secondary mt-2 inline-flex items-center gap-1 px-2.5 py-1 text-xs" onClick={addItem}>
+            <button type="button" className="btn-secondary mt-2 inline-flex min-h-[44px] items-center gap-1 px-2.5 py-1 text-xs md:min-h-0" onClick={addItem}>
               <Plus className="h-3.5 w-3.5" /> Punkt hinzufügen
             </button>
           </div>

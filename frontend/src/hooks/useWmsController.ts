@@ -1490,7 +1490,8 @@ export function useWmsController(options: UseWmsControllerOptions) {
   };
 
   const openProfile = () => {
-    setActivePage(activeRole === 'Admin' ? 'users' : 'dashboard');
+    // Eigene Kontoeinstellungen (Profil + Companion App) — für jede Rolle.
+    setActivePage('account');
   };
 
   const setProjectContext = (value: string) => {

@@ -47,6 +47,8 @@ export type AuthUser = {
   // Effektive Rechte-Keys der Rolle (Feature „Rollen & Rechte"). Optional →
   // sicher, falls ein älteres Backend das Feld nicht liefert.
   permissions?: string[];
+  // Gesetzt, wenn die Sitzung über ein gekoppeltes Companion-Gerät läuft.
+  deviceId?: string | null;
 };
 
 /**
@@ -619,6 +621,97 @@ function buildAccessHeaders(): HeadersInit {
 }
 
 async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const response = await rawApiFetch(path, init);
+  if (response.status !== 401 || !shouldTryDeviceRefresh(path)) {
+    return response;
+  }
+  // Companion-Gerät: Das kurzlebige Access-Token ist abgelaufen oder wurde
+  // (z. B. durch einen Desktop-Logout) ungültig — mit dem Geräte-Cookie still
+  // erneuern und die Anfrage genau einmal wiederholen.
+  const outcome = await refreshDeviceSession();
+  if (outcome.kind === 'ok') {
+    return rawApiFetch(path, init);
+  }
+  if (outcome.kind === 'locked') {
+    notifyCompanionLocked();
+    return outcome.response;
+  }
+  return response;
+}
+
+// --- Companion-Gerätesitzung ------------------------------------------------
+
+type DeviceRefreshOutcome =
+  | { kind: 'ok'; session: CompanionSession }
+  | { kind: 'locked'; response: Response }
+  | { kind: 'none' };
+
+let deviceRefreshInFlight: Promise<DeviceRefreshOutcome> | null = null;
+// Kein Geräte-Cookie vorhanden (normale Browser-Sitzung): nicht bei jedem 401
+// erneut nachfragen.
+let deviceRefreshUnavailableUntil = 0;
+const DEVICE_REFRESH_NEGATIVE_CACHE_MS = 60_000;
+
+function shouldTryDeviceRefresh(path: string): boolean {
+  if (path.startsWith('/api/companion/')) return false;
+  if (path === '/api/auth/login' || path === '/api/auth/logout') return false;
+  return Date.now() >= deviceRefreshUnavailableUntil;
+}
+
+/** Nach Kopplung/Login wieder sofort einen Erneuerungsversuch zulassen. */
+export function resetDeviceRefreshState(): void {
+  deviceRefreshUnavailableUntil = 0;
+}
+
+/**
+ * Erneuert die Gerätesitzung (rotiert das Geräte-Secret).
+ *
+ * Bewusst "single flight": Mehrere gleichzeitig abgelehnte Requests teilen
+ * sich EINEN Erneuerungsversuch — parallele Rotationen würden sonst als
+ * Wiederverwendung eines alten Secrets gewertet.
+ */
+export function refreshDeviceSession(): Promise<DeviceRefreshOutcome> {
+  if (deviceRefreshInFlight) return deviceRefreshInFlight;
+  deviceRefreshInFlight = (async (): Promise<DeviceRefreshOutcome> => {
+    try {
+      const response = await rawApiFetch('/api/companion/session/refresh', { method: 'POST' });
+      if (response.ok) {
+        const session = normalizeDeep((await response.json()) as CompanionSession);
+        setCurrentUser(session.user);
+        return { kind: 'ok', session };
+      }
+      if (response.status === 423) {
+        return { kind: 'locked', response };
+      }
+      deviceRefreshUnavailableUntil = Date.now() + DEVICE_REFRESH_NEGATIVE_CACHE_MS;
+      return { kind: 'none' };
+    } catch {
+      return { kind: 'none' };
+    } finally {
+      window.setTimeout(() => {
+        deviceRefreshInFlight = null;
+      }, 0);
+    }
+  })();
+  return deviceRefreshInFlight;
+}
+
+let companionLockedHandler: (() => void) | null = null;
+
+/** App-Komponente registriert hier den Wechsel auf den Sperrbildschirm. */
+export function setCompanionLockedHandler(handler: (() => void) | null): void {
+  companionLockedHandler = handler;
+}
+
+function notifyCompanionLocked(): void {
+  try {
+    companionLockedHandler?.();
+  } catch {
+    // Handler-Fehler dürfen den Request-Fehlerpfad nicht stören.
+  }
+}
+
+async function rawApiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = {
     ...buildAccessHeaders(),
     ...(init?.headers ?? {}),
@@ -866,6 +959,11 @@ export async function logout(): Promise<void> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), AUTH_ME_TIMEOUT_MS);
   try {
+    if (currentUser?.deviceId) {
+      // Companion-Gerät: nur diese Gerätesitzung beenden (inkl. Geräte-Cookie);
+      // Desktop und andere Geräte bleiben angemeldet.
+      await rawApiFetch('/api/companion/session/logout', { method: 'POST', signal: controller.signal });
+    }
     await apiFetch('/api/auth/logout', { method: 'POST', signal: controller.signal });
   } catch {
     // Bewusst ignoriert — das lokale Logout passiert in jedem Fall.
@@ -2088,4 +2186,194 @@ export async function fetchSystemUpdateHistory(
 ): Promise<{ items: SystemUpdateRun[]; total: number }> {
   const response = await apiFetch(`/api/admin/system/update/history?limit=${limit}`);
   return parseResponse<{ items: SystemUpdateRun[]; total: number }>(response);
+}
+
+// --- Companion App -----------------------------------------------------------
+
+export type CompanionDevice = {
+  id: string;
+  name: string;
+  platform?: string | null;
+  connectedAt?: string | null;
+  lastSeenAt?: string | null;
+  passkeyRegistered: boolean;
+  current: boolean;
+};
+
+export type CompanionSettings = {
+  enabled: boolean;
+  devices: CompanionDevice[];
+  maxDevices: number;
+  currentDeviceId?: string | null;
+};
+
+export type CompanionPairingStatus =
+  | 'pending'
+  | 'claimed'
+  | 'approved'
+  | 'rejected'
+  | 'consumed'
+  | 'cancelled'
+  | 'expired';
+
+export type CompanionPairingStart = {
+  pairingId: string;
+  pairingCode: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+};
+
+export type CompanionPairingState = {
+  pairingId: string;
+  status: CompanionPairingStatus;
+  expiresAt: string;
+  expiresInSeconds: number;
+  deviceName?: string | null;
+  devicePlatform?: string | null;
+  matchCode?: string | null;
+};
+
+export type CompanionClaim = {
+  accountName: string;
+  accountEmail: string;
+  matchCode: string;
+  expiresInSeconds: number;
+};
+
+export type CompanionSession = {
+  user: AuthUser;
+  deviceId: string;
+  deviceName: string;
+  passkeyRegistered: boolean;
+  locked: boolean;
+};
+
+export async function fetchCompanionSettings(): Promise<CompanionSettings> {
+  return parseResponse<CompanionSettings>(await apiFetch('/api/companion/settings'));
+}
+
+export function setCompanionEnabled(enabled: boolean): Promise<CompanionSettings> {
+  return putJson<CompanionSettings>('/api/companion/settings', { enabled });
+}
+
+export async function revokeCompanionDevice(deviceId: string): Promise<{ revoked: number }> {
+  const response = await apiFetch(`/api/companion/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE',
+  });
+  return parseResponse<{ revoked: number }>(response);
+}
+
+export function revokeAllCompanionDevices(): Promise<{ revoked: number }> {
+  return postJson<{ revoked: number }>('/api/companion/devices/revoke-all', {});
+}
+
+export function startCompanionPairing(): Promise<CompanionPairingStart> {
+  return postJson<CompanionPairingStart>('/api/companion/pairing', {});
+}
+
+export async function fetchCompanionPairing(pairingId: string): Promise<CompanionPairingState> {
+  return parseResponse<CompanionPairingState>(
+    await apiFetch(`/api/companion/pairing/${encodeURIComponent(pairingId)}`),
+  );
+}
+
+export function decideCompanionPairing(
+  pairingId: string,
+  action: 'approve' | 'reject' | 'cancel',
+): Promise<CompanionPairingState> {
+  return postJson<CompanionPairingState>(
+    `/api/companion/pairing/${encodeURIComponent(pairingId)}/${action}`,
+    {},
+  );
+}
+
+// Handy-Seite der Kopplung (ohne Anmeldung). Bewusst rawApiFetch: ein 401
+// bedeutet hier nichts für eine bestehende Sitzung.
+async function companionPublic<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await rawApiFetch(path, init);
+  if (!response.ok) {
+    let detail = '';
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      detail = typeof payload.detail === 'string' ? payload.detail : '';
+    } catch {
+      detail = '';
+    }
+    throw new WmsApiError(response.status, detail, detail || `Anfrage fehlgeschlagen (${response.status}).`);
+  }
+  return normalizeDeep((await response.json()) as T);
+}
+
+export function claimCompanionPairing(code: string): Promise<CompanionClaim> {
+  return companionPublic<CompanionClaim>('/api/companion/pairing-claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export function fetchCompanionClaimStatus(): Promise<{ status: CompanionPairingStatus; expiresInSeconds: number }> {
+  return companionPublic('/api/companion/pairing-claim/status');
+}
+
+export async function completeCompanionPairing(): Promise<CompanionSession> {
+  const session = await companionPublic<CompanionSession>('/api/companion/pairing-claim/complete', {
+    method: 'POST',
+  });
+  resetDeviceRefreshState();
+  setCurrentUser(session.user);
+  return session;
+}
+
+export async function cancelCompanionClaim(): Promise<void> {
+  try {
+    await rawApiFetch('/api/companion/pairing-claim/cancel', { method: 'POST' });
+  } catch {
+    // Abbruch ist best effort — der Code verfällt ohnehin.
+  }
+}
+
+// Passkeys (WebAuthn) — die Browser-Zeremonie selbst übernimmt
+// @simplewebauthn/browser (siehe components/companion/passkeys.ts).
+
+export type PasskeyOptions = { options: Record<string, unknown> };
+
+export async function fetchCompanionSession(): Promise<CompanionSession> {
+  return parseResponse<CompanionSession>(await apiFetch('/api/companion/session'));
+}
+
+export function fetchPasskeyRegistrationOptions(): Promise<PasskeyOptions> {
+  return postJson<PasskeyOptions>('/api/companion/passkey/register/options', {});
+}
+
+export function verifyPasskeyRegistration(credential: unknown): Promise<CompanionSession> {
+  return postJson<CompanionSession>('/api/companion/passkey/register/verify', { credential });
+}
+
+// Entsperren läuft über das Geräte-Cookie (gesperrt = kein gültiges
+// Access-Token) — daher ohne den automatischen Erneuerungsversuch.
+export function fetchUnlockOptions(): Promise<PasskeyOptions> {
+  return companionPublic<PasskeyOptions>('/api/companion/unlock/options', { method: 'POST' });
+}
+
+export async function verifyUnlock(credential: unknown): Promise<CompanionSession> {
+  const session = await companionPublic<CompanionSession>('/api/companion/unlock/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential }),
+  });
+  resetDeviceRefreshState();
+  setCurrentUser(session.user);
+  return session;
+}
+
+/** Abmeldung nur dieses Geräts, auch im gesperrten Zustand. */
+export async function logoutCompanionDevice(): Promise<void> {
+  try {
+    await rawApiFetch('/api/companion/session/logout', { method: 'POST' });
+  } catch {
+    // best effort
+  } finally {
+    clearCurrentUser();
+  }
 }
