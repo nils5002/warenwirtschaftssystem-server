@@ -149,6 +149,45 @@ register_rate_limiter = RateLimiter(
     window_seconds=30 * 60,
     block_seconds=30 * 60,
 )
+# Erneuter Versand der Bestaetigungsmail — zwei Limiter mit demselben Zweck
+# wie beim Login: (1) pro IP gegen Mail-Spam-Kampagnen, (2) pro E-Mail-Adresse,
+# damit ein Angreifer mit rotierender IP nicht das Postfach einer fremden
+# Person zumuellen kann ("Mail-Bombing").
+verification_resend_rate_limiter = RateLimiter(
+    max_attempts=5,
+    window_seconds=30 * 60,
+    block_seconds=30 * 60,
+)
+verification_email_rate_limiter = RateLimiter(
+    max_attempts=4,
+    window_seconds=60 * 60,
+    block_seconds=60 * 60,
+)
+# Einloesen eines Bestaetigungstokens: bremst das Durchprobieren von Tokens.
+# Grosszuegig genug fuer legitime Doppelklicks/Mail-Scanner, aber hart genug,
+# dass Raten chancenlos bleibt (der Token hat ohnehin 256 Bit Entropie).
+verification_confirm_rate_limiter = RateLimiter(
+    max_attempts=30,
+    window_seconds=10 * 60,
+    block_seconds=15 * 60,
+)
+# SMTP-Test aus der Adminoberflaeche (Verbindungstest + Test-E-Mail). Jeder
+# Aufruf spricht einen fremden Server an; ein versehentlicher Dauerklick darf
+# nicht zur Mailflut oder zu einer Sperre beim Provider fuehren. Bewusst
+# grosszuegig genug fuer eine normale Einrichtungssitzung.
+mail_test_rate_limiter = RateLimiter(
+    max_attempts=10,
+    window_seconds=10 * 60,
+    block_seconds=10 * 60,
+)
+# Konfigurationsaenderungen (SMTP-Einstellungen, Registrierungsverfahren).
+# Grosszuegig fuer eine normale Einrichtung, bremst aber automatisierte
+# Massenaenderungen mit einer gestohlenen Admin-Sitzung.
+mail_settings_change_rate_limiter = RateLimiter(
+    max_attempts=30,
+    window_seconds=10 * 60,
+    block_seconds=10 * 60,
+)
 # Mobile-Token-Refresh: großzügiges IP-Limit gegen Durchprobieren von
 # Refresh-Tokens (die Tokens selbst sind signiert und lang).
 refresh_rate_limiter = RateLimiter(

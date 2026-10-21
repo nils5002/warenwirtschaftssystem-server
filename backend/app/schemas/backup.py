@@ -46,6 +46,44 @@ class BackupUser(BaseModel):
     # automatisch eine Farbe.
     signatureColor: str | None = None
     signatureColorSource: str | None = None
+    # E-Mail-Bestaetigung. Optional mit Defaults, damit ALTE Backups ohne
+    # diese Felder unveraendert importierbar bleiben: dort gilt
+    # emailVerificationRequired=False — die wiederhergestellten Konten
+    # verhalten sich also exakt wie vor dem Feature und werden nicht
+    # nachtraeglich ausgesperrt. Die Einmal-Tokens selbst sind bewusst NICHT
+    # Teil des Backups.
+    emailVerificationRequired: bool = False
+    emailVerifiedAt: datetime | None = None
+
+
+class BackupMailSettings(BaseModel):
+    """SMTP-Konfiguration aus der Adminoberflaeche.
+
+    ``passwordEncrypted`` ist der Fernet-Chiffretext — also genau das, was auch
+    in der Datenbank steht. Er ist ohne den serverseitigen Schluessel (aus
+    ``AUTH_TOKEN_SECRET`` abgeleitet bzw. ``MAIL_CONFIG_ENCRYPTION_KEY``)
+    wertlos. Konsequenz fuer den Betrieb: Wird ein Backup in einen Stack mit
+    ANDEREM Schluessel eingespielt, muss das SMTP-Passwort einmalig neu
+    eingegeben werden (die App meldet das kontrolliert, statt still mit leerem
+    Passwort zu verschicken).
+    """
+
+    enabled: bool = False
+    host: str | None = None
+    port: int = 587
+    security: str = "starttls"
+    username: str | None = None
+    passwordEncrypted: str | None = None
+    fromEmail: str | None = None
+    fromName: str | None = None
+    timeoutSeconds: int = 15
+    verificationExpiryHours: int = 24
+    publicBaseUrl: str | None = None
+    lastTestAt: datetime | None = None
+    lastTestSuccess: bool | None = None
+    lastTestError: str | None = None
+    testMailAcceptedAt: datetime | None = None
+    updatedBy: str | None = None
 
 
 class BackupAsset(BaseModel):
@@ -295,10 +333,18 @@ class WarehouseBackupPayload(BaseModel):
     # Login-Hintergrundbilder (Metadaten): Default-Liste → Altbackups ohne diese
     # Collection bleiben gültig (keine Bilder werden angelegt).
     loginBackgrounds: list[BackupLoginBackground] = Field(default_factory=list)
+    # SMTP-Konfiguration aus der Adminoberflaeche. None → Altbackups ohne diese
+    # Sektion bleiben gültig; die vorhandene Konfiguration bleibt beim Import
+    # dann unangetastet (siehe backup_service).
+    mailSettings: BackupMailSettings | None = None
 
 
 class BackupImportResponse(BaseModel):
     imported: dict[str, int]
+    # Ausdrückliche Hinweise zum Import — z. B. wenn ein älteres Backup keine
+    # E-Mail-Verifizierungsdaten enthielt. Default-Liste → ältere Clients
+    # ignorieren das Feld einfach.
+    warnings: list[str] = Field(default_factory=list)
 
 
 class BackupClearDataResponse(BaseModel):

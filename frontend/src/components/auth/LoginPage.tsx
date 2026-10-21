@@ -1,16 +1,30 @@
-import { Boxes, Loader2, LogIn, UserPlus } from 'lucide-react';
+import { Boxes, CheckCircle2, Loader2, LogIn, MailCheck, Send, UserPlus } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { fetchLoginBranding } from '../../services/wmsApi';
+import { fetchLoginBranding, resendVerification } from '../../services/wmsApi';
+import { EMAIL_PATTERN } from './emailVerification';
+
+// Ergebnis einer Registrierung, so wie die Login-Seite es braucht: Meldung,
+// welches Verfahren galt, und die ehrliche Auskunft, ob eine Bestätigungsmail
+// wirklich rausging.
+export type RegisterOutcome = {
+  message: string;
+  // false = klassischer Ablauf: Es ist gar keine E-Mail vorgesehen, das Konto
+  // wartet ausschließlich auf die Admin-Freigabe.
+  verificationRequired: boolean;
+  emailSent: boolean;
+  emailHint?: string | null;
+};
 
 type LoginPageProps = {
   onLogin: (payload: { email: string; password: string }) => Promise<void>;
-  onRegister: (payload: { name: string; email: string; password: string; website?: string }) => Promise<string | void>;
+  onRegister: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    website?: string;
+  }) => Promise<RegisterOutcome>;
 };
-
-// Einfache Formatprüfung (Backend validiert erneut): verhindert Registrierungen
-// ohne echte E-Mail-Adresse wie den Vorfall-Benutzernamen "supman".
-const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 
 type AuthMode = 'login' | 'register';
 
@@ -23,6 +37,13 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Nach erfolgreicher Registrierung ersetzt eine Bestätigungs-Ansicht das
+  // Formular (statt eines zusätzlichen Dialogs).
+  const [registered, setRegistered] = useState<RegisterOutcome | null>(null);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendNotice, setResendNotice] = useState<string | null>(null);
+  const [resendError, setResendError] = useState<string | null>(null);
   // Honeypot: für Menschen unsichtbares Feld — nur Bots füllen es aus.
   const [website, setWebsite] = useState('');
   // Vom Admin verwaltetes Hintergrundbild (öffentlicher Endpunkt, kein Login
@@ -72,11 +93,18 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
     setBusy(true);
     try {
       if (isRegister) {
-        const message = await onRegister({ name: name.trim(), email: email.trim(), password, website });
-        setNotice(message ?? 'Registrierung erfolgreich.');
-        setMode('login');
+        const outcome = await onRegister({
+          name: name.trim(),
+          email: email.trim(),
+          password,
+          website,
+        });
+        // Passwörter sofort aus dem State werfen — die Bestätigungsansicht
+        // braucht sie nicht mehr.
         setPassword('');
         setPasswordConfirm('');
+        setRegisteredEmail(email.trim());
+        setRegistered(outcome);
       } else {
         await onLogin({ email: email.trim(), password });
       }
@@ -84,6 +112,37 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       setError(err instanceof Error ? err.message : 'Authentifizierung fehlgeschlagen.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const backToLogin = () => {
+    setRegistered(null);
+    setResendNotice(null);
+    setResendError(null);
+    setMode('login');
+    setNotice(null);
+  };
+
+  const requestResend = async () => {
+    setResendError(null);
+    setResendNotice(null);
+    const target = registeredEmail.trim();
+    if (!EMAIL_PATTERN.test(target.toLowerCase())) {
+      setResendError('Bitte eine gültige E-Mail-Adresse eingeben.');
+      return;
+    }
+    setResendBusy(true);
+    try {
+      const response = await resendVerification(target);
+      if (response.emailSent === false) {
+        setResendError(response.emailHint ?? 'Die E-Mail konnte nicht versendet werden.');
+      } else {
+        setResendNotice(response.message);
+      }
+    } catch (err) {
+      setResendError(err instanceof Error ? err.message : 'Der Versand hat nicht geklappt.');
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -119,6 +178,90 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               </p>
             </div>
 
+            {registered ? (
+              // Registrierung eingegangen: ersetzt das Formular, kein
+              // zusätzlicher Dialog.
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="flex items-center justify-center gap-2 text-emerald-200">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="text-sm font-semibold">Registrierung eingegangen</span>
+                </div>
+                <div className="rounded-xl border border-white/15 bg-slate-900/50 px-3 py-2.5 text-[13px] leading-relaxed text-slate-200">
+                  {!registered.verificationRequired ? (
+                    // Klassischer Ablauf: keine E-Mail im Spiel, also auch
+                    // kein Hinweis auf Posteingang oder Spam-Ordner.
+                    <>
+                      Deine Registrierung wurde gespeichert und wartet auf die Freigabe durch
+                      einen Administrator. Du kannst dich anmelden, sobald dein Konto
+                      freigegeben wurde.
+                    </>
+                  ) : registered.emailSent ? (
+                    <>
+                      Wir haben dir eine E-Mail mit einem Bestätigungslink an{' '}
+                      <span className="font-semibold text-white">{registeredEmail}</span> gesendet.
+                      Bitte überprüfe auch deinen Spam-Ordner.
+                    </>
+                  ) : (
+                    registered.emailHint ??
+                    'Die Bestätigungs-E-Mail konnte nicht versendet werden. Bitte versuche es erneut.'
+                  )}
+                </div>
+                {!registered.verificationRequired ? null : registered.emailSent ? (
+                  <div className="rounded-xl border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[13px] text-sky-100">
+                    Nach der Bestätigung muss dein Konto noch von einem Administrator freigegeben
+                    werden.
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-[13px] text-amber-100">
+                    Dein Konto wurde angelegt — nur der Versand hat nicht geklappt. Versuche es
+                    gleich erneut oder wende dich an einen Administrator.
+                  </div>
+                )}
+
+                {resendError ? (
+                  <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+                    {resendError}
+                  </div>
+                ) : null}
+                {resendNotice ? (
+                  <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                    {resendNotice}
+                  </div>
+                ) : null}
+
+                {/* Nur im Verfahren mit E-Mail-Bestätigung sinnvoll — im
+                    klassischen Ablauf gibt es nichts erneut zu senden. */}
+                {registered.verificationRequired ? (
+                  <button
+                    type="button"
+                    onClick={() => void requestResend()}
+                    disabled={resendBusy}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-slate-900/60 px-4 text-sm font-semibold text-slate-100 transition hover:border-sky-300/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {resendBusy ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Wird gesendet...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        E-Mail erneut senden
+                      </>
+                    )}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={backToLogin}
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500"
+                >
+                  <MailCheck className="h-4 w-4" />
+                  Zur Anmeldung
+                </button>
+              </div>
+            ) : (
+              <>
             <div className="mt-4 inline-flex self-center rounded-2xl border border-white/15 bg-slate-900/50 p-1">
               <button
                 type="button"
@@ -246,6 +389,8 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                 )}
               </button>
             </form>
+              </>
+            )}
           </div>
         </div>
       </main>

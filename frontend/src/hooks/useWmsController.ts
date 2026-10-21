@@ -152,8 +152,22 @@ function normalizeUserRole(value: UserItem['role'] | string): UserItem['role'] {
   return 'Mitarbeiter';
 }
 
+// Bekannte Benutzerzustände unverändert durchreichen. Vorher kollabierte hier
+// alles außer 'Aktiv' auf 'Inaktiv' — damit verschwanden die Sonderzustände
+// aus dem Backend ("Wartet auf Freigabe", "Gesperrt", "Abgelehnt") und die
+// zugehörigen Aktionen (Freigeben/Ablehnen/Entsperren) waren in der Oberfläche
+// nie sichtbar. Unbekannte Werte fallen weiterhin auf 'Inaktiv' zurück.
+const KNOWN_USER_STATUSES: readonly UserItem['status'][] = [
+  'Aktiv',
+  'Inaktiv',
+  'Wartet auf Freigabe',
+  'Abgelehnt',
+  'Gesperrt',
+];
+
 function normalizeUserStatus(value: UserItem['status'] | string): UserItem['status'] {
-  return value === 'Aktiv' ? 'Aktiv' : 'Inaktiv';
+  const match = KNOWN_USER_STATUSES.find((status) => status === value);
+  return match ?? 'Inaktiv';
 }
 
 function findAssetForMaintenance(assets: Asset[], assetName: string): Asset | undefined {

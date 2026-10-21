@@ -42,3 +42,39 @@ class AuthRegisterRequest(BaseModel):
 
 class AuthRegisterResponse(BaseModel):
     message: str
+    # Welches Verfahren galt für diese Registrierung? False = klassischer
+    # Ablauf (nur Admin-Freigabe, kein Mailversand). Hängt ausschließlich an
+    # der serverseitigen Einstellung, nie am einzelnen Konto.
+    verificationRequired: bool = False
+    # Ehrliche Rückmeldung, ob die Bestätigungsmail rausgegangen ist. Bewusst
+    # KEIN Enumerations-Kanal: Der Wert hängt nur am Versandweg (SMTP), nicht
+    # daran, ob die E-Mail bereits ein Konto hat — bei einem Duplikat wird
+    # derselbe Weg benutzt bzw. dasselbe Ergebnis gemeldet. Im klassischen
+    # Modus immer True (es ist gar kein Versand vorgesehen).
+    emailSent: bool = True
+    # Nur gesetzt, wenn der Versand nicht geklappt hat: fachlicher Hinweis für
+    # die UI (nie technische Details, nie Zugangsdaten).
+    emailHint: str | None = None
+
+
+class AuthVerifyEmailRequest(BaseModel):
+    # Der Token wird ausschließlich per POST-Body eingelöst — nie per GET,
+    # damit er nicht in Server-/Proxy-Logs oder der Browser-History landet.
+    token: str = Field(..., min_length=16, max_length=512)
+
+
+class AuthVerifyEmailResponse(BaseModel):
+    status: Literal["verified", "already_verified"]
+    message: str
+    # True, sobald der Admin das Konto zusätzlich freigegeben hat.
+    accountActive: bool = False
+
+
+class AuthResendVerificationRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+
+
+class AuthResendVerificationResponse(BaseModel):
+    message: str
+    emailSent: bool = True
+    emailHint: str | None = None

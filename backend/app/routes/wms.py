@@ -3,20 +3,23 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..database.models import UserRecord
 from ..database.session import get_db
 from ..routes.dependencies import (
     AccessContext,
     get_access_context,
+    require_csrf_header,
     require_permission,
     require_roles,
 )
 
 logger = logging.getLogger("cloud_web.wms")
 from ..schemas.security import UserSecurityInfo
-from ..services import security_event_service as sec
-from ..services.auth_service import invalidate_sessions
+from ..services import email_verification_service, security_event_service as sec
+from ..services.auth_service import email_verification_pending, invalidate_sessions
 from ..schemas.wms import (
     ActivityItem,
     AssetItem,
@@ -38,6 +41,7 @@ from ..schemas.wms import (
     UserPasswordResetResponse,
     UserUpdatePayload,
     UserItem,
+    UserVerificationResendResponse,
     WmsOverviewResponse,
 )
 from ..services.wms_service import WmsService
@@ -577,6 +581,60 @@ def revoke_user_sessions(
         actor_id=context.user_id,
     )
     return {"ok": True}
+
+
+@router.post("/users/{user_id}/resend-verification", response_model=UserVerificationResendResponse)
+def resend_user_verification(
+    user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> UserVerificationResendResponse:
+    """Admin fordert eine neue Bestätigungs-E-Mail für ein Konto an.
+
+    Nur für Konten sinnvoll, die noch auf ihre Bestätigung warten — alles
+    andere wird mit 409 abgelehnt, statt still nichts zu tun. Hier ist eine
+    ehrliche Fehlermeldung richtig: Der Aufrufer ist ein authentifizierter
+    Admin, Account-Enumeration ist kein Thema.
+
+    Bewusst Rolle *und* Recht: Der Versand an fremde Postfaecher gehoert zur
+    E-Mail-Verwaltung und bleibt Admins vorbehalten, auch wenn
+    ``users.manage`` im Rolleneditor einer anderen Rolle gewaehrt wurde.
+    """
+    require_roles(context, "admin")
+    require_permission(context, db, "users.manage")
+    require_csrf_header(request)
+    user = db.scalar(select(UserRecord).where(UserRecord.external_id == user_id))
+    if user is None:
+        raise HTTPException(status_code=404, detail="Benutzer nicht gefunden.")
+    if not email_verification_pending(user):
+        raise HTTPException(
+            status_code=409,
+            detail="Für diesen Benutzer steht keine E-Mail-Bestätigung aus.",
+        )
+
+    outcome = email_verification_service.send_verification_email(db, user)
+    if outcome.sent:
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_SENT, request=request, success=True,
+            user_id=user_id, actor_id=context.user_id, identifier=user.email,
+        )
+        return UserVerificationResendResponse(
+            sent=True, message="Bestätigungs-E-Mail wurde erneut versendet."
+        )
+
+    sec.record_event(
+        db, sec.EMAIL_VERIFICATION_SEND_FAILED, request=request, severity="warning",
+        user_id=user_id, actor_id=context.user_id, identifier=user.email,
+        reason="smtp_not_configured" if outcome.not_configured else "smtp_delivery_failed",
+    )
+    # Dem Admin darf der technische Grund gezeigt werden (er soll ihn ja
+    # beheben) — er enthält per Konstruktion keine Zugangsdaten.
+    return UserVerificationResendResponse(
+        sent=False,
+        message="Die Bestätigungs-E-Mail konnte nicht versendet werden.",
+        hint=outcome.reason,
+    )
 
 
 @router.get("/users/{user_id}/security", response_model=UserSecurityInfo)

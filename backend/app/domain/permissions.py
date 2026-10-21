@@ -47,6 +47,7 @@ PERMISSION_CATALOG: tuple[PermissionDef, ...] = (
     PermissionDef("backup.manage", "Backup verwalten", "administration"),
     PermissionDef("logs.read", "Logs ansehen", "administration"),
     PermissionDef("system.update", "Systemupdate ausführen", "administration"),
+    PermissionDef("mail.manage", "E-Mail-Einstellungen verwalten", "administration"),
 )
 
 # Deutsche Gruppen-Labels (UI-Überschriften).

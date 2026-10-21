@@ -2,16 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './asset-ui/components/Sidebar';
 import { Topbar } from './asset-ui/components/Topbar';
 import { UpdateNotesModal } from './asset-ui/components/UpdateNotesModal';
-import { LoginPage } from './components/auth/LoginPage';
+import { EmailVerificationPage } from './components/auth/EmailVerificationPage';
+import { isVerifyEmailPath } from './components/auth/emailVerification';
+import { LoginPage, type RegisterOutcome } from './components/auth/LoginPage';
 import { InlineLoadingState } from './components/loading';
 import { WmsPageView } from './components/WmsPageView';
 import { navigation } from './config/navigation';
-import { PAGE_PERMISSION, legacyVisible } from './config/pageAccess';
+import { canAccessPage } from './config/pageAccess';
 import type { AppPage } from './asset-ui/types';
 import { useWmsController } from './hooks/useWmsController';
 import { useIsMobile } from './hooks/useIsMobile';
 import { normalizePathname } from './routing/appRoutes';
-import { navigate } from './routing/router';
+import { navigate, useAppLocation } from './routing/router';
 import {
   fetchAuthMe,
   login,
@@ -38,6 +40,11 @@ function App() {
 
   const activeRole = authUser?.role ?? 'Mitarbeiter';
   const isAuthenticated = !!authUser;
+  // Öffentliche Seite: der Bestätigungslink aus der Registrierungs-E-Mail
+  // muss auch ohne Sitzung erreichbar bleiben und darf nicht als
+  // Post-Login-Deep-Link gemerkt oder auf /login umgelenkt werden.
+  const location = useAppLocation();
+  const isPublicVerifyRoute = isVerifyEmailPath(location.pathname);
   const isMobile = useIsMobile();
   const controller = useWmsController({
     activeRole,
@@ -82,20 +89,13 @@ function App() {
     return () => setUnauthorizedHandler(null);
   }, []);
 
-  const visibleNavigation = useMemo(() => {
-    const perms = authUser?.permissions;
-    // Ohne effektive Rechte (älteres Backend): rein rollenbasiert wie bisher.
-    if (!Array.isArray(perms)) {
-      return navigation.filter((item) => legacyVisible(item.key, activeRole));
-    }
-    // Rechte-gesteuerte Seiten über die Berechtigung filtern; alle übrigen
-    // Seiten behalten ihr bisheriges rollenbasiertes Verhalten.
-    const permSet = new Set(perms);
-    return navigation.filter((item) => {
-      const required = PAGE_PERMISSION[item.key];
-      return required ? permSet.has(required) : legacyVisible(item.key, activeRole);
-    });
-  }, [authUser?.permissions, activeRole]);
+  const visibleNavigation = useMemo(
+    // Kanonische Pruefung aus config/pageAccess: Rechte-gesteuerte Seiten ueber
+    // die Berechtigung, alle uebrigen rollenbasiert; reine Admin-Seiten (z. B.
+    // E-Mail-Einstellungen) zusaetzlich nur fuer die Admin-Rolle.
+    () => navigation.filter((item) => canAccessPage(item.key, authUser?.permissions, activeRole)),
+    [authUser?.permissions, activeRole],
+  );
 
   useEffect(() => {
     // Nur für authentifizierte Sitzungen prüfen: Während des Auth-Boots ist
@@ -125,6 +125,8 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined' || authBooting) return;
+    // Bestätigungsseite ist öffentlich — hier greift kein Auth-Redirect.
+    if (isPublicVerifyRoute) return;
     const currentPath = normalizePathname(window.location.pathname);
 
     if (!isAuthenticated) {
@@ -164,7 +166,7 @@ function App() {
     if (currentPath === '/login' || currentPath === '/') {
       navigate('/dashboard', { replace: true });
     }
-  }, [authBooting, isAuthenticated]);
+  }, [authBooting, isAuthenticated, isPublicVerifyRoute]);
 
   const activeItem = visibleNavigation.find((item) => item.key === controller.activePage);
   const mobileNavItems = visibleNavigation.filter((item) =>
@@ -191,9 +193,23 @@ function App() {
     setAuthUser(user);
   };
 
-  const handleRegister = async (payload: { name: string; email: string; password: string; website?: string }) => {
+  const handleRegister = async (payload: {
+    name: string;
+    email: string;
+    password: string;
+    website?: string;
+  }): Promise<RegisterOutcome> => {
     const response = await register(payload);
-    return response.message;
+    return {
+      message: response.message,
+      // Fehlt das Feld (älteres Backend), gilt der klassische Ablauf — die
+      // sichere Annahme, denn dann wird keine Bestätigung erwartet.
+      verificationRequired: response.verificationRequired === true,
+      // Fehlt das Feld, gilt der Versand wie bisher als erfolgt — die
+      // Oberfläche behauptet dann nichts Falsches.
+      emailSent: response.emailSent !== false,
+      emailHint: response.emailHint ?? null,
+    };
   };
 
   const handleLogout = async () => {
@@ -211,6 +227,13 @@ function App() {
     navigate('/login', { replace: true });
     setAuthUser(null);
   };
+
+  // Vor jeder Auth-Entscheidung: die Bestätigungsseite ist öffentlich und
+  // soll beim Öffnen des Mail-Links sofort stehen (kein "Sitzung wird
+  // geprüft"-Zwischenschritt, kein Login-Flackern).
+  if (isPublicVerifyRoute) {
+    return <EmailVerificationPage />;
+  }
 
   if (authBooting) {
     return (

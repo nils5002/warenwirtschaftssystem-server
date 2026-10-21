@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   KeyRound,
   LayoutDashboard,
+  Mail,
   PackagePlus,
   QrCode,
   RefreshCw,
@@ -148,6 +149,13 @@ export const navigation: NavItem[] = [
     icon: Signal,
     group: 'administration',
     hint: 'Preis pro Buchung',
+  },
+  {
+    key: 'emailSettings',
+    label: 'E-Mail-Einstellungen',
+    icon: Mail,
+    group: 'administration',
+    hint: 'SMTP & Registrierungsverfahren',
   },
   {
     key: 'systemUpdate',

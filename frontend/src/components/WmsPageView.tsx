@@ -17,6 +17,7 @@ import { PlanningPage } from '../asset-ui/pages/PlanningPage';
 import { QrFunctionsPage } from '../asset-ui/pages/QrFunctionsPage';
 import { RolesPermissionsPage } from '../asset-ui/pages/RolesPermissionsPage';
 import { SecurityLogsPage } from '../asset-ui/pages/SecurityLogsPage';
+import { EmailSettingsPage } from '../asset-ui/pages/EmailSettingsPage';
 import { SystemUpdatePage } from '../asset-ui/pages/SystemUpdatePage';
 import { TelecomPassSettingsPage } from '../asset-ui/pages/TelecomPassSettingsPage';
 import { UsersPage } from '../asset-ui/pages/UsersPage';
@@ -575,6 +576,13 @@ export function WmsPageView({
         return renderAccessDenied('Sicherheit & Protokolle nur für Admin / Techniker.');
       }
       return <SecurityLogsPage />;
+    case 'emailSettings':
+      // Backstop für direkte URL-Aufrufe: Das Backend prüft zusätzlich Rolle
+      // UND Recht mail.manage — dieser Guard ist nur die UI-Bequemlichkeit.
+      if (!isAdmin || !can('mail.manage', isAdmin)) {
+        return renderAccessDenied('E-Mail-Einstellungen nur für Admin / Techniker.');
+      }
+      return <EmailSettingsPage />;
     case 'systemUpdate':
       // Backstop für direkte URL-Aufrufe: Das Backend prüft zusätzlich Rolle
       // UND Recht system.update — dieser Guard ist nur die UI-Bequemlichkeit.

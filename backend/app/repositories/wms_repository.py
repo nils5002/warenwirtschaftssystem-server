@@ -49,6 +49,7 @@ from ..schemas.wms import (
     PlanningSummaryCategoryItem,
 )
 from ..services.auth_service import (
+    email_verification_pending,
     generate_temporary_password,
     hash_password,
     normalize_role_for_db,
@@ -294,6 +295,17 @@ def _user_to_schema(record: UserRecord) -> UserItem:
         signatureColor=record.signature_color or pick_signature_color(record.external_id),
         signatureColorSource=record.signature_color_source
         or (None if record.signature_color is None else SIGNATURE_COLOR_SOURCE_AUTO),
+        # E-Mail-Bestaetigung: nur Selbst-Registrierungen tragen die Pflicht.
+        # Die drei Werte sind unabhaengig vom Freigabe-Status (``status``) —
+        # beide Zustaende koennen sich damit in der UI nicht gegenseitig
+        # ueberschreiben.
+        emailVerificationRequired=bool(getattr(record, "email_verification_required", False)),
+        emailVerifiedAt=(
+            record.email_verified_at.strftime("%d.%m.%Y %H:%M")
+            if getattr(record, "email_verified_at", None)
+            else None
+        ),
+        emailVerificationPending=email_verification_pending(record),
     )
 
 

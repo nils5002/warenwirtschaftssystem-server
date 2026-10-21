@@ -5,6 +5,121 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 ## [Unreleased]
 
 ### Hinzugefügt
+- **SMTP-Verwaltung im Adminbereich** (`Administration → E-Mail-Einstellungen`):
+  Statuskarte, SMTP-Konfiguration, Verbindungstest, echte Test-E-Mail und die
+  Auswahl des Registrierungsverfahrens — alles in der Anwendung, ohne
+  Portainer-Zugriff. Die dort gespeicherten Werte liegen in der Datenbank im
+  persistenten Volume und überleben jeden Redeploy.
+- **Zwei ausdrücklich getrennte Registrierungsverfahren.**
+  `classic_admin_approval` (**Standard**): Registrierung → *Wartet auf
+  Freigabe* → Admin gibt frei → Login. Funktioniert **vollständig ohne jede
+  SMTP-Konfiguration**. `email_verification`: zusätzlich E-Mail-Bestätigung vor
+  der Admin-Freigabe. Die Umstellung ist immer eine bewusste Adminentscheidung
+  und erst möglich, wenn SMTP konfiguriert, aktiviert, erfolgreich getestet und
+  eine Test-E-Mail angenommen wurde. Der Rückweg auf das klassische Verfahren
+  ist **immer** erlaubt.
+- Neue Admin-Endpunkte `GET/PUT /api/admin/email/settings`,
+  `GET /api/admin/email/status`, `POST /api/admin/email/test-connection`,
+  `POST /api/admin/email/send-test`, `PUT /api/admin/email/registration-mode`
+  (Rolle **und** neues Recht `mail.manage`, rate-limitiert, auditiert).
+- Verschlüsselte Secret-Ablage (`app/services/secret_store.py`, Fernet): Das
+  über die Oberfläche gepflegte SMTP-Passwort steht ausschließlich als
+  Chiffretext in der Datenbank und verlässt den Server nie — weder im Klartext
+  noch als Chiffretext. Der Schlüssel wird per HKDF-SHA256 (eigener
+  Kontext-String) aus `AUTH_TOKEN_SECRET` abgeleitet — **kein zusätzlicher
+  ENV-Eintrag nötig**. Optional hat ein eigener `MAIL_CONFIG_ENCRYPTION_KEY`
+  Vorrang; mit beiden Schlüsseln gespeicherte Passwörter bleiben lesbar. Neue
+  Dependency `cryptography`.
+- Öffentliche WWS-Adresse für Bestätigungslinks im Adminbereich pflegbar
+  (validiert, in Produktion nur HTTPS, nie aus dem Host-Header; Fallback
+  `FRONTEND_URL`). Spalte `mail_settings.public_base_url`, Teil des Backups.
+- Adminseite in fünf Bereiche gegliedert: Status, SMTP-Einstellungen (inkl.
+  Test-E-Mail an frei wählbare Adresse), Registrierungsverfahren,
+  Bestätigungslinks, Diagnose (Ursprung, Schlüsselquelle, letzte Tests und
+  Fehler).
+- E-Mail-Verwaltung **nur für Admins**: Rolle *und* Recht werden serverseitig
+  geprüft (ein im Rolleneditor vergebenes `mail.manage` genügt nicht), der
+  Menüpunkt ist für andere Rollen ausgeblendet. Schreibende Endpunkte verlangen
+  bei Cookie-Sitzungen zusätzlich `X-Requested-With: XMLHttpRequest`
+  (CSRF-Schutz) und sind rate-limitiert (Tests und Konfigurationsänderungen).
+- Eindeutige Konfigurationspriorität: aktivierte Adminkonfiguration →
+  `SMTP_*`-Umgebungsvariablen → deaktiviert. Die aktive Quelle ist im
+  Adminbereich sichtbar; eine kaputte Adminkonfiguration fällt bewusst **nicht**
+  still auf die Umgebungsvariablen zurück.
+- Neue Tabelle `mail_settings` (Alembic-Revision `20260421_0007`) und
+  Systemeinstellung `registration_mode`; beide Teil des Backups.
+- Backup-Import meldet jetzt ausdrücklich `warnings` — unter anderem, wenn ein
+  älteres Backup keine E-Mail-Verifizierungsangaben enthielt oder ein
+  verschlüsseltes SMTP-Passwort nur mit passendem Masterkey nutzbar ist.
+- **E-Mail-Bestätigung nach der Registrierung.** Eine Selbst-Registrierung legt
+  das Konto weiterhin inaktiv an und verschickt zusätzlich einen zeitlich
+  begrenzten Bestätigungslink. Anmelden kann sich ein Konto erst, wenn die
+  **E-Mail bestätigt UND die Admin-Freigabe erteilt** ist — die bestehende
+  Freigabe wird dadurch nicht umgangen. Es werden **keine Passwörter per E-Mail**
+  versendet.
+- Neue Endpunkte `POST /api/auth/verify-email` und
+  `POST /api/auth/resend-verification` (beide rate-limitiert, beide antworten
+  ohne Account-Enumeration) sowie die Admin-Aktion
+  `POST /api/wms/users/{id}/resend-verification` (nur Rolle Admin, Recht
+  `users.manage`).
+- Schlanker SMTP-Mailservice (`app/services/email_service.py`) mit geprüftem
+  TLS (`starttls`/`ssl`); unverschlüsselter Versand ist außerhalb der
+  Entwicklung blockiert. Versandfehler werden kontrolliert behandelt und nie
+  als Erfolg dargestellt — die Registrierungsantwort meldet `emailSent: false`
+  samt Hinweis, das Konto bleibt bestehen und der Link kann erneut angefordert
+  werden. Zugangsdaten, Tokens und Bestätigungs-URLs tauchen in keinem Log auf.
+- Professionelle HTML-Mail mit Text-Alternative (Tabellen-Layout, Inline-Styles,
+  keine externen Ressourcen → mobil- und clientkompatibel, kein Referrer-Leck).
+- Frontend: Bestätigungsansicht „Registrierung eingegangen" mit „E-Mail erneut
+  senden" auf der Login-Seite sowie die öffentliche Seite
+  `/registrierung-bestaetigen` (Erfolg, abgelaufener Link, ungültiger Link,
+  erneuter Versand). Der Token wird per POST eingelöst und sofort aus der
+  Adresszeile entfernt.
+- Benutzerverwaltung zeigt den Bestätigungsstand als eigenen Chip
+  („E-Mail nicht bestätigt" / „E-Mail bestätigt") **neben** dem Freigabe-Status,
+  sodass sich beide Zustände nicht gegenseitig überschreiben; Admins können eine
+  neue Bestätigungs-E-Mail anfordern.
+- Neue Umgebungsvariablen: `SMTP_ENABLED` (Default **aus**), `SMTP_HOST`,
+  `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`,
+  `SMTP_FROM_NAME`, `SMTP_SECURITY`, `EMAIL_VERIFICATION_EXPIRY_HOURS`.
+  `FRONTEND_URL` wird jetzt auch vom Backend gelesen — der Bestätigungslink
+  entsteht ausschließlich daraus (nie aus einem Request-Header) und muss in
+  Produktion HTTPS sein.
+- Neue Tabelle `email_verification_tokens` (nur SHA-256-Hash, Ablauf,
+  Einmal-Verwendung) und die Benutzerspalten `email_verification_required` /
+  `email_verified_at`; Alembic-Revision `20260420_0006`.
+
+### Geändert
+- `POST /api/auth/register` arbeitet nach dem aktiven Verfahren und liefert
+  `verificationRequired` mit. Im klassischen Verfahren wird keine E-Mail
+  versendet und kein Mail-Hinweis angezeigt.
+- Benutzerverwaltung unterscheidet jetzt drei Bestätigungszustände:
+  *nicht erforderlich* (klassisch registriert, Bestands- und Adminkonten),
+  *E-Mail nicht bestätigt* und *E-Mail bestätigt* — jeweils unabhängig vom
+  Freigabe-Status.
+- Honeypot, Registrierungs-Rate-Limit und der Admin-Schalter für die
+  Registrierung bleiben unverändert in Kraft.
+
+### Kompatibilität
+- **Das Deployment funktioniert mit `SMTP_ENABLED=false` vollständig.** Ohne
+  jede E-Mail-Konfiguration läuft die Registrierung im klassischen Verfahren
+  weiter; der Startup-Log weist das als Normalzustand aus (keine Warnung).
+- `MAIL_CONFIG_ENCRYPTION_KEY` ist **optional**. Ohne ihn wird der Schlüssel
+  aus `AUTH_TOKEN_SECRET` abgeleitet. Nur wenn auch das kein brauchbares Secret
+  ist (Platzhalter), wird das Speichern eines SMTP-Passworts kontrolliert
+  abgelehnt (HTTP 409 mit Begründung) statt im Klartext zu speichern.
+- Nach einer Rotation von `AUTH_TOKEN_SECRET` ist ein gespeichertes
+  SMTP-Passwort nicht mehr lesbar; das wird im Adminbereich angezeigt und das
+  Passwort ist einmal neu einzugeben (kein stiller Versand mit leerem Passwort).
+- **Bestehende Benutzer bleiben unverändert nutzbar.** Die Bestätigungspflicht
+  trägt ausschließlich, wer sich nach diesem Update selbst registriert
+  (`email_verification_required`, Default 0). Bestandskonten, vom Admin
+  angelegte Benutzer und Konten aus alten Backups werden vom Login-Gate nie
+  geprüft. Rollen und Rechte sind unberührt.
+- Backup/Restore: Der Bestätigungsstatus wird mit gesichert; alte Backups ohne
+  die Felder bleiben importierbar. Einmal-Tokens wandern bewusst nicht ins
+  Backup.
+
 - Adminseite „Systemupdate": Versionsvergleich gegen den konfigurierten
   GitHub-Branch und Redeploy des Portainer-Stacks direkt aus dem WWS — ein
   Portainer-Login ist für normale Updates nicht mehr nötig.

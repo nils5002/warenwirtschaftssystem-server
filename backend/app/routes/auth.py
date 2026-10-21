@@ -1,24 +1,34 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
+from ..database.models import UserRecord
 from ..schemas.auth import (
     AuthLoginRequest,
     AuthLoginResponse,
     AuthRegisterRequest,
     AuthRegisterResponse,
+    AuthResendVerificationRequest,
+    AuthResendVerificationResponse,
     AuthUserInfo,
+    AuthVerifyEmailRequest,
+    AuthVerifyEmailResponse,
 )
 from ..schemas.job import LoginRequest, LoginResponse
+from ..services import email_verification_service as verification
+from ..services import mail_config_service
 from ..services import security_event_service as sec
 from ..services.auth_service import (
     AUTH_TOKEN_EXPIRY_SECONDS,
     AccountTemporarilyLockedError,
+    EmailNotVerifiedError,
     authenticate_token,
     authenticate_user,
     decode_access_token,
+    email_verification_pending,
     invalidate_sessions,
     issue_access_token,
     register_user,
@@ -30,6 +40,9 @@ from ..services.rate_limiter import (
     login_rate_limiter,
     register_rate_limiter,
     too_many_requests,
+    verification_confirm_rate_limiter,
+    verification_email_rate_limiter,
+    verification_resend_rate_limiter,
 )
 from ..services.role_service import RoleService
 from .dependencies import AUTH_COOKIE_NAME, _normalize_role, extract_request_token
@@ -132,6 +145,14 @@ def login(
 
     try:
         user, token_version = authenticate_user(db, payload.email, payload.password)
+    except EmailNotVerifiedError:
+        # Passwort war korrekt — kein Brute-Force-Signal, daher kein
+        # Hochzaehlen der Fehlversuche. Nur protokollieren und durchreichen.
+        sec.record_event(
+            db, sec.LOGIN_BLOCKED_EMAIL_UNVERIFIED, request=request, severity="warning",
+            identifier=email, reason="email_unverified",
+        )
+        raise
     except AccountTemporarilyLockedError as exc:
         # Persistente Konto-Sperre (überlebt Neustarts). Auf dem auslösenden
         # Versuch zusätzlich ein suspicious-Event für den Admin-Badge.
@@ -194,12 +215,78 @@ def login(
     )
 
 
-# Generische Erfolgsmeldung der Registrierung. Bewusst identisch für: echte
+# Generische Erfolgsmeldungen der Registrierung. Bewusst identisch für: echte
 # Neuanlage, Duplikat und Honeypot-Treffer — von außen ist nicht
-# unterscheidbar, ob ein Konto entstanden ist.
-_REGISTER_GENERIC_MESSAGE = (
-    "Registrierung erfolgreich. Dein Konto muss erst von einem Admin freigegeben werden."
+# unterscheidbar, ob ein Konto entstanden ist. Welche der beiden Meldungen
+# gilt, hängt ausschließlich am serverseitig eingestellten Verfahren, nicht am
+# einzelnen Konto.
+_REGISTER_MESSAGE_CLASSIC = (
+    "Registrierung eingegangen. Deine Registrierung wurde gespeichert und "
+    "wartet auf die Freigabe durch einen Administrator. Du kannst dich "
+    "anmelden, sobald dein Konto freigegeben wurde."
 )
+_REGISTER_MESSAGE_VERIFICATION = (
+    "Registrierung eingegangen. Wir haben dir eine E-Mail mit einem "
+    "Bestätigungslink gesendet. Bitte prüfe auch deinen Spam-Ordner. "
+    "Nach der Bestätigung muss dein Konto noch von einem Admin freigegeben werden."
+)
+# Hinweis, wenn der Versand nachweislich fehlgeschlagen ist. Enthält bewusst
+# keine technischen Details (Host, Fehlercode, Zugangsdaten).
+_MAIL_FAILED_HINT = (
+    "Die Bestätigungs-E-Mail konnte gerade nicht versendet werden. "
+    "Bitte fordere den Link gleich erneut an oder wende dich an einen Administrator."
+)
+_MAIL_NOT_CONFIGURED_HINT = (
+    "Der E-Mail-Versand ist auf diesem Server nicht eingerichtet. "
+    "Bitte wende dich an einen Administrator, um dein Konto freischalten zu lassen."
+)
+
+
+def _config_only_outcome(db: Session) -> verification.SendOutcome:
+    """Versandergebnis ohne echten Versand — spiegelt nur die Serverkonfiguration.
+
+    Wird dort benutzt, wo bewusst keine Mail rausgeht (Honeypot, bereits
+    bestätigtes Konto): Die Antwort darf sich dadurch nicht von einer echten
+    Registrierung unterscheiden, solange der Versandweg steht.
+    """
+    problem = verification.configuration_problem(db)
+    if problem is None:
+        return verification.SendOutcome(sent=True)
+    return verification.SendOutcome(sent=False, reason=problem, not_configured=True)
+
+
+def _mail_hint(outcome: verification.SendOutcome) -> str | None:
+    """Übersetzt ein Versandergebnis in einen UI-Hinweis (ohne Technikdetails)."""
+    if outcome.sent:
+        return None
+    return _MAIL_NOT_CONFIGURED_HINT if outcome.not_configured else _MAIL_FAILED_HINT
+
+
+def _dispatch_verification_mail(
+    db: Session,
+    user: UserRecord,
+    request: Request,
+    *,
+    identifier: str,
+) -> verification.SendOutcome:
+    """Verschickt die Bestätigungsmail und protokolliert das Ergebnis.
+
+    Wirft nie — ein Mailproblem darf den Auth-Fluss nicht abbrechen. Es wird
+    weder der Token noch die Bestätigungs-URL protokolliert.
+    """
+    outcome = verification.send_verification_email(db, user)
+    if outcome.sent:
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_SENT, request=request, success=True,
+            user_id=user.external_id, identifier=identifier,
+        )
+    else:
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_SEND_FAILED, request=request, severity="warning",
+            user_id=user.external_id, identifier=identifier,
+            reason="smtp_not_configured" if outcome.not_configured else "smtp_delivery_failed",
+        )
+    return outcome
 
 
 @router.post("/register", response_model=AuthRegisterResponse, status_code=201)
@@ -210,6 +297,14 @@ def register(
 ) -> AuthRegisterResponse:
     email = payload.email.strip().lower()
     sec.record_event(db, sec.REGISTER_ATTEMPT, request=request, identifier=email)
+
+    # Aktives Verfahren EINMAL bestimmen und konsequent durchhalten. Default
+    # (auch bei fehlender/kaputter Einstellung) ist der klassische Ablauf mit
+    # reiner Admin-Freigabe — er funktioniert ohne jede SMTP-Konfiguration.
+    verification_mode = mail_config_service.email_verification_active(db)
+    generic_message = (
+        _REGISTER_MESSAGE_VERIFICATION if verification_mode else _REGISTER_MESSAGE_CLASSIC
+    )
 
     # Spam-Schutz pro IP: jeder Registrierungsversuch zaehlt.
     rate_key = client_ip(request)
@@ -229,7 +324,15 @@ def register(
             db, sec.REGISTER_HONEYPOT, request=request, severity="warning",
             identifier=email, reason="honeypot",
         )
-        return AuthRegisterResponse(message=_REGISTER_GENERIC_MESSAGE)
+        honeypot_outcome = (
+            _config_only_outcome(db) if verification_mode else verification.SendOutcome(sent=True)
+        )
+        return AuthRegisterResponse(
+            message=generic_message,
+            verificationRequired=verification_mode,
+            emailSent=honeypot_outcome.sent,
+            emailHint=_mail_hint(honeypot_outcome),
+        )
 
     # Admin-Schalter (system_settings, Default AUS): serverseitig hart
     # blockieren. Bewusst ein ehrlicher 403 statt der generischen Antwort —
@@ -243,7 +346,13 @@ def register(
         raise HTTPException(status_code=403, detail="Registrierung ist deaktiviert.")
 
     try:
-        outcome = register_user(db, payload.name, payload.email, payload.password)
+        outcome = register_user(
+            db,
+            payload.name,
+            payload.email,
+            payload.password,
+            require_email_verification=verification_mode,
+        )
     except HTTPException as exc:
         if exc.status_code == 400:
             sec.record_event(
@@ -252,7 +361,7 @@ def register(
             )
         raise
 
-    if outcome == "duplicate":
+    if outcome.status == "duplicate":
         sec.record_event(db, sec.REGISTER_DUPLICATE, request=request, identifier=email)
     else:
         sec.record_event(
@@ -266,7 +375,150 @@ def register(
                 db, sec.REGISTER_EXTERNAL_DOMAIN, request=request, severity="warning",
                 identifier=email, reason="external_domain",
             )
-    return AuthRegisterResponse(message=_REGISTER_GENERIC_MESSAGE)
+
+    # Klassischer Ablauf: kein Mailversand, kein Mail-Hinweis. Das Konto wartet
+    # ausschließlich auf die Admin-Freigabe und funktioniert damit auch ohne
+    # jede SMTP-Konfiguration vollständig.
+    if not verification_mode:
+        return AuthRegisterResponse(message=generic_message, verificationRequired=False)
+
+    # Modus mit E-Mail-Bestätigung: Bei einem Duplikat wird nur versendet, wenn
+    # das bestehende Konto tatsächlich noch auf seine Bestätigung wartet — ein
+    # fertig bestätigtes Konto bekommt keine Mail, meldet nach außen aber
+    # dasselbe Ergebnis (Anti-Enumeration).
+    if email_verification_pending(outcome.user):
+        send_outcome = _dispatch_verification_mail(db, outcome.user, request, identifier=email)
+    else:
+        # Kein Versand nötig. Der gemeldete Wert hängt trotzdem nur am
+        # Versandweg, nicht am Kontozustand: Ist SMTP gar nicht eingerichtet,
+        # erfährt JEDER Registrierende dasselbe.
+        send_outcome = _config_only_outcome(db)
+
+    return AuthRegisterResponse(
+        message=generic_message,
+        verificationRequired=True,
+        emailSent=send_outcome.sent,
+        emailHint=_mail_hint(send_outcome),
+    )
+
+
+@router.post("/verify-email", response_model=AuthVerifyEmailResponse)
+def verify_email(
+    payload: AuthVerifyEmailRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AuthVerifyEmailResponse:
+    """Löst einen Bestätigungstoken ein (bewusst POST, nie GET).
+
+    Der Token steht damit weder in Server-/Proxy-Logs noch in der
+    Browser-History; die Frontend-Seite entfernt ihn zusätzlich sofort aus
+    der Adresszeile. Die E-Mail-Bestätigung gibt das Konto NICHT frei — die
+    Admin-Freigabe bleibt eine eigenständige zweite Bedingung.
+    """
+    rate_key = client_ip(request)
+    blocked = verification_confirm_rate_limiter.is_blocked(rate_key)
+    if blocked.limited:
+        raise too_many_requests(blocked.retry_after)
+    verification_confirm_rate_limiter.record_attempt(rate_key)
+
+    status, user = verification.consume_token(db, payload.token)
+
+    if status == verification.VerificationResult.EXPIRED:
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_EXPIRED_TOKEN, request=request, severity="info",
+            user_id=user.external_id if user else None, reason="token_expired",
+        )
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Dieser Bestätigungslink ist abgelaufen. "
+                "Bitte fordere einen neuen Link an."
+            ),
+        )
+    if status == verification.VerificationResult.INVALID or user is None:
+        # Bewusst eine einzige Meldung für „nie existiert", „schon benutzt"
+        # und „durch neuen Link ersetzt" — kein Rückschluss auf Konten.
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_INVALID_TOKEN, request=request, severity="warning",
+            reason="token_invalid",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Dieser Bestätigungslink ist ungültig oder wurde bereits verwendet. "
+                "Bitte fordere einen neuen Link an."
+            ),
+        )
+
+    account_active = bool(user.is_active)
+    if status == verification.VerificationResult.VERIFIED:
+        sec.record_event(
+            db, sec.EMAIL_VERIFICATION_CONFIRMED, request=request, success=True,
+            user_id=user.external_id, identifier=user.email,
+        )
+    message = (
+        "E-Mail-Adresse bestätigt. Du kannst dich jetzt anmelden."
+        if account_active
+        else (
+            "E-Mail-Adresse bestätigt. Dein Konto muss jetzt noch von einem "
+            "Administrator freigegeben werden — du erhältst Zugriff, sobald das erledigt ist."
+        )
+    )
+    return AuthVerifyEmailResponse(status=status, message=message, accountActive=account_active)
+
+
+# Generische Antwort des Resend-Endpunkts: identisch für existierende,
+# nicht existierende, bereits bestätigte und abgelehnte Konten.
+_RESEND_GENERIC_MESSAGE = (
+    "Wenn für diese Adresse eine Bestätigung aussteht, haben wir den Link "
+    "erneut gesendet. Bitte prüfe auch deinen Spam-Ordner."
+)
+
+
+@router.post("/resend-verification", response_model=AuthResendVerificationResponse)
+def resend_verification(
+    payload: AuthResendVerificationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> AuthResendVerificationResponse:
+    """Verschickt den Bestätigungslink erneut und entwertet den alten.
+
+    Antwortet immer generisch (Anti-Enumeration) und ist doppelt
+    rate-limitiert: pro IP und pro E-Mail-Adresse (Schutz vor Mail-Bombing
+    eines fremden Postfachs).
+    """
+    email = payload.email.strip().lower()
+    ip_key = f"resend:{client_ip(request)}"
+    mail_key = f"resend-mail:{email}"
+
+    ip_blocked = verification_resend_rate_limiter.is_blocked(ip_key)
+    mail_blocked = verification_email_rate_limiter.is_blocked(mail_key)
+    if ip_blocked.limited or mail_blocked.limited:
+        raise too_many_requests(max(ip_blocked.retry_after, mail_blocked.retry_after))
+    verification_resend_rate_limiter.record_attempt(ip_key)
+    verification_email_rate_limiter.record_attempt(mail_key)
+
+    sec.record_event(
+        db, sec.EMAIL_VERIFICATION_RESEND_REQUESTED, request=request, identifier=email,
+    )
+
+    user = (
+        db.scalar(select(UserRecord).where(UserRecord.email.ilike(email))) if email else None
+    )
+    # Nur Konten mit tatsächlich offener Bestätigung bekommen eine Mail. Das
+    # gilt bewusst auch dann, wenn inzwischen wieder der klassische Modus
+    # aktiv ist: Eine einmal entstandene Bestätigungspflicht bleibt bestehen
+    # und muss einlösbar sein, sobald SMTP wieder läuft.
+    if user is not None and email_verification_pending(user):
+        send_outcome = _dispatch_verification_mail(db, user, request, identifier=email)
+    else:
+        send_outcome = _config_only_outcome(db)
+
+    return AuthResendVerificationResponse(
+        message=_RESEND_GENERIC_MESSAGE,
+        emailSent=send_outcome.sent,
+        emailHint=_mail_hint(send_outcome),
+    )
 
 
 @router.get("/me", response_model=AuthUserInfo)

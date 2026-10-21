@@ -232,6 +232,107 @@ class UserRecord(TimestampMixin, Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     approved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # --- E-Mail-Bestaetigung (Selbst-Registrierung) ---
+    # ``email_verification_required`` ist der entscheidende Rueckwaerts-
+    # kompatibilitaets-Schalter: Nur Konten, die ueber die Selbst-Registrierung
+    # entstanden sind, tragen 1. Bestandsbenutzer, Admin-angelegte Benutzer und
+    # alle Konten aus alten Backups bleiben auf dem Default 0 und werden vom
+    # Login-Gate NIE geprueft — niemand wird nachtraeglich ausgesperrt.
+    email_verification_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class EmailVerificationTokenRecord(TimestampMixin, Base):
+    """Einmal-Token fuer die Bestaetigung einer E-Mail-Adresse.
+
+    Es wird ausschliesslich der SHA-256-Hash des Tokens gespeichert — aus der
+    Datenbank (oder einem Backup) laesst sich ein gueltiger Bestaetigungslink
+    damit nicht rekonstruieren. Der Klartext-Token existiert nur im Versand-
+    Moment im Speicher und in der zugestellten E-Mail.
+
+    Bewusst NICHT Teil des Backups (siehe services/backup_service.py): ein
+    Restore soll keine alten Einmal-Tokens wiederbeleben.
+    """
+
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Gesetzt, sobald der Token eingeloest wurde -> der Token ist danach tot.
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Gesetzt, wenn ein neuer Token ausgestellt wurde -> alte Links sterben
+    # sofort, ohne auf ihren Ablauf zu warten.
+    invalidated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MailSettingsRecord(TimestampMixin, Base):
+    """In der Adminoberflaeche gepflegte SMTP-Konfiguration (genau eine Zeile).
+
+    Bewusst eine eigene Tabelle statt des Key/Value-Stores ``system_settings``:
+    Das Passwort braucht eine klar abgegrenzte, verschluesselte Spalte, und die
+    Testergebnisse (Zeitpunkt/Erfolg/Fehler) gehoeren typisiert dazu.
+
+    ``password_encrypted`` enthaelt AUSSCHLIESSLICH einen Fernet-Chiffretext
+    (siehe services/secret_store.py) — niemals Klartext. Ohne den serverseitigen
+    Schluessel (aus ``AUTH_TOKEN_SECRET`` abgeleitet bzw.
+    ``MAIL_CONFIG_ENCRYPTION_KEY``) ist der Wert wertlos.
+
+    Fehlt die Zeile komplett, gilt: keine Admin-Konfiguration vorhanden — es
+    greifen die SMTP-Umgebungsvariablen bzw. "SMTP deaktiviert".
+    """
+
+    __tablename__ = "mail_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # Vom Admin bewusst eingeschaltet. False = Konfiguration liegt vor, wird
+    # aber nicht verwendet.
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    port: Mapped[int] = mapped_column(Integer, nullable=False, default=587, server_default="587")
+    # "starttls" | "ssl" | "none" (none nur ausserhalb von Produktion erlaubt)
+    security: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="starttls", server_default="starttls"
+    )
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    from_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    timeout_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=15, server_default="15"
+    )
+    verification_expiry_hours: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=24, server_default="24"
+    )
+    # Ergebnis des letzten Verbindungstests bzw. Versands — Grundlage der
+    # Statusanzeige und Voraussetzung fuer die Aktivierung von Modus B.
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_test_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_test_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_send_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_send_success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    last_send_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Wurde eine Test-E-Mail vom Server angenommen? Pflicht-Vorbedingung fuer
+    # den Wechsel auf "E-Mail-Bestaetigung".
+    test_mail_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Oeffentliche Adresse des WWS fuer Bestaetigungslinks (z. B.
+    # https://warehouse.example.de). NULL = FRONTEND_URL aus der ENV verwenden.
+    # Wird nie aus einem Request-Header abgeleitet (Host-Header-Injection).
+    public_base_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class PlanningRecord(TimestampMixin, Base):

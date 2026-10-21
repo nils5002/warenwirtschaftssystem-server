@@ -97,6 +97,31 @@ def get_access_context(
     return AccessContext(role=role, user_id=user_id, project_contexts=project_contexts)
 
 
+CSRF_HEADER = "x-requested-with"
+CSRF_HEADER_VALUE = "xmlhttprequest"
+
+
+def require_csrf_header(request: Request) -> None:
+    """Zusaetzlicher CSRF-Schutz fuer schreibende Admin-Endpunkte.
+
+    Das Auth-Cookie ist bereits ``SameSite=Lax``. Zusaetzlich muss eine
+    cookie-authentifizierte Anfrage den Header ``X-Requested-With:
+    XMLHttpRequest`` tragen: Ein Formular einer fremden Seite kann keine
+    eigenen Header setzen, und ein fremdes ``fetch`` mit diesem Header scheitert
+    am CORS-Preflight. Anfragen mit explizitem ``Authorization: Bearer``-Header
+    sind nicht CSRF-faehig (der Browser haengt den Header nie selbst an) und
+    brauchen ihn nicht.
+    """
+    if request.headers.get("authorization", "").strip().lower().startswith("bearer "):
+        return
+    if request.headers.get(CSRF_HEADER, "").strip().lower() == CSRF_HEADER_VALUE:
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="Anfrage abgelehnt: Sicherheits-Header fehlt. Bitte die Seite neu laden.",
+    )
+
+
 def require_roles(context: AccessContext, *allowed: RoleName) -> None:
     if context.role not in allowed:
         raise HTTPException(status_code=403, detail="Keine Berechtigung für diese Aktion.")

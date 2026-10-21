@@ -269,6 +269,23 @@ class UserItem(BaseModel):
     # Signaturfarbe (Einsatzplanung/Kalender) + Herkunft ('auto' | 'manual').
     signatureColor: Optional[str] = None
     signatureColorSource: Optional[str] = None
+    # --- E-Mail-Bestaetigung (nur Selbst-Registrierungen) ---
+    # ``emailVerificationRequired`` = False bei allen Bestands- und
+    # Admin-Konten; deren Anzeige bleibt damit exakt wie bisher.
+    emailVerificationRequired: bool = False
+    emailVerifiedAt: Optional[str] = None
+    # Abgeleitet: wartet dieses Konto noch auf die E-Mail-Bestaetigung?
+    emailVerificationPending: bool = False
+
+
+class UserVerificationResendResponse(BaseModel):
+    """Ergebnis eines admin-ausgeloesten Bestaetigungs-Versands."""
+
+    sent: bool
+    message: str
+    # Technischer Grund bei Misserfolg — fuer den Admin sichtbar, enthaelt
+    # per Konstruktion weder Zugangsdaten noch Tokens.
+    hint: Optional[str] = None
 
 
 class UserUpdatePayload(BaseModel):

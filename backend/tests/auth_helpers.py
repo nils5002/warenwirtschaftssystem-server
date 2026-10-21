@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -11,6 +12,21 @@ from app.database.session import SessionLocal
 from app.services.auth_service import hash_password, normalize_role_for_db
 
 TEST_PASSWORD = "TestPass123!"
+
+
+def mark_email_verified(email: str) -> None:
+    """Setzt die E-Mail-Bestaetigung eines Testkontos direkt in der DB.
+
+    Abkuerzung fuer Tests, die NICHT den Bestaetigungsflow pruefen, sondern
+    nur ein anmeldefaehiges Konto brauchen. Der echte Token-/Mail-Weg wird in
+    tests/test_email_verification.py gegen einen gemockten SMTP-Versand
+    geprueft.
+    """
+    with SessionLocal() as db:
+        user = db.scalar(select(UserRecord).where(UserRecord.email.ilike(email.strip().lower())))
+        assert user is not None, f"Testbenutzer {email} nicht gefunden"
+        user.email_verified_at = datetime.now(UTC)
+        db.commit()
 
 
 def _role_title(role: str) -> str:

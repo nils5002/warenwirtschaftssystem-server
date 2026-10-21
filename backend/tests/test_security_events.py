@@ -14,7 +14,7 @@ from app.main import app
 from app.services import security_event_service as sec
 from app.services.rate_limiter import account_login_rate_limiter, login_rate_limiter
 
-from .auth_helpers import auth_headers
+from .auth_helpers import auth_headers, mark_email_verified
 
 
 def _register(client: TestClient, email: str, *, name: str = "Sec Probe", website: str | None = None):
@@ -144,6 +144,9 @@ def test_inactive_user_cannot_login() -> None:
     client = TestClient(app)
     email = f"inactive-{uuid4().hex}@conventex.com"
     _register(client, email)  # legt wartendes Konto an
+    # E-Mail bestaetigen, damit hier gezielt die FEHLENDE ADMIN-FREIGABE
+    # geprueft wird und nicht das davor liegende Verifizierungs-Gate.
+    mark_email_verified(email)
     res = client.post("/api/auth/login", json={"email": email, "password": "Willkommen123!"})
     assert res.status_code == 403
     assert _events_for(email, sec.LOGIN_BLOCKED_INACTIVE)

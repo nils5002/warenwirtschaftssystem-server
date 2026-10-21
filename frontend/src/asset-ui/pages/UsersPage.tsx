@@ -1,13 +1,15 @@
-import { KeyRound, Lock, LockOpen, Shield, ShieldAlert, Trash2, UserPlus, UserRoundCheck, UserRoundX, Users2, X } from 'lucide-react';
+import { KeyRound, Lock, LockOpen, MailCheck, MailMinus, MailWarning, Send, Shield, ShieldAlert, Trash2, UserPlus, UserRoundCheck, UserRoundX, Users2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useAppDialog } from '../../components/dialogs/AppDialogProvider';
 import { InlineLoadingState, LoadingButton } from '../../components/loading';
 import { StatusBadge } from '../components/StatusBadge';
 import { KpiCard } from '../components/KpiCard';
 import { PageHeader } from '../../ui';
+import { emailVerificationBadge } from '../../components/auth/emailVerification';
 import {
   fetchRegistrationSetting,
   fetchUserSecurityInfo,
+  resendUserVerification,
   revokeUserSessions,
   updateRegistrationSetting,
 } from '../../services/wmsApi';
@@ -16,6 +18,47 @@ import { USER_SIGNATURE_COLORS, signatureColorLabel, userInitials } from '../use
 import { ResponsibleBadge } from '../components/ResponsibleBadge';
 
 type UserStatusAction = 'approve' | 'reject' | 'lock' | 'unlock';
+
+/**
+ * Chip für den E-Mail-Bestätigungsstand.
+ *
+ * Bewusst getrennt vom Freigabe-Status (`StatusBadge`): Beide Zustände sind
+ * unabhängig und dürfen sich nicht gegenseitig überschreiben — ein Konto kann
+ * „Wartet auf Freigabe" UND „E-Mail bestätigt" sein. Konten ohne
+ * Bestätigungspflicht (Bestands-/Adminkonten) zeigen gar keinen Chip.
+ */
+const VERIFICATION_CHIP_CLASSES: Record<string, string> = {
+  pending: 'border-amber-200 bg-amber-50 text-amber-700',
+  verified: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  neutral: 'border-slate-200 bg-slate-100 text-slate-600',
+};
+
+const VERIFICATION_CHIP_TITLES: Record<string, string> = {
+  pending: 'Der Benutzer hat seine E-Mail-Adresse noch nicht bestätigt.',
+  verified: 'Die E-Mail-Adresse wurde bestätigt.',
+  neutral:
+    'Dieses Konto wurde im klassischen Verfahren angelegt — eine E-Mail-Bestätigung ist nicht erforderlich.',
+};
+
+function EmailVerificationChip({ user }: { user: UserItem }) {
+  const badge = emailVerificationBadge(user);
+  const title =
+    badge.tone === 'verified' && user.emailVerifiedAt
+      ? `E-Mail bestätigt am ${user.emailVerifiedAt}`
+      : VERIFICATION_CHIP_TITLES[badge.tone];
+  return (
+    <span className={`status-chip ${VERIFICATION_CHIP_CLASSES[badge.tone]}`} title={title}>
+      {badge.tone === 'pending' ? (
+        <MailWarning className="h-3.5 w-3.5" />
+      ) : badge.tone === 'verified' ? (
+        <MailCheck className="h-3.5 w-3.5" />
+      ) : (
+        <MailMinus className="h-3.5 w-3.5" />
+      )}
+      {badge.label}
+    </span>
+  );
+}
 
 type BulkDeleteResult = {
   deletedCount: number;
@@ -113,6 +156,8 @@ export function UsersPage({
   const [securityError, setSecurityError] = useState<string | null>(null);
   const [revokingSessions, setRevokingSessions] = useState(false);
   const [statusActionUserId, setStatusActionUserId] = useState<string | null>(null);
+  // Läuft gerade ein erneuter Bestätigungs-Versand für diesen Benutzer?
+  const [verificationUserId, setVerificationUserId] = useState<string | null>(null);
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null);
   const [registrationSaving, setRegistrationSaving] = useState(false);
   const userInForm = form.id ? users.find((user) => user.id === form.id) : undefined;
@@ -467,6 +512,32 @@ export function UsersPage({
     }
   };
 
+  const resendVerificationMail = async (user: UserItem) => {
+    setActionError(null);
+    setVerificationUserId(user.id);
+    try {
+      const response = await resendUserVerification(user.id);
+      if (response.sent) {
+        await alert({
+          title: 'Bestätigungs-E-Mail gesendet',
+          message: `${user.name} hat einen neuen Bestätigungslink an ${user.email} erhalten.`,
+        });
+      } else {
+        // Dem Admin den technischen Grund zeigen — er soll ihn beheben
+        // können. Er enthält per Konstruktion keine Zugangsdaten.
+        setActionError(
+          [response.message, response.hint].filter(Boolean).join(' '),
+        );
+      }
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : 'Bestätigungs-E-Mail konnte nicht gesendet werden.',
+      );
+    } finally {
+      setVerificationUserId(null);
+    }
+  };
+
   const openSecurityDetails = async (user: UserItem) => {
     setSecurityUser(user);
     setSecurityInfo(null);
@@ -683,10 +754,27 @@ export function UsersPage({
                     {user.lastLoginAt || user.lastActive}
                   </td>
                   <td className="px-3 py-3">
-                    <StatusBadge value={user.status} />
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge value={user.status} />
+                      <EmailVerificationChip user={user} />
+                    </div>
                   </td>
                   <td className="rounded-r-xl px-3 py-3 text-right">
                     <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                      {user.emailVerificationPending ? (
+                        <LoadingButton
+                          type="button"
+                          className="btn-secondary border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 hover:bg-amber-100"
+                          onClick={() => void resendVerificationMail(user)}
+                          isLoading={verificationUserId === user.id}
+                          loadingText="..."
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <Send className="h-3.5 w-3.5" />
+                            Bestätigung senden
+                          </span>
+                        </LoadingButton>
+                      ) : null}
                       {user.status === 'Wartet auf Freigabe' ? (
                         <>
                           <LoadingButton
@@ -806,12 +894,26 @@ export function UsersPage({
                 </div>
                 <StatusBadge value={user.status} />
               </div>
+              <div className="mt-2">
+                <EmailVerificationChip user={user} />
+              </div>
               <div className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700">
                 <Shield className="h-3.5 w-3.5" />
                 {user.role}
               </div>
               <p className="mt-2 text-xs text-slate-500">{(user.department || '-') + ' / ' + (user.location || '-')}</p>
               <p className="mt-2 text-xs text-slate-500">Letzter Login: {user.lastLoginAt || user.lastActive}</p>
+              {user.emailVerificationPending ? (
+                <LoadingButton
+                  type="button"
+                  className="btn-secondary mt-3 border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-700 hover:bg-amber-100"
+                  onClick={() => void resendVerificationMail(user)}
+                  isLoading={verificationUserId === user.id}
+                  loadingText="..."
+                >
+                  Bestätigungs-E-Mail senden
+                </LoadingButton>
+              ) : null}
               {user.status === 'Wartet auf Freigabe' ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <LoadingButton
@@ -1161,8 +1263,9 @@ export function UsersPage({
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Sicherheitsdetails</p>
                 <h3 className="text-lg font-semibold text-slate-900">{securityUser.name}</h3>
-                <div className="mt-1">
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <StatusBadge value={securityUser.status} />
+                  <EmailVerificationChip user={securityUser} />
                 </div>
               </div>
               <button

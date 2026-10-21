@@ -15,6 +15,7 @@ export const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
   rolesPermissions: 'roles.manage',
   securityLogs: 'logs.read',
   systemUpdate: 'system.update',
+  emailSettings: 'mail.manage',
 };
 
 // Heutiges, hartkodiertes Rollen-Verhalten als sicherer Fallback — greift, wenn
@@ -22,17 +23,25 @@ export const PAGE_PERMISSION: Partial<Record<AppPage, string>> = {
 export function legacyVisible(key: AppPage, role: AppRole): boolean {
   if (role === 'Admin') return true;
   if (role === 'Projektmanager') {
-    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate'].includes(key);
+    return !['users', 'importExport', 'backup', 'qrFunctions', 'massPrint', 'labelAudit', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate', 'emailSettings'].includes(key);
   }
   // Mitarbeiter / Junior: kein Verwaltungszugriff inkl. Fremdbestand.
-  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate'].includes(key);
+  return !['users', 'categories', 'importExport', 'backup', 'massPrint', 'labelAudit', 'externalPool', 'updateNotes', 'loginBackground', 'rolesPermissions', 'telecomPass', 'securityLogs', 'systemUpdate', 'emailSettings'].includes(key);
 }
 
 // Kanonische "darf diese Rolle/dieser Nutzer Seite X sehen?"-Prüfung — exakt
 // die Logik aus App.tsx (visibleNavigation): liegen effektive Rechte vor,
 // entscheiden sie; sonst greift die bisherige Rollenlogik. Wird sowohl für die
 // Navigationsfilterung als auch für klickbare Dashboard-Kacheln genutzt.
+// Seiten, die unabhaengig von gewaehrten Rechten ausschliesslich Admins
+// sehen. Spiegelt die harte Rollenpruefung im Backend: Ein im Rolleneditor
+// versehentlich vergebenes Recht blendet den Menuepunkt NICHT ein.
+const ADMIN_ONLY_PAGES: readonly AppPage[] = ['emailSettings'];
+
 export function canAccessPage(page: AppPage, permissions: string[] | undefined, role: AppRole): boolean {
+  if (ADMIN_ONLY_PAGES.includes(page) && role !== 'Admin') {
+    return false;
+  }
   if (!Array.isArray(permissions)) {
     return legacyVisible(page, role);
   }

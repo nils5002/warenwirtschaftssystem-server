@@ -10,6 +10,7 @@ from . import (
     health,
     label_audit,
     login_backgrounds,
+    mail_settings,
     media,
     mobile,
     planning,
@@ -48,5 +49,6 @@ api_router.include_router(qr_groups.router)
 api_router.include_router(roles.router)
 api_router.include_router(security.router)
 api_router.include_router(system_update.router)
+api_router.include_router(mail_settings.router)
 api_router.include_router(telecom_pass.router)
 api_router.include_router(mobile.router)

@@ -10,4 +10,7 @@ openpyxl>=3.1
 python-multipart>=0.0.9
 passlib[bcrypt]>=1.7
 bcrypt>=4.1
+# Fernet (authentifizierte Verschluesselung) fuer das in der Adminoberflaeche
+# gepflegte SMTP-Passwort — siehe app/services/secret_store.py.
+cryptography>=42.0
 Pillow

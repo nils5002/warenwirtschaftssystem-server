@@ -262,6 +262,41 @@ def create_app() -> FastAPI:
                 )
             except Exception:  # noqa: BLE001
                 logger.exception("Security-Event-Cleanup fehlgeschlagen — App startet trotzdem")
+        # E-Mail-Bestaetigung: abgelaufene Einmal-Tokens aufraeumen und EINMAL
+        # protokollieren, ob der Versandweg ueberhaupt steht. Ohne diese Zeile
+        # faellt eine fehlende SMTP-Konfiguration erst auf, wenn sich jemand
+        # registriert. Es wird nur der Grund geloggt — nie Zugangsdaten.
+        with SessionLocal() as db:
+            try:
+                from .services import email_verification_service
+
+                from .services import mail_config_service
+
+                email_verification_service.cleanup_expired_tokens(db)
+                mode = mail_config_service.get_registration_mode(db)
+                resolved = mail_config_service.resolve(db, settings)
+                if resolved.usable:
+                    logger.info(
+                        "E-Mail-Versand einsatzbereit (Quelle: %s).",
+                        "Administration" if resolved.source == "admin" else "Umgebungsvariablen",
+                    )
+                elif mode == mail_config_service.MODE_EMAIL_VERIFICATION:
+                    # Nur hier ist es ein Problem: Der Admin hat die
+                    # E-Mail-Bestaetigung aktiviert, der Versand steht aber nicht.
+                    logger.warning(
+                        "E-Mail-Versand nicht einsatzbereit: %s "
+                        "Neue Registrierungen koennen ihre Adresse nicht bestaetigen.",
+                        resolved.problem,
+                    )
+                else:
+                    logger.info(
+                        "Kein E-Mail-Versand konfiguriert (%s). Registrierung laeuft im "
+                        "klassischen Verfahren mit Admin-Freigabe.",
+                        resolved.problem,
+                    )
+                logger.info("Registrierungsverfahren: %s", mode)
+            except Exception:  # noqa: BLE001
+                logger.exception("E-Mail-Verifizierungs-Setup fehlgeschlagen — App startet trotzdem")
         # Systemupdate: offene Updatevorgaenge bewerten. Genau hier — nach einem
         # Portainer-Redeploy — laeuft der neue Container zum ersten Mal, und nur
         # hier laesst sich pruefen, ob wirklich der Ziel-Commit aktiv ist. Ein

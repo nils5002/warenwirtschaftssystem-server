@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
@@ -479,11 +480,42 @@ def is_valid_email(value: str) -> bool:
     return bool(_EMAIL_PATTERN.match(value.strip().lower()))
 
 
-def register_user(db: Session, name: str, email: str, password: str) -> str:
-    """Legt ein wartendes Konto an. Liefert das Ergebnis als Code zurück
-    ("created" | "duplicate"), damit die Route das passende Security-Event
-    schreiben kann — die HTTP-Antwort bleibt in beiden Fällen identisch
-    (Anti-Enumeration).
+@dataclass(frozen=True)
+class RegistrationOutcome:
+    """Ergebnis einer Selbst-Registrierung.
+
+    ``status`` ist "created" oder "duplicate"; ``user`` ist der betroffene
+    Datensatz (bei "duplicate" der bereits bestehende). Die HTTP-Antwort der
+    Route bleibt in beiden Fällen identisch (Anti-Enumeration) — der
+    Unterschied steuert nur Security-Event und Mailversand.
+    """
+
+    status: str
+    user: UserRecord
+
+
+def register_user(
+    db: Session,
+    name: str,
+    email: str,
+    password: str,
+    *,
+    require_email_verification: bool = False,
+) -> RegistrationOutcome:
+    """Legt ein wartendes Konto an (``is_active=False``, Passwort gehasht).
+
+    ``require_email_verification`` kommt aus dem aktiven Registrierungs-
+    verfahren (siehe ``mail_config_service``):
+
+    * **False — klassischer Ablauf (Default):** Das Konto wartet ausschließlich
+      auf die Admin-Freigabe. Es wird keine Bestätigungspflicht gesetzt, also
+      ist auch ohne jeden Mailversand eine Anmeldung nach der Freigabe möglich.
+    * **True — mit E-Mail-Bestätigung:** Zusätzlich wird
+      ``email_verification_required`` gesetzt; der Login verlangt dann beides.
+
+    Der Default ist bewusst der klassische Ablauf: Ein Aufruf ohne explizite
+    Entscheidung darf niemanden aussperren. Bestandsbenutzer und vom Admin
+    angelegte Benutzer tragen die Pflicht nie.
     """
     normalized_email = email.strip().lower()
     if not normalized_email:
@@ -499,9 +531,10 @@ def register_user(db: Session, name: str, email: str, password: str) -> str:
         # Account-Enumeration vermeiden: keine 409-Auskunft, dass die E-Mail
         # bereits vergeben ist. Der Aufrufer erhält dieselbe generische
         # Erfolgsmeldung wie bei einer echten Neuregistrierung — es wird
-        # bewusst kein zweites Konto angelegt.
+        # bewusst kein zweites Konto angelegt und das bestehende Passwort
+        # NICHT überschrieben.
         logger.info("Registrierung ignoriert: E-Mail bereits vergeben")
-        return "duplicate"
+        return RegistrationOutcome(status="duplicate", user=existing)
 
     user = UserRecord(
         external_id=f"usr-{secrets.token_hex(6)}",
@@ -512,10 +545,13 @@ def register_user(db: Session, name: str, email: str, password: str) -> str:
         is_active=False,
         status="Wartet auf Freigabe",
         last_active="Neu",
+        email_verification_required=bool(require_email_verification),
+        email_verified_at=None,
     )
     db.add(user)
     db.commit()
-    return "created"
+    db.refresh(user)
+    return RegistrationOutcome(status="created", user=user)
 
 
 # Persistente Brute-Force-Sperre (überlebt Prozess-Neustarts, anders als die
@@ -524,6 +560,39 @@ def register_user(db: Session, name: str, email: str, password: str) -> str:
 # damit normale Tippfehler nie hierher führen.
 FAILED_LOGIN_LOCK_THRESHOLD = 10
 FAILED_LOGIN_LOCK_SECONDS = 15 * 60
+
+
+def email_verification_pending(user: UserRecord) -> bool:
+    """True, wenn dieses Konto noch auf seine E-Mail-Bestätigung wartet.
+
+    Rückwärtskompatibel per Default: Nur Konten aus der Selbst-Registrierung
+    tragen ``email_verification_required = True``. Bestandsbenutzer, vom Admin
+    angelegte Benutzer und Konten aus alten Backups liefern immer False und
+    werden durch dieses Feature niemals ausgesperrt. ``getattr`` mit Default
+    hält zusätzlich eine DB stand, auf der die Spalten (noch) fehlen.
+    """
+    return bool(getattr(user, "email_verification_required", False)) and (
+        getattr(user, "email_verified_at", None) is None
+    )
+
+
+class EmailNotVerifiedError(HTTPException):
+    """Passwort korrekt, aber die E-Mail-Adresse ist noch nicht bestätigt.
+
+    Eigener Typ (403), damit die Route ein passendes Security-Event schreiben
+    und das Frontend gezielt den „E-Mail erneut senden"-Weg anbieten kann.
+    Kein Brute-Force-Signal: Der Zustand wird erst NACH korrekter
+    Passwortprüfung sichtbar.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=403,
+            detail=(
+                "Bitte bestätige zuerst deine E-Mail-Adresse. "
+                "Den Bestätigungslink kannst du dir erneut zusenden lassen."
+            ),
+        )
 
 
 class AccountTemporarilyLockedError(HTTPException):
@@ -596,6 +665,18 @@ def authenticate_user(db: Session, email: str, password: str) -> tuple[AuthUserI
             if just_locked:
                 raise AccountTemporarilyLockedError(FAILED_LOGIN_LOCK_SECONDS, just_locked=True)
         raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten.")
+    # E-Mail-Bestätigung VOR der Freigabe-Prüfung: Sie ist der Schritt, den der
+    # Benutzer selbst erledigen kann — die Meldung ist damit die fachlich
+    # hilfreichere. Greift ausschließlich für Konten aus der Selbst-
+    # Registrierung (email_verification_required); Bestandskonten passieren
+    # diese Stelle unverändert. Die Admin-Freigabe darunter bleibt eine
+    # zusätzliche, eigenständige Bedingung — sie wird hier nicht umgangen.
+    if email_verification_pending(user):
+        db.commit()
+        logger.warning(
+            "Login abgelehnt: E-Mail nicht bestätigt (user_id=%s)", user.external_id
+        )
+        raise EmailNotVerifiedError()
     if not user.is_active:
         db.commit()
         logger.warning("Login abgelehnt: Konto inaktiv (user_id=%s)", user.external_id)

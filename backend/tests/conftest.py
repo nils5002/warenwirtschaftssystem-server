@@ -21,6 +21,18 @@ os.environ.setdefault("PRODUCT_IMAGE_RECACHE_ON_STARTUP", "0")
 # test_security_events.py geprueft.
 os.environ.setdefault("TRUST_PROXY_HEADERS", "1")
 
+# Bewusst KEIN MAIL_CONFIG_ENCRYPTION_KEY: Die Suite prueft damit den
+# Normalfall, in dem der Schluessel fuer das SMTP-Passwort aus
+# AUTH_TOKEN_SECRET abgeleitet wird. Tests fuer den expliziten Key setzen ihn
+# gezielt selbst. Das feste Test-Secret (kein Platzhalter) sorgt dafuer, dass
+# die Ableitung auch unter simulierten Produktions-Settings greift.
+os.environ.setdefault("AUTH_TOKEN_SECRET", "test-only-auth-secret-not-for-production-0001")
+
+# Basis-URL fuer Bestaetigungslinks. In der Testumgebung (app_env=development)
+# ist http zulaessig; Produktion verlangt https — das prueft
+# test_email_verification.py ausdruecklich.
+os.environ.setdefault("FRONTEND_URL", "http://localhost:4173")
+
 from app.database.session import SessionLocal, init_db
 from app.repositories import category_repository, role_permission_repository
 from app.services import security_event_service
@@ -65,11 +77,20 @@ def _isolated_rate_limiters():
     from app.services.rate_limiter import (
         account_login_rate_limiter,
         login_rate_limiter,
+        mail_settings_change_rate_limiter,
+        mail_test_rate_limiter,
         refresh_rate_limiter,
         register_rate_limiter,
     )
 
-    limiters = (login_rate_limiter, account_login_rate_limiter, register_rate_limiter, refresh_rate_limiter)
+    limiters = (
+        login_rate_limiter,
+        account_login_rate_limiter,
+        register_rate_limiter,
+        refresh_rate_limiter,
+        mail_test_rate_limiter,
+        mail_settings_change_rate_limiter,
+    )
     for limiter in limiters:
         limiter.reset_all()
     yield

@@ -37,6 +37,7 @@ export type AppPage =
   | 'rolesPermissions'
   | 'telecomPass'
   | 'securityLogs'
+  | 'emailSettings'
   | 'systemUpdate';
 
 export type AppRole = 'Admin' | 'Projektmanager' | 'Mitarbeiter';
@@ -231,6 +232,12 @@ export type UserItem = {
   // Signaturfarbe (Einsatzplanung/Kalender) + Herkunft ('auto' | 'manual').
   signatureColor?: string | null;
   signatureColorSource?: string | null;
+  // E-Mail-Bestätigung — nur Selbst-Registrierungen tragen die Pflicht.
+  // Optional typisiert, damit ein älteres Backend ohne diese Felder weiterhin
+  // funktioniert (dann wird schlicht kein Bestätigungs-Chip angezeigt).
+  emailVerificationRequired?: boolean;
+  emailVerifiedAt?: string | null;
+  emailVerificationPending?: boolean;
 };
 
 // Sicherheitsdetails eines Benutzers (Admin-Modal, on-demand geladen).

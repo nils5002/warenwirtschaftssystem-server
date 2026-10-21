@@ -18,6 +18,7 @@ from ..database.models import (
     AssetRecord,
     CategoryRecord,
     LocationRecord,
+    MailSettingsRecord,
     MaintenanceRecord,
     PlanningDayRecord,
     PlanningItemRecord,
@@ -44,6 +45,7 @@ from ..repositories.wms_repository import (
 )
 from ..repositories.planning_repository import _normalize_status as _normalize_planning_status
 from ..schemas.backup import BackupClearDataResponse, BackupImportResponse, WarehouseBackupPayload
+from . import secret_store
 from .auth_service import ROLE_ADMIN, hash_password, normalize_role_for_db
 
 logger = logging.getLogger("cloud_web.backup")
@@ -297,6 +299,13 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     # (insbesondere manuell gesetzte Farben).
                     "signatureColor": item.signature_color,
                     "signatureColorSource": item.signature_color_source,
+                    # E-Mail-Bestaetigungsstatus mitsichern: Ohne ihn wuerde ein
+                    # Restore ein unbestaetigtes Konto als "nicht pruefungs-
+                    # pflichtig" zurueckbringen (Gate waere umgangen) bzw. ein
+                    # bestaetigtes Konto erneut zur Bestaetigung zwingen.
+                    # Die Einmal-Tokens selbst wandern bewusst NICHT ins Backup.
+                    "emailVerificationRequired": bool(item.email_verification_required),
+                    "emailVerifiedAt": item.email_verified_at,
                 }
                 for item in users
             ],
@@ -534,8 +543,91 @@ def export_backup(db: Session) -> WarehouseBackupPayload:
                     select(LoginBackgroundRecord).order_by(LoginBackgroundRecord.created_at.asc())
                 ).all()
             ],
+            # SMTP-Konfiguration mitsichern, damit sie einen Restore übersteht.
+            # Das Passwort wandert als Fernet-Chiffretext mit — lesbar nur mit
+            # dem serverseitigen Schlüssel (aus AUTH_TOKEN_SECRET abgeleitet
+            # bzw. MAIL_CONFIG_ENCRYPTION_KEY), der nie im Backup steht.
+            "mailSettings": _mail_settings_payload(db),
         }
     )
+
+
+def _import_warnings(payload: WarehouseBackupPayload) -> list[str]:
+    """Macht sicherheitsrelevante Luecken eines Altbackups ausdruecklich sichtbar.
+
+    Pydantic fuellt fehlende Felder mit Defaults — ohne diese Pruefung waere
+    nicht erkennbar, ob ein Backup "keine Bestaetigungspflicht" AUSSAGT oder
+    das Feld schlicht noch nicht kannte. ``model_fields_set`` unterscheidet
+    beides. Es wird bewusst nichts automatisch korrigiert: Der Zustand wird
+    benannt, entschieden wird im Betrieb.
+    """
+    warnings: list[str] = []
+
+    legacy_users = sum(
+        1 for item in payload.users if "emailVerificationRequired" not in item.model_fields_set
+    )
+    if legacy_users:
+        warnings.append(
+            f"{legacy_users} Benutzer stammen aus einem älteren Backup ohne Angaben zur "
+            "E-Mail-Bestätigung. Sie wurden als 'Bestätigung nicht erforderlich' "
+            "wiederhergestellt und können sich nach der Admin-Freigabe wie bisher anmelden. "
+            "Falls für diese Konten eine Bestätigung verlangt werden soll, muss sie erneut "
+            "angefordert werden."
+        )
+
+    if payload.mailSettings is None:
+        warnings.append(
+            "Das Backup enthält keine SMTP-Konfiguration. Eine vorhandene Konfiguration "
+            "wurde unverändert beibehalten."
+        )
+    elif payload.mailSettings.passwordEncrypted:
+        # Gleich hier pruefen, ob der Chiffretext zu DIESEM Server passt — so
+        # erfaehrt der Admin sofort, ob er das Passwort neu eingeben muss.
+        try:
+            secret_store.decrypt(payload.mailSettings.passwordEncrypted)
+            readable = True
+        except secret_store.SecretStoreError:
+            readable = False
+        if readable:
+            warnings.append(
+                "Das SMTP-Passwort wurde verschlüsselt wiederhergestellt und ist mit dem "
+                "Schlüssel dieses Servers lesbar."
+            )
+        else:
+            warnings.append(
+                "Das SMTP-Passwort aus dem Backup wurde mit einem anderen Schlüssel "
+                "verschlüsselt (anderes AUTH_TOKEN_SECRET bzw. MAIL_CONFIG_ENCRYPTION_KEY) "
+                "und ist hier nicht lesbar. Bitte das SMTP-Passwort in den "
+                "E-Mail-Einstellungen neu eingeben. Bis dahin wird keine E-Mail versendet."
+            )
+
+    for warning in warnings:
+        logger.warning("Backup-Import: %s", warning)
+    return warnings
+
+
+def _mail_settings_payload(db: Session) -> dict | None:
+    record = db.scalar(select(MailSettingsRecord).order_by(MailSettingsRecord.id.asc()))
+    if record is None:
+        return None
+    return {
+        "enabled": bool(record.enabled),
+        "host": record.host,
+        "port": int(record.port or 587),
+        "security": record.security or "starttls",
+        "username": record.username,
+        "passwordEncrypted": record.password_encrypted,
+        "fromEmail": record.from_email,
+        "fromName": record.from_name,
+        "timeoutSeconds": int(record.timeout_seconds or 15),
+        "verificationExpiryHours": int(record.verification_expiry_hours or 24),
+        "publicBaseUrl": record.public_base_url,
+        "lastTestAt": record.last_test_at,
+        "lastTestSuccess": record.last_test_success,
+        "lastTestError": record.last_test_error,
+        "testMailAcceptedAt": record.test_mail_accepted_at,
+        "updatedBy": record.updated_by,
+    }
 
 
 def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportResponse:
@@ -607,6 +699,8 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                     rejected_at=item.rejectedAt,
                     signature_color=item.signatureColor,
                     signature_color_source=item.signatureColorSource,
+                    email_verification_required=bool(item.emailVerificationRequired),
+                    email_verified_at=item.emailVerifiedAt,
                 )
             )
 
@@ -882,6 +976,34 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
                 )
             )
 
+        # SMTP-Konfiguration: Nur ersetzen, wenn das Backup sie überhaupt
+        # enthält. Ein älteres Backup (Feld fehlt → None) lässt die vorhandene
+        # Konfiguration bewusst unangetastet, statt sie stillschweigend zu
+        # löschen und damit den Mailversand lahmzulegen.
+        if payload.mailSettings is not None:
+            db.execute(delete(MailSettingsRecord))
+            mail = payload.mailSettings
+            db.add(
+                MailSettingsRecord(
+                    enabled=bool(mail.enabled),
+                    host=mail.host,
+                    port=int(mail.port or 587),
+                    security=mail.security or "starttls",
+                    username=mail.username,
+                    password_encrypted=mail.passwordEncrypted,
+                    from_email=mail.fromEmail,
+                    from_name=mail.fromName,
+                    timeout_seconds=int(mail.timeoutSeconds or 15),
+                    verification_expiry_hours=int(mail.verificationExpiryHours or 24),
+                    public_base_url=mail.publicBaseUrl,
+                    last_test_at=mail.lastTestAt,
+                    last_test_success=mail.lastTestSuccess,
+                    last_test_error=mail.lastTestError,
+                    test_mail_accepted_at=mail.testMailAcceptedAt,
+                    updated_by=mail.updatedBy,
+                )
+            )
+
         db.commit()
 
         # Alte Backups kennen neu eingeführte Permission-Keys (z. B.
@@ -899,6 +1021,7 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         raise HTTPException(status_code=400, detail="Backup konnte nicht importiert werden.") from exc
 
     return BackupImportResponse(
+        warnings=_import_warnings(payload),
         imported={
             "categories": len(payload.categories),
             "users": len(payload.users),

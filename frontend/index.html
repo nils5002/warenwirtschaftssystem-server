@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!--
+      Referrer-Policy explizit festschreiben (statt sich auf den Browser-
+      Default zu verlassen): Pfad und Query einer Seite verlassen den Origin
+      damit nie. Relevant fuer /registrierung-bestaetigen?token=..., dessen
+      Token sonst theoretisch ueber einen Referer abfliessen koennte. Die
+      Seite entfernt den Token zusaetzlich sofort aus der Adresszeile.
+    -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <!--
       Best-effort cache hints for the HTML shell. The hashed JS/CSS bundles
       under /assets/ can stay cached forever (their filenames change on every
       build), but this index.html must always be revalidated so the browser

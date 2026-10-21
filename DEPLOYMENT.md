@@ -22,6 +22,201 @@ FRONTEND_PORT=8080
 BACKEND_PORT=8001
 ```
 
+## A1) Registrierung, E-Mail-Versand und SMTP-Verwaltung
+
+### Zwei Registrierungsverfahren — Standard ist das klassische
+
+| Verfahren | Schluesselwert | Ablauf | SMTP noetig? |
+|---|---|---|---|
+| **Klassisch (Standard)** | `classic_admin_approval` | Benutzer registriert sich → Status *Wartet auf Freigabe* → Admin gibt frei → Login | **nein** |
+| Mit E-Mail-Bestaetigung | `email_verification` | Benutzer registriert sich → bestaetigt seine Adresse → Admin gibt frei → Login | ja |
+
+**Nach einem frischen Deploy gilt immer das klassische Verfahren.** Es
+funktioniert ohne jede SMTP-Konfiguration vollstaendig — genau so laesst sich
+das WWS produktiv betreiben, bevor E-Mail eingerichtet ist. Die Umstellung auf
+das zweite Verfahren ist **immer** eine bewusste Adminentscheidung; sie
+passiert nie automatisch, auch nicht nach einem erfolgreichen SMTP-Test.
+
+Faellt SMTP spaeter aus, bleibt der klassische Weg jederzeit waehlbar.
+Bestehende Konten werden dabei **nicht** stillschweigend herabgestuft: Wer sich
+mit Bestaetigungspflicht registriert hat, muss sie auch nach einem Wechsel
+zurueck erfuellen — der Link laesst sich nachtraeglich erneut anfordern,
+sobald SMTP wieder laeuft.
+
+Der bestehende Schalter "Selbstregistrierung offen/gesperrt"
+(*Sicherheit & Protokolle*) bleibt davon vollstaendig unabhaengig.
+
+### SMTP in der Anwendung einrichten (empfohlener Weg)
+
+`Administration → E-Mail-Einstellungen`:
+
+1. SMTP-Server, Port, Verschluesselung, Zugangsdaten und Absender eintragen,
+   *SMTP-Versand aktivieren* ankreuzen, **Einstellungen speichern**.
+2. **Verbindung testen** — prueft Erreichbarkeit und Anmeldung.
+3. **Test-E-Mail senden** — an eine echte Adresse; danach das Postfach
+   kontrollieren (eine Annahme durch den Server ist noch kein Zustellnachweis).
+4. Erst wenn Schritt 2 und 3 erfolgreich waren, laesst sich unter
+   *Registrierungsverfahren* die Option **E-Mail-Bestaetigung + Admin-Freigabe**
+   waehlen.
+
+Wird die Konfiguration spaeter geaendert, verfallen die Testergebnisse
+bewusst — ein Test fuer Server A darf Server B nicht freischalten.
+
+Die hier gespeicherten Werte liegen in der Datenbank im persistenten Volume und
+ueberleben jeden Redeploy.
+
+### Passwortablage — keine zusaetzliche Variable noetig
+
+Das in der Oberflaeche eingegebene SMTP-Passwort wird **ausschliesslich
+verschluesselt** gespeichert (Fernet: AES + HMAC). Den Schluessel leitet die App
+automatisch per **HKDF-SHA256** aus dem ohnehin vorhandenen `AUTH_TOKEN_SECRET`
+ab — mit eigenem Salt und Kontext-String, also ein separater Schluessel, der
+nur fuer diesen Zweck taugt. Das Auth-Secret selbst wird nie als Schluessel
+verwendet; kein Schluessel steht in der Datenbank, im Backup oder im Frontend.
+
+**Fuer eine korrekt abgesicherte Installation ist damit kein neuer
+Portainer-Eintrag noetig.** Voraussetzung: `AUTH_TOKEN_SECRET` ist ein eigener,
+geheimer Wert (kein Platzhalter, mind. 16 Zeichen) — das erzwingt die App fuer
+den Produktivstart ohnehin.
+
+Optional (z. B. um das SMTP-Passwort unabhaengig vom Auth-Secret rotieren zu
+koennen) kann weiterhin ein eigener Schluessel gesetzt werden; er hat dann
+Vorrang:
+
+```dotenv
+MAIL_CONFIG_ENCRYPTION_KEY=<44 Zeichen, url-safe base64>
+# erzeugen: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Bereits mit einem dieser Schluessel gespeicherte Passwoerter bleiben lesbar,
+solange der jeweilige Schluessel vorhanden ist; die App verschluesselt nie
+stillschweigend um. Welcher Schluessel aktiv ist, zeigt *Diagnose →
+Passwort-Verschluesselung*.
+
+> **Rotation von `AUTH_TOKEN_SECRET`** (bzw. Entfernen/Aendern von
+> `MAIL_CONFIG_ENCRYPTION_KEY`): Danach ist ein damit gespeichertes
+> SMTP-Passwort nicht mehr lesbar. Die App meldet das sichtbar ("Das
+> gespeicherte SMTP-Passwort kann mit dem aktuellen Schluessel nicht
+> entschluesselt werden … neu eingeben") und verschickt **nicht** still mit
+> leerem Passwort. Neuvergabe: In *E-Mail-Einstellungen* das SMTP-Passwort
+> einmal neu eingeben und speichern — es wird mit dem aktuellen Schluessel
+> abgelegt. Gleiches gilt nach dem Restore eines Backups aus einer
+> Installation mit anderem Secret (der Import weist darauf hin).
+>
+> Steht `AUTH_TOKEN_SECRET` auf einem Platzhalter und ist kein eigener Key
+> gesetzt, wird das Speichern eines Passworts kontrolliert abgelehnt
+> (HTTP 409); alles andere — insbesondere die klassische Registrierung — laeuft
+> weiter.
+
+### Oeffentliche WWS-Adresse fuer Bestaetigungslinks
+
+Ebenfalls in *E-Mail-Einstellungen → Bestaetigungslinks* pflegbar (z. B.
+`https://warehouse.example.de`). Ohne Eintrag gilt `FRONTEND_URL` aus der
+Server-Umgebung. Die Adresse wird serverseitig geprueft (nur `http(s)://host`,
+keine Zugangsdaten/Parameter; in Produktion nur `https://`) und **nie** aus
+einem Request-Header uebernommen. Aenderungen wirken sofort, ohne Neustart.
+
+### Alternative: SMTP komplett ueber Portainer-Variablen
+
+```dotenv
+SMTP_ENABLED=true
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=warehouse@example.com
+SMTP_PASSWORD=<nur hier, nie im Repo>
+SMTP_FROM_EMAIL=noreply@example.com
+SMTP_FROM_NAME=Warehouse-System
+SMTP_SECURITY=starttls
+EMAIL_VERIFICATION_EXPIRY_HOURS=24
+```
+
+### Konfigurationsprioritaet (eindeutig, keine Mischformen)
+
+1. **Adminkonfiguration** aus der Oberflaeche — sofern aktiviert, vollstaendig
+   und entschluesselbar.
+2. Sonst die **SMTP_\*-Umgebungsvariablen**.
+3. Sonst: **SMTP deaktiviert** (klassische Registrierung).
+
+Welche Quelle gerade gilt, steht in der Statuskarte unter
+*Aktive Konfiguration* ("WWS-Administration" oder "Server-Umgebungsvariablen").
+Eine aktivierte, aber kaputte Adminkonfiguration faellt bewusst **nicht**
+still auf die Variablen zurueck — sonst wuerde unbemerkt mit einem anderen
+Absender verschickt.
+
+`SMTP_SECURITY`:
+- `starttls` — Standard, Port 587.
+- `ssl` — implizites TLS, Port 465.
+- `none` — **nur** fuer einen lokalen Test-Relay; ausserhalb von
+  `APP_ENV=development/local/test` verweigert die App den Versand.
+
+In beiden TLS-Varianten wird das Serverzertifikat inkl. Hostname geprueft
+(`ssl.create_default_context()`), ein Downgrade findet nicht statt.
+
+### Voraussetzung: oeffentliche Adresse
+
+Der Bestaetigungslink wird **ausschliesslich** aus der in der Administration
+hinterlegten oeffentlichen Adresse bzw. ersatzweise `FRONTEND_URL` gebaut (nie
+aus einem Request-Header — sonst waere Host-Header-Injection moeglich). In
+Produktion muss sie mit `https://` beginnen; andernfalls wird gar keine Mail
+versendet und der Grund im Adminbereich angezeigt. Der Link zeigt auf
+`<Adresse>/registrierung-bestaetigen?token=…`; die Einloesung selbst laeuft per
+`POST /api/auth/verify-email`.
+
+### Zugriff
+
+Die E-Mail-Verwaltung (alle `/api/admin/email/*`-Endpunkte sowie der Versand
+einer Bestaetigungsmail fuer andere Benutzer) ist **ausschliesslich der Rolle
+Admin** vorbehalten — serverseitig geprueft (Rolle *und* Recht `mail.manage`;
+ein im Rolleneditor vergebenes Recht allein genuegt nicht). Ohne Anmeldung:
+401, andere Rollen: 403. Schreibende Aufrufe einer Browser-Sitzung muessen
+zusaetzlich den Header `X-Requested-With: XMLHttpRequest` tragen
+(CSRF-Schutz, das Frontend setzt ihn automatisch) und sind rate-limitiert.
+
+### Pruefen, ob es laeuft
+
+Im Backend-Log direkt nach dem Start stehen zwei Zeilen:
+
+```
+E-Mail-Versand einsatzbereit (Quelle: Administration|Umgebungsvariablen).
+   bzw. Kein E-Mail-Versand konfiguriert (<Grund>). Registrierung laeuft im
+        klassischen Verfahren mit Admin-Freigabe.
+Registrierungsverfahren: classic_admin_approval|email_verification
+```
+
+Ein fehlender Versand wird nur dann als **Warnung** geloggt, wenn die
+E-Mail-Bestaetigung aktiv ist — im klassischen Verfahren ist er der
+dokumentierte Normalzustand.
+
+Zugangsdaten tauchen in keinem Log auf — weder Benutzername noch Passwort,
+weder Token noch Bestaetigungs-URL.
+
+### Betriebshinweise
+
+- Fehlgeschlagene Bestaetigungen lassen sich erneut anstossen: durch den
+  Nutzer (`E-Mail erneut senden` auf der Login-/Bestaetigungsseite) oder durch
+  einen Admin (Benutzerverwaltung → `Bestätigung senden`).
+- Jeder neue Link entwertet den vorherigen sofort; ein Link gilt einmalig und
+  laeuft nach der eingestellten Gueltigkeitsdauer ab.
+- Alle Mailwege sind rate-limitiert (pro IP **und** pro Empfaengeradresse),
+  damit kein Endpunkt als Mail-Bombe gegen ein fremdes Postfach dient; das
+  gilt auch fuer die Test-E-Mail im Adminbereich.
+- Aenderungen an SMTP-Einstellungen und am Registrierungsverfahren landen im
+  Security-Log (*Sicherheit & Protokolle*) — ohne Zugangsdaten.
+- Backup/Restore:
+  - Der Bestaetigungsstatus der Benutzer wandert mit ins Backup, die
+    Einmal-Tokens bewusst nicht.
+  - Die SMTP-Konfiguration (inkl. oeffentlicher Adresse) wandert mit; das
+    Passwort nur als Chiffretext. Lesbar ist es nach einem Restore nur mit
+    demselben `AUTH_TOKEN_SECRET` bzw. `MAIL_CONFIG_ENCRYPTION_KEY` — der
+    Import sagt ausdruecklich, ob das zutrifft (siehe "Passwortablage" oben).
+  - Alte Backups ohne diese Felder bleiben importierbar. Der Import weist
+    ausdruecklich darauf hin (`warnings` in der Antwort und im Log), wenn
+    Benutzer ohne Verifizierungsangaben wiederhergestellt wurden — sie gelten
+    dann als "Bestaetigung nicht erforderlich" und koennen sich nach der
+    Admin-Freigabe wie bisher anmelden.
+  - Enthaelt ein Backup keine SMTP-Sektion, bleibt eine vorhandene
+    Konfiguration unangetastet (statt still geloescht zu werden).
+
 ## A2) Systemupdate aus dem WWS (Portainer-Webhook)
 
 Ein Admin kann den Redeploy direkt im WWS starten

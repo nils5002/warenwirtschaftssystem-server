@@ -173,6 +173,14 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # bleiben unveraendert und werden weiter ueber den Commit bewertet.
     ("system_update_runs", "source_build_time", "VARCHAR(40)"),
     ("system_update_runs", "detected_build_time", "VARCHAR(40)"),
+    # E-Mail-Bestaetigung der Selbst-Registrierung. DEFAULT 0 bzw. NULL ->
+    # Bestandsbenutzer gelten als "keine Bestaetigung noetig" und koennen sich
+    # unveraendert anmelden. Nur neue Selbst-Registrierungen setzen die Pflicht.
+    ("users", "email_verification_required", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("users", "email_verified_at", "DATETIME"),
+    # Oeffentliche WWS-Adresse fuer Bestaetigungslinks (Adminoberflaeche).
+    # NULL -> FRONTEND_URL aus der ENV bleibt wirksam.
+    ("mail_settings", "public_base_url", "VARCHAR(255)"),
 )
 
 

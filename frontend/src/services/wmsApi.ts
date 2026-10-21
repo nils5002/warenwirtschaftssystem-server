@@ -81,6 +81,28 @@ export type AuthRegisterPayload = {
 
 export type AuthRegisterResponse = {
   message: string;
+  // Galt für diese Registrierung das Verfahren mit E-Mail-Bestätigung?
+  // Optional typisiert → ein älteres Backend ohne das Feld wird als
+  // klassischer Ablauf behandelt (sichere Annahme).
+  verificationRequired?: boolean;
+  // Ob die Bestätigungsmail tatsächlich rausgegangen ist. Optional typisiert,
+  // damit ein älteres Backend ohne das Feld weiterhin funktioniert (dann gilt
+  // der Versand als erfolgt — das war vor diesem Feature der Normalfall).
+  emailSent?: boolean;
+  emailHint?: string | null;
+};
+
+export type AuthVerifyEmailResponse = {
+  status: 'verified' | 'already_verified';
+  message: string;
+  // true, sobald der Admin das Konto zusätzlich freigegeben hat.
+  accountActive: boolean;
+};
+
+export type AuthResendVerificationResponse = {
+  message: string;
+  emailSent?: boolean;
+  emailHint?: string | null;
 };
 
 export type WmsOverview = {
@@ -589,6 +611,10 @@ function buildAccessHeaders(): HeadersInit {
   if (currentAccessContext.projectContext) {
     headers['X-Project-Context'] = currentAccessContext.projectContext;
   }
+  // CSRF-Schutz: Schreibende Admin-Endpunkte verlangen diesen Header bei
+  // Cookie-Authentifizierung. Fremde Seiten koennen ihn nicht setzen
+  // (Formulare gar nicht, fetch nur mit CORS-Preflight, der scheitert).
+  headers['X-Requested-With'] = 'XMLHttpRequest';
   return headers;
 }
 
@@ -1159,6 +1185,176 @@ export async function register(payload: AuthRegisterPayload): Promise<AuthRegist
     body: JSON.stringify(payload),
   });
   return parseResponse<AuthRegisterResponse>(response);
+}
+
+/**
+ * Löst einen E-Mail-Bestätigungstoken ein.
+ *
+ * Bewusst POST (und nicht der Link-Aufruf selbst): Der Token landet damit
+ * weder in Server-/Proxy-Logs noch in der Browser-History. Die aufrufende
+ * Seite entfernt ihn zusätzlich sofort aus der Adresszeile.
+ */
+export async function verifyEmail(token: string): Promise<AuthVerifyEmailResponse> {
+  const response = await apiFetch('/api/auth/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  return parseResponse<AuthVerifyEmailResponse>(response);
+}
+
+/** Fordert einen neuen Bestätigungslink an (Antwort ist immer generisch). */
+export async function resendVerification(email: string): Promise<AuthResendVerificationResponse> {
+  const response = await apiFetch('/api/auth/resend-verification', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return parseResponse<AuthResendVerificationResponse>(response);
+}
+
+export type UserVerificationResendResponse = {
+  sent: boolean;
+  message: string;
+  hint?: string | null;
+};
+
+/** Admin-Aktion: Bestätigungs-E-Mail für ein wartendes Konto erneut senden. */
+export function resendUserVerification(userId: string): Promise<UserVerificationResendResponse> {
+  return postJson<UserVerificationResendResponse>(
+    `/api/wms/users/${userId}/resend-verification`,
+    {},
+  );
+}
+
+// --- Adminbereich: E-Mail-Einstellungen (SMTP) --------------------------------
+// Grundregel: Der Client sieht NIE ein SMTP-Passwort. `passwordSet` sagt nur,
+// ob eines hinterlegt ist; gesendet wird es ausschließlich beim Ändern.
+
+export type MailSecurity = 'starttls' | 'ssl' | 'none';
+export type RegistrationMode = 'classic_admin_approval' | 'email_verification';
+export type MailConfigSource = 'admin' | 'env' | 'none';
+
+export type MailSettings = {
+  enabled: boolean;
+  host?: string | null;
+  port: number;
+  security: MailSecurity;
+  username?: string | null;
+  passwordSet: boolean;
+  fromEmail?: string | null;
+  fromName?: string | null;
+  timeoutSeconds: number;
+  verificationExpiryHours: number;
+  // Öffentliche WWS-Adresse aus der Administration (null = FRONTEND_URL gilt).
+  publicBaseUrl?: string | null;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+};
+
+export type MailSettingsInput = {
+  enabled: boolean;
+  host: string;
+  port: number;
+  security: MailSecurity;
+  username: string;
+  // Weglassen = gespeichertes Passwort bleibt unverändert.
+  password?: string;
+  clearPassword?: boolean;
+  fromEmail: string;
+  fromName: string;
+  timeoutSeconds: number;
+  verificationExpiryHours: number;
+  // '' = Admin-Wert entfernen (FRONTEND_URL gilt wieder).
+  publicBaseUrl: string;
+};
+
+export type MailStatusState =
+  | 'not_configured'
+  | 'disabled'
+  | 'configured'
+  | 'test_succeeded'
+  | 'connection_failed'
+  | 'send_failed';
+
+export type MailStatus = {
+  state: MailStatusState;
+  source: MailConfigSource;
+  canSend: boolean;
+  problem?: string | null;
+  lastTestAt?: string | null;
+  lastTestSuccess?: boolean | null;
+  lastTestError?: string | null;
+  lastSendAt?: string | null;
+  lastSendSuccess?: boolean | null;
+  lastSendError?: string | null;
+  testMailAcceptedAt?: string | null;
+  registrationMode: RegistrationMode;
+  registrationEnabled: boolean;
+  canEnableVerification: boolean;
+  verificationBlockers: string[];
+  secretStorageAvailable: boolean;
+  secretStorageHint?: string | null;
+  // Herkunft des Schlüssels für das SMTP-Passwort (nie der Schlüssel selbst).
+  secretKeySource?: 'derived' | 'explicit' | null;
+  // null = kein Passwort gespeichert.
+  passwordReadable?: boolean | null;
+  frontendUrlReady: boolean;
+  frontendUrlHint?: string | null;
+  publicBaseUrl?: string | null;
+  publicBaseUrlSource: MailConfigSource;
+  verificationExpiryHours: number;
+  plainSmtpAllowed: boolean;
+};
+
+export type MailTestConnectionResult = {
+  success: boolean;
+  message: string;
+  connectionOk: boolean;
+  authenticationOk: boolean;
+};
+
+export type MailSendTestResult = MailTestConnectionResult & { accepted: boolean };
+
+export type RegistrationModeResult = {
+  mode: RegistrationMode;
+  message: string;
+};
+
+export async function fetchMailSettings(): Promise<MailSettings> {
+  return parseResponse<MailSettings>(await apiFetch('/api/admin/email/settings'));
+}
+
+export async function saveMailSettings(payload: MailSettingsInput): Promise<MailSettings> {
+  const response = await apiFetch('/api/admin/email/settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse<MailSettings>(response);
+}
+
+export async function fetchMailStatus(): Promise<MailStatus> {
+  return parseResponse<MailStatus>(await apiFetch('/api/admin/email/status'));
+}
+
+export function testMailConnection(): Promise<MailTestConnectionResult> {
+  return postJson<MailTestConnectionResult>('/api/admin/email/test-connection', {});
+}
+
+export function sendMailTest(recipient: string): Promise<MailSendTestResult> {
+  return postJson<MailSendTestResult>('/api/admin/email/send-test', { recipient });
+}
+
+export async function updateRegistrationMode(
+  mode: RegistrationMode,
+): Promise<RegistrationModeResult> {
+  const response = await apiFetch('/api/admin/email/registration-mode', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  });
+  return parseResponse<RegistrationModeResult>(response);
 }
 
 export type UserPasswordResetPayload = {

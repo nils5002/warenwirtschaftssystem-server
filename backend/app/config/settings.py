@@ -15,6 +15,15 @@ class Settings(BaseSettings):
     db_auto_create_schema: bool = True
     cors_origins: str = "*"
 
+    # Oeffentliche Basis-URL der SPA. Einzige vertrauenswuerdige Quelle fuer
+    # serverseitig erzeugte Links in E-Mails (Bestaetigungslink) — es wird
+    # NIEMALS ein Host aus dem Request (Host-/X-Forwarded-Host-Header)
+    # verwendet, sonst waere Host-Header-Injection moeglich. Beide Variablen
+    # sind bereits Teil des Deployments (docker-compose/.env.example); hier
+    # werden sie erstmals auch vom Backend gelesen.
+    frontend_url: str | None = None
+    base_url: str | None = None
+
     # Kurzlebiger Prozess-Cache fuer /api/wms/overview (in Sekunden). Mehrere
     # gleichzeitig pollende Clients teilen sich damit EINE Berechnung pro
     # Zeitfenster. 0 oder negativ deaktiviert den Cache vollstaendig.
@@ -35,6 +44,34 @@ class Settings(BaseSettings):
     initial_admin_email: str | None = None
     initial_admin_password: str | None = None
     initial_admin_name: str | None = None
+
+    # --- SMTP / E-Mail-Versand ------------------------------------------------
+    # Default AUS: ohne bewusste Freischaltung verschickt die App keine Mails.
+    # Alle Werte kommen ausschliesslich aus serverseitigen Umgebungsvariablen
+    # (Portainer-Stack-ENV) — niemals aus dem Repository, niemals ins Frontend.
+    # Zugangsdaten werden nirgends geloggt (siehe services/email_service.py).
+    smtp_enabled: bool = False
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Warehouse-System"
+    # "starttls" (Port 587, Default) | "ssl" (Port 465) | "none" (nur fuer
+    # einen lokalen Test-Relay; in Produktion blockiert, siehe email_service).
+    smtp_security: str = "starttls"
+    smtp_timeout_seconds: int = 15
+    # Gueltigkeit eines E-Mail-Bestaetigungstokens in Stunden.
+    email_verification_expiry_hours: int = 24
+    # Fernet-Masterkey fuer das in der Adminoberflaeche gepflegte SMTP-Passwort.
+    # Wird AUSSCHLIESSLICH serverseitig (Portainer-Stack-ENV) gesetzt und nie in
+    # der Datenbank gespeichert. Fehlt er, laeuft die App vollstaendig normal —
+    # nur das Speichern eines SMTP-Passworts ueber die Adminoberflaeche bleibt
+    # kontrolliert gesperrt (die ENV-Konfiguration funktioniert weiter).
+    # WICHTIG: Der Key muss Backups/Restores ueberleben, sonst ist ein
+    # gespeichertes SMTP-Passwort nach der Wiederherstellung nicht mehr
+    # entschluesselbar und muss neu eingegeben werden.
+    mail_config_encryption_key: str | None = None
 
     wms_seed_legacy_on_startup: bool = True
     wms_legacy_json_path: str = "app/data/wms_db.json"

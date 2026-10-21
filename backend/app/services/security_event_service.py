@@ -45,6 +45,23 @@ REGISTER_BLOCKED_DISABLED = "register_blocked_disabled"
 REGISTER_BLOCKED_RATE_LIMIT = "register_blocked_rate_limit"
 REGISTER_HONEYPOT = "register_honeypot"
 REGISTER_INVALID_EMAIL = "register_invalid_email"
+# E-Mail-Bestaetigung der Selbst-Registrierung. In KEINEM dieser Events
+# steht jemals ein Token oder eine Bestaetigungs-URL — nur Benutzer-/
+# Eingabe-Identifier und Grund-Codes.
+EMAIL_VERIFICATION_SENT = "email_verification_sent"
+EMAIL_VERIFICATION_SEND_FAILED = "email_verification_send_failed"
+EMAIL_VERIFICATION_RESEND_REQUESTED = "email_verification_resend_requested"
+EMAIL_VERIFICATION_CONFIRMED = "email_verification_confirmed"
+EMAIL_VERIFICATION_INVALID_TOKEN = "email_verification_invalid_token"
+EMAIL_VERIFICATION_EXPIRED_TOKEN = "email_verification_expired_token"
+LOGIN_BLOCKED_EMAIL_UNVERIFIED = "login_blocked_email_unverified"
+# Adminoberflaeche „E-Mail-Einstellungen". In keinem dieser Events steht ein
+# SMTP-Passwort, ein Benutzername oder ein Token — nur unkritische Metadaten
+# (aktiv ja/nein, Verschluesselungsart, maskierter Empfaenger).
+MAIL_SETTINGS_UPDATED = "mail_settings_updated"
+MAIL_TEST_CONNECTION = "mail_test_connection"
+MAIL_TEST_SEND = "mail_test_send"
+REGISTRATION_MODE_CHANGED = "registration_mode_changed"
 LOGIN_SUCCESS = "login_success"
 LOGIN_FAILED = "login_failed"
 LOGIN_BLOCKED_INACTIVE = "login_blocked_inactive"
@@ -347,7 +364,13 @@ def summary(db: Session, *, suspicious_since: datetime | None = None) -> Securit
     now = datetime.now(UTC)
     day_ago = now - timedelta(hours=24)
     week_ago = now - timedelta(days=7)
-    failed_types = (LOGIN_FAILED, LOGIN_BLOCKED_INACTIVE, LOGIN_BLOCKED_LOCKED, LOGIN_RATE_LIMITED)
+    failed_types = (
+        LOGIN_FAILED,
+        LOGIN_BLOCKED_INACTIVE,
+        LOGIN_BLOCKED_LOCKED,
+        LOGIN_RATE_LIMITED,
+        LOGIN_BLOCKED_EMAIL_UNVERIFIED,
+    )
 
     total_24h = db.scalar(
         select(func.count(SecurityEventRecord.id)).where(SecurityEventRecord.created_at >= day_ago)

@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.main import app
-from .auth_helpers import auth_headers
+from .auth_helpers import auth_headers, mark_email_verified
 
 
 def test_login_and_me_roundtrip() -> None:
@@ -31,6 +31,11 @@ def test_login_and_me_roundtrip() -> None:
         json={"status": "Aktiv"},
     )
     assert activate.status_code == 200
+
+    # Im klassischen Verfahren (Default) genuegt die Admin-Freigabe; die
+    # Markierung haelt den Test zusaetzlich unabhaengig vom aktiven
+    # Registrierungsverfahren.
+    mark_email_verified(email)
 
     login = client.post(
         "/api/auth/login",

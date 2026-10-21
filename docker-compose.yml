@@ -76,6 +76,32 @@ services:
       SYSTEM_UPDATE_PASS_BUILD_METADATA: ${SYSTEM_UPDATE_PASS_BUILD_METADATA:-true}
       SYSTEM_UPDATE_TIMEOUT_SECONDS: ${SYSTEM_UPDATE_TIMEOUT_SECONDS:-600}
 
+      # --- E-Mail-Versand (Bestaetigungsmail nach der Registrierung) --------
+      # Default AUS: Ohne SMTP_ENABLED=true verschickt die App keine Mails und
+      # verhaelt sich wie bisher. Die Zugangsdaten gehoeren AUSSCHLIESSLICH in
+      # die Stack-Umgebung (Portainer) bzw. die serverlokale .env — niemals ins
+      # Repository und niemals ins Frontend-Image.
+      # Hinweis: BASE_URL/FRONTEND_URL oben sind Pflicht, sobald SMTP aktiv ist
+      # — der Bestaetigungslink wird ausschliesslich aus FRONTEND_URL gebaut
+      # (nie aus einem Request-Header) und muss in Produktion https sein.
+      SMTP_ENABLED: ${SMTP_ENABLED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Warehouse-System}
+      SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+      EMAIL_VERIFICATION_EXPIRY_HOURS: ${EMAIL_VERIFICATION_EXPIRY_HOURS:-24}
+
+      # OPTIONAL, normalerweise leer: Das in der WWS-Administration gepflegte
+      # SMTP-Passwort wird mit einem aus AUTH_TOKEN_SECRET abgeleiteten
+      # Schluessel verschluesselt — dafuer ist KEIN zusaetzlicher Eintrag
+      # noetig. Ein hier gesetzter eigener Fernet-Key hat Vorrang.
+      # Erzeugen: python -c "from cryptography.fernet import Fernet;
+      #                      print(Fernet.generate_key().decode())"
+      MAIL_CONFIG_ENCRYPTION_KEY: ${MAIL_CONFIG_ENCRYPTION_KEY:-}
+
       INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL}
       INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD}
       INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-Admin}
