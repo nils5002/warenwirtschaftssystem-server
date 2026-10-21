@@ -13,6 +13,7 @@ import {
 import { useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { parseGroupScan, resolveAssetByScan, searchAssets } from '../qr';
 import { AssetMatchPickerDialog } from '../components/AssetMatchPickerDialog';
+import { NativeProjectSelect } from '../components/NativeProjectSelect';
 import { BulkGroupDialog } from '../components/BulkGroupDialog';
 import { QrScannerDialog } from '../components/QrScannerDialog';
 import { StatusBadge } from '../components/StatusBadge';
@@ -165,13 +166,6 @@ export function CheckinCheckoutPage({
   const [bulkGroup, setBulkGroup] = useState<QrGroup | null>(null);
   const [showCheckoutOptions, setShowCheckoutOptions] = useState(false);
   const [showCheckinOptions, setShowCheckinOptions] = useState(false);
-  // projectPickerMode steuert das Bottom-Sheet für die mobile Projekt-
-  // auswahl. 'checkout' / 'checkin' = offen für den jeweiligen Modus,
-  // null = geschlossen. Das gleiche Sheet wird so für Ausgabe und
-  // Rücknahme wiederverwendet, ohne dass sich beide States gegenseitig
-  // überschreiben.
-  const [projectPickerMode, setProjectPickerMode] = useState<Mode | null>(null);
-  const [projectPickerSearch, setProjectPickerSearch] = useState('');
   const [planningProjects, setPlanningProjects] = useState<PlanningListItem[]>([]);
   const [preferAutoFocus, setPreferAutoFocus] = useState(false);
   const [planningProjectsLoading, setPlanningProjectsLoading] = useState(false);
@@ -369,15 +363,6 @@ export function CheckinCheckoutPage({
   // angereicherte Liste (mit lastProject), Check-in die schlichte
   // Projektliste aus aktiven Planungen + aktuellem Projektkontext.
   const checkinProjectOptions = projectOptions;
-
-  const projectPickerSourceOptions =
-    projectPickerMode === 'checkin' ? checkinProjectOptions : checkoutProjectOptions;
-
-  const filteredProjectOptions = useMemo(() => {
-    const needle = projectPickerSearch.trim().toLowerCase();
-    if (!needle) return projectPickerSourceOptions;
-    return projectPickerSourceOptions.filter((item) => item.toLowerCase().includes(needle));
-  }, [projectPickerSourceOptions, projectPickerSearch]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -869,22 +854,20 @@ export function CheckinCheckoutPage({
         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
         : 'border-sky-200 bg-sky-50 text-sky-800';
 
-  const applyProjectSelection = (value: string) => {
+  // Mobile Projektauswahl (natives Auswahlelement): schreibt in den
+  // jeweiligen Modus, damit Checkout- und Check-in-State nicht überlappen.
+  const applyProjectSelection = (mode: Mode, value: string) => {
     const normalized = value.trim();
-    if (!normalized) return;
-    // Schreibt das ausgewählte Projekt in den jeweils aktiven Modus,
-    // damit Checkout- und Check-in-State nicht überlappen.
-    if (projectPickerMode === 'checkin') {
+    if (mode === 'checkin') {
       setCheckinProject(normalized);
     } else {
       setCheckoutProject(normalized);
     }
+    if (!normalized) return;
     // Das gewählte Projekt zugleich als globalen Projektkontext übernehmen:
     // so verschwindet der "Projektkontext fehlt"-Hinweis sofort und der
     // X-Project-Context-Header wird gesetzt — ohne separates manuelles Feld.
     onProjectContextChange(normalized);
-    setProjectPickerMode(null);
-    setProjectPickerSearch('');
   };
   const isCheckoutScanBusy = scanBusyMode === 'checkout';
   const isCheckinScanBusy = scanBusyMode === 'checkin';
@@ -1129,7 +1112,7 @@ export function CheckinCheckoutPage({
                 <input
                   ref={checkoutScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkout'}
-                  className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
+                  className={`field-input w-full ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code, Inventarnummer oder Teil davon"
                   value={checkoutScan}
                   disabled={isAnyBusy}
@@ -1183,20 +1166,16 @@ export function CheckinCheckoutPage({
           <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 2</p>
             {isMobile ? (
-              <label className="field mt-1">
-                <span className="sr-only">Projekt</span>
-                <button
-                  type="button"
-                  className="field-input flex h-12 items-center justify-between text-left"
-                  onClick={() => setProjectPickerMode('checkout')}
+              <div className="mt-1">
+                <NativeProjectSelect
+                  label="Projekt"
+                  value={checkoutProject}
+                  options={checkoutProjectOptions}
+                  placeholder="Projekt auswählen"
+                  onSelect={(value) => applyProjectSelection('checkout', value)}
                   disabled={isAnyBusy}
-                >
-                  <span className="truncate text-sm text-slate-800 dark:text-slate-100">
-                    {checkoutProject.trim() || 'Projekt auswählen'}
-                  </span>
-                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
-                </button>
-              </label>
+                />
+              </div>
             ) : (
               <label className="field mt-1">
                 Projekt
@@ -1357,7 +1336,7 @@ export function CheckinCheckoutPage({
                 <input
                   ref={checkinScanRef}
                   autoFocus={preferAutoFocus && mode === 'checkin'}
-                  className={`field-input ${isMobile ? 'h-12 text-base' : ''}`}
+                  className={`field-input w-full ${isMobile ? 'h-12 text-base' : ''}`}
                   placeholder="QR-Code, Inventarnummer oder Teil davon"
                   value={checkinScan}
                   disabled={isAnyBusy}
@@ -1433,36 +1412,23 @@ export function CheckinCheckoutPage({
                   : 'Noch kein Gerät gescannt.'}
               </p>
             )}
-            {/* Mobile-Projektauswahl auch beim Check-in: gleicher Bottom-
-                Sheet wie beim Checkout, geöffnet via projectPickerMode='checkin'.
+            {/* Mobile-Projektauswahl auch beim Check-in: gleiche native
+                Auswahl wie beim Checkout (iOS-Auswahlrad / Android-Dialog).
                 Das Feld ist optional — wenn gesetzt, fließt es in onCheckin
                 als projectName ein und steuert den vorhandenen Plausibilitäts-
                 check gegen das aktuell verbuchte Projekt. */}
             {isMobile ? (
-              <label className="field mt-2">
-                <span className="sr-only">Projekt (optional)</span>
-                <button
-                  type="button"
-                  className="field-input flex h-12 items-center justify-between text-left"
-                  onClick={() => setProjectPickerMode('checkin')}
+              <div className="mt-2">
+                <NativeProjectSelect
+                  label="Projekt (optional)"
+                  value={checkinProject.trim() || checkinContextProject || ''}
+                  options={checkinProjectOptions}
+                  placeholder="Kein Projekt (optional)"
+                  allowEmpty
+                  onSelect={(value) => applyProjectSelection('checkin', value)}
                   disabled={isAnyBusy}
-                >
-                  <span className="truncate text-sm text-slate-800 dark:text-slate-100">
-                    {checkinProject.trim() || checkinContextProject || 'Projekt auswählen (optional)'}
-                  </span>
-                  <ChevronDown className="h-4 w-4 shrink-0 text-slate-500" />
-                </button>
-                {checkinProject.trim() ? (
-                  <button
-                    type="button"
-                    className="mt-1.5 self-start text-[11px] font-semibold text-slate-500 underline-offset-2 hover:underline"
-                    onClick={() => setCheckinProject('')}
-                    disabled={isAnyBusy}
-                  >
-                    Auswahl entfernen
-                  </button>
-                ) : null}
-              </label>
+                />
+              </div>
             ) : null}
           </div>
 
@@ -1632,69 +1598,6 @@ export function CheckinCheckoutPage({
             void onReloadData?.();
           }}
         />
-      ) : null}
-
-      {isMobile && projectPickerMode !== null ? (
-        <div className="fixed inset-0 z-40 bg-slate-900/45" onClick={() => setProjectPickerMode(null)}>
-          <div
-            className="absolute inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-h-[70vh] rounded-t-2xl border border-slate-200 bg-white p-3 shadow-panel dark:border-slate-700 dark:bg-slate-950"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {projectPickerMode === 'checkin' ? 'Projekt auswählen (Rücknahme)' : 'Projekt auswählen'}
-              </h4>
-              <button type="button" className="btn-ghost h-10 w-10 p-0" onClick={() => setProjectPickerMode(null)}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <input
-              className="field-input h-11"
-              placeholder="Projekt suchen..."
-              value={projectPickerSearch}
-              onChange={(event) => setProjectPickerSearch(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return;
-                event.preventDefault();
-                applyProjectSelection(projectPickerSearch);
-              }}
-            />
-
-            <div className="soft-scrollbar mt-2 max-h-[42vh] space-y-1 overflow-y-auto pr-1">
-              {filteredProjectOptions.map((project) => (
-                <button
-                  key={project}
-                  type="button"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-left text-sm text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                  onClick={() => applyProjectSelection(project)}
-                >
-                  <span className="block break-words">{project}</span>
-                </button>
-              ))}
-              {!filteredProjectOptions.length ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
-                  Kein Projekt gefunden.
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
-              <button
-                type="button"
-                className="btn-secondary h-11"
-                onClick={() => {
-                  applyProjectSelection(projectPickerSearch);
-                }}
-              >
-                Manuell übernehmen
-              </button>
-              <button type="button" className="btn-secondary h-11" onClick={() => setProjectPickerMode(null)}>
-                Abbrechen
-              </button>
-            </div>
-          </div>
-        </div>
       ) : null}
     </section>
   );

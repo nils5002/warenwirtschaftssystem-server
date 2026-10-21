@@ -191,7 +191,7 @@ export function Topbar({
 
   if (compact) {
     return (
-      <header className="sticky top-0 z-20 border-b border-line bg-surface shadow-sm">
+      <header className="sticky top-0 z-20 border-b border-line bg-surface pt-[env(safe-area-inset-top)] shadow-sm">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <button type="button" className="btn-secondary h-11 w-11 p-0" onClick={onMenuOpen} aria-label="Menü öffnen">
@@ -231,7 +231,7 @@ export function Topbar({
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-surface shadow-sm">
+    <header className="sticky top-0 z-20 border-b border-line bg-surface pt-[env(safe-area-inset-top)] shadow-sm">
       <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-3 py-3 sm:px-4 md:gap-4 md:px-8">
         <button
           type="button"

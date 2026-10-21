@@ -85,7 +85,7 @@ export function Sidebar({ items, activePage, onSelect, mobileOpen, onCloseMobile
           Content ist der Hauptarbeitsbereich. Muss mit dem pl-* des
           Content-Wrappers in App.tsx übereinstimmen. */}
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-screen w-72 transform flex-col border-r border-line bg-surface p-3.5 transition-transform md:w-60 md:translate-x-0 2xl:w-[264px] ${
+        className={`fixed left-0 top-0 z-40 flex h-screen w-72 transform flex-col border-r border-line bg-surface p-3.5 pb-[calc(0.875rem+env(safe-area-inset-bottom))] pt-[calc(0.875rem+env(safe-area-inset-top))] transition-transform md:w-60 md:translate-x-0 2xl:w-[264px] ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
