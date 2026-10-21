@@ -499,6 +499,27 @@ def refresh_session(
     )
 
 
+@router.post("/session/lock")
+def lock_session(request: Request, db: Session = Depends(get_db)) -> dict[str, bool]:
+    """Sperrt dieses Geraet sofort (App-Start / Rueckkehr aus dem Hintergrund).
+
+    Nur die sichere Richtung: Der Client kann eine Sperre ausloesen, aber nie
+    aufheben — Entsperren geht ausschliesslich ueber die Passkey-Pruefung.
+    Ohne eingerichteten Passkey gibt es keine Sperre (``locked: false``),
+    damit niemand ohne Entsperrweg ausgesperrt wird.
+    """
+    _write_guard(request)
+    _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
+    device = companion.device_from_cookie(db, request.cookies.get(companion.DEVICE_COOKIE_NAME))
+    if device is None:
+        raise HTTPException(status_code=401, detail="Keine Geraetesitzung.")
+    passkey = companion.has_passkey(db, device)
+    if passkey:
+        device.unlocked_until = None
+        db.commit()
+    return {"locked": passkey, "passkeyRegistered": passkey}
+
+
 @router.post("/session/logout")
 def logout_device(request: Request, response: Response, db: Session = Depends(get_db)) -> dict[str, bool]:
     """Beendet genau diese Geraetesitzung (Desktop und andere Geraete bleiben)."""

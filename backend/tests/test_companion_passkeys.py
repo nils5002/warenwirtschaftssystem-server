@@ -177,3 +177,38 @@ def test_session_info_reports_passkey() -> None:
     body = phone.get("/api/companion/session").json()
     assert body["passkeyRegistered"] is True
     assert "public" not in str(body).lower()
+
+
+# --- Sperren beim App-Start / nach Hintergrund ---------------------------------
+
+
+def test_lock_on_start_locks_device_with_passkey() -> None:
+    _pc, phone, authenticator = _paired_with_passkey()
+    res = phone.post("/api/companion/session/lock", headers=HEADERS)
+    assert res.status_code == 200 and res.json() == {"locked": True, "passkeyRegistered": True}
+    # Serverseitig wirksam: kein API-Zugriff, Erneuerung nur mit Passkey.
+    assert phone.get("/api/wms/overview").status_code == 401
+    assert phone.post("/api/companion/session/refresh", headers=HEADERS).status_code == 423
+    assert _unlock(phone, authenticator).status_code == 200
+    assert phone.get("/api/wms/overview").status_code == 200
+
+
+def test_lock_without_passkey_does_not_lock_out() -> None:
+    pc = Pc()
+    pc.enable()
+    phone = _pair(pc)
+    res = phone.post("/api/companion/session/lock", headers=HEADERS)
+    assert res.json() == {"locked": False, "passkeyRegistered": False}
+    assert phone.get("/api/auth/me").status_code == 200
+
+
+def test_lock_requires_device_cookie_and_csrf_header() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    stranger = TestClient(app)
+    stranger.cookies.clear()
+    assert stranger.post("/api/companion/session/lock", headers=HEADERS).status_code == 401
+    _pc, phone, _authenticator = _paired_with_passkey()
+    assert phone.post("/api/companion/session/lock", headers={"Origin": ORIGIN}).status_code == 403

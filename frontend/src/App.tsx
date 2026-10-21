@@ -1,10 +1,12 @@
 import { MoreHorizontal, ScanLine } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './asset-ui/components/Sidebar';
 import { Topbar } from './asset-ui/components/Topbar';
 import { UpdateNotesModal } from './asset-ui/components/UpdateNotesModal';
 import { EmailVerificationPage } from './components/auth/EmailVerificationPage';
+import { lockOnAppStart, useBackgroundLock } from './components/companion/appLock';
 import { CompanionLockScreen } from './components/companion/CompanionLockScreen';
+import { PasskeyReminder } from './components/companion/PasskeyReminder';
 import { CompanionPairPage } from './components/companion/CompanionPairPage';
 import { isCompanionPairPath } from './components/companion/companionPairing';
 import { isVerifyEmailPath } from './components/auth/emailVerification';
@@ -70,6 +72,12 @@ function App() {
     let cancelled = false;
     const bootstrap = async () => {
       try {
+        // Companion App: beim Öffnen sperren (serverseitig; nur mit Passkey).
+        // Dann gar nicht erst Daten laden, sondern direkt entsperren lassen.
+        if (await lockOnAppStart()) {
+          if (!cancelled) setCompanionLocked(true);
+          return;
+        }
         const user = await fetchAuthMe();
         if (!cancelled) {
           setAuthUser(user);
@@ -107,6 +115,10 @@ function App() {
       setCompanionLockedHandler(null);
     };
   }, []);
+
+  // Nach längerer Zeit im Hintergrund erneut sperren (nur gekoppelte Geräte).
+  const lockNow = useCallback(() => setCompanionLocked(true), []);
+  useBackgroundLock(Boolean(authUser?.deviceId) && !companionLocked, lockNow);
 
   const visibleNavigation = useMemo(
     // Kanonische Pruefung aus config/pageAccess: Rechte-gesteuerte Seiten ueber
@@ -338,6 +350,7 @@ function App() {
                 {controller.wmsError}
               </div>
             ) : null}
+            {authUser.deviceId ? <PasskeyReminder onOpenAccount={() => controller.setActivePage('account')} /> : null}
             {accessNotice ? (
               <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
                 {accessNotice}

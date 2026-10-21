@@ -263,12 +263,17 @@ verbinden.
 - Desktop- und Handy-Logout melden sich nicht gegenseitig ab. Passwort-Reset,
   Rollenwechsel, Deaktivierung/Sperre, „Sitzungen widerrufen" (Admin) und
   „Companion deaktivieren" beenden alle Geraete des Kontos.
-- Mit Passkey wird das Geraet nach 30 Minuten Inaktivitaet gesperrt — das
+- Mit Passkey wird das Geraet **beim Oeffnen der App**, nach **mehr als einer
+  Minute im Hintergrund** und spaetestens nach 30 Minuten Inaktivitaet
+  gesperrt; Face ID/Fingerabdruck startet auf dem Sperrbildschirm
+  automatisch (sonst per Tipp). Der Client kann nur sperren
+  (`POST /api/companion/session/lock`), nie entsperren — das
   Backend lehnt dann jede Anfrage dieses Geraets ab, bis eine serverseitig
   gepruefte Passkey-Bestaetigung (User Verification) vorliegt. Pruefung durch
   die Bibliothek `webauthn` (py_webauthn); Passkeys sind an genau ein Geraet
   gebunden.
-- Ohne Passkey (z. B. Browser ohne WebAuthn) gibt es keinen Sperrbildschirm;
+- Ohne Passkey (z. B. Browser ohne WebAuthn) gibt es keinen Sperrbildschirm
+  (die App zeigt dann einen Hinweis zur Einrichtung);
   das Geraet bleibt ueber den PC jederzeit widerrufbar.
 - Backup/Restore: Geraetesitzungen, Kopplungen und Passkeys werden **nie**
   wiederhergestellt; nach einem Restore muessen Smartphones neu verbunden und

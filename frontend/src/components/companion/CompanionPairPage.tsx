@@ -10,6 +10,7 @@ import {
   type CompanionClaim,
 } from '../../services/wmsApi';
 import { COMPANION_PAIR_PATH, extractPairingCode, phoneStatusMessage } from './companionPairing';
+import { skipNextStartLock } from './appLock';
 import { CompanionOnboarding } from './CompanionOnboarding';
 
 type Phase =
@@ -188,7 +189,12 @@ export function CompanionPairPage() {
                 <p className="text-sm text-ink-muted">Dieses Gerät ist jetzt als „{phase.deviceName}" mit deinem Konto verbunden.</p>
               </div>
             </div>
-            <CompanionOnboarding onContinue={() => window.location.replace('/dashboard')} />
+            <CompanionOnboarding
+              onContinue={() => {
+                skipNextStartLock();
+                window.location.replace('/dashboard');
+              }}
+            />
           </section>
         ) : null}
 

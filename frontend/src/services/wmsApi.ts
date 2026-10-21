@@ -2377,3 +2377,18 @@ export async function logoutCompanionDevice(): Promise<void> {
     clearCurrentUser();
   }
 }
+
+/**
+ * Sperrt die Gerätesitzung (App-Start, Rückkehr aus dem Hintergrund).
+ * Liefert null, wenn dieses Gerät gar nicht gekoppelt ist (Browser-Sitzung).
+ * Entsperren ist nur per Passkey möglich — der Client kann nur sperren.
+ */
+export async function lockCompanionSession(): Promise<{ locked: boolean; passkeyRegistered: boolean } | null> {
+  try {
+    const response = await rawApiFetch('/api/companion/session/lock', { method: 'POST' });
+    if (!response.ok) return null;
+    return (await response.json()) as { locked: boolean; passkeyRegistered: boolean };
+  } catch {
+    return null;
+  }
+}

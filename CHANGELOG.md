@@ -11,8 +11,11 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
   Passworteingabe arbeiten — mit denselben Funktionen und Rechten wie am PC.
   Jedes Gerät ist einzeln und sofort widerrufbar; Companion ist pro Konto
   standardmäßig aus. Entsperren per Passkey (WebAuthn, Face ID/Fingerabdruck/
-  Geräte-PIN je nach Gerät) mit echter serverseitiger Sperrwirkung nach
-  30 Minuten Inaktivität. Neue Seite *Mein Konto*, öffentliche Seite
+  Geräte-PIN je nach Gerät) mit echter serverseitiger Sperrwirkung — beim
+  Öffnen der App, nach mehr als einer Minute im Hintergrund und spätestens
+  nach 30 Minuten Inaktivität; Face ID startet auf dem Sperrbildschirm
+  automatisch. Ohne Passkey weist die App auf die fehlende Sperre hin.
+  Neue Seite *Mein Konto*, öffentliche Seite
   `/verbinden`, Manifest, Icons und ein Service Worker, der bewusst weder
   App-Hülle noch API-Daten cacht.
 - Mobile Oberfläche: untere Navigation *Start · Planung · Inventar · Scannen ·

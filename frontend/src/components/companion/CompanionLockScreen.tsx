@@ -1,5 +1,5 @@
 import { Fingerprint, Lock } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { LoadingButton } from '../loading';
 import { logoutCompanionDevice, type AuthUser } from '../../services/wmsApi';
@@ -18,18 +18,30 @@ export function CompanionLockScreen({ onUnlocked }: { onUnlocked: (user: AuthUse
   const [error, setError] = useState('');
   const supported = passkeysSupported();
 
-  const unlock = async () => {
+  const unlock = async (automatic = false) => {
     setBusy(true);
     setError('');
     try {
       const session = await unlockWithPasskey();
       onUnlocked(session.user);
     } catch (err) {
-      setError(passkeyErrorMessage(err));
+      // Der automatische Versuch beim Öffnen darf still scheitern (iOS verlangt
+      // teils ein Antippen) — dann bleibt einfach der Entsperren-Button.
+      if (!automatic) setError(passkeyErrorMessage(err));
     } finally {
       setBusy(false);
     }
   };
+
+  // Face ID / Fingerabdruck direkt beim Öffnen anbieten — genau einmal, auch
+  // wenn React den Effekt doppelt ausführt (sonst zwei parallele Challenges).
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!supported || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    void unlock(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const reconnect = async () => {
     await logoutCompanionDevice();
@@ -53,7 +65,7 @@ export function CompanionLockScreen({ onUnlocked }: { onUnlocked: (user: AuthUse
         </div>
         {error ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm text-amber-800" role="alert">{error}</p> : null}
         {supported ? (
-          <LoadingButton type="button" className="btn-primary min-h-[52px] w-full" isLoading={busy} onClick={() => void unlock()} autoFocus>
+          <LoadingButton type="button" className="btn-primary min-h-[52px] w-full" isLoading={busy} onClick={() => void unlock()}>
             <span className="inline-flex items-center justify-center gap-2"><Fingerprint className="h-5 w-5" /> Entsperren</span>
           </LoadingButton>
         ) : (
