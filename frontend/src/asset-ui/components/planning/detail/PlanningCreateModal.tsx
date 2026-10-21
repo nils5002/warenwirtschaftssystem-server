@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { LoadingButton } from '../../../../components/loading';
@@ -40,6 +40,8 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
   const [returnBufferDays, setReturnBufferDays] = useState(0);
   const [onSiteResponsibleUserId, setOnSiteResponsibleUserId] = useState('');
   const [saving, setSaving] = useState(false);
+  // Mobil: optionale Angaben eingeklappt, damit nur das Nötigste im Blick ist.
+  const [showMore, setShowMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,6 +53,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
     setEndDate(presetStart);
     setReturnBufferDays(0);
     setOnSiteResponsibleUserId('');
+    setShowMore(false);
     setError(null);
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -115,7 +118,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
             <label className="field text-xs">
               Kunde
               <input
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 data-testid="planning-create-customer"
                 value={customerName}
                 autoFocus
@@ -125,7 +128,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
             <label className="field text-xs">
               Projekt
               <input
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 data-testid="planning-create-project"
                 value={projectName}
                 onChange={(event) => setProjectName(event.target.value)}
@@ -135,7 +138,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
               Startdatum
               <input
                 type="date"
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 value={startDate}
                 onChange={(event) => {
                   const next = event.target.value;
@@ -148,16 +151,26 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
               Enddatum
               <input
                 type="date"
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 value={endDate}
                 min={startDate}
                 onChange={(event) => setEndDate(event.target.value)}
               />
             </label>
+            <button
+              type="button"
+              className="flex min-h-[44px] items-center justify-between rounded-xl border border-line px-3 text-sm font-medium text-ink-muted sm:hidden"
+              aria-expanded={showMore}
+              onClick={() => setShowMore((value) => !value)}
+            >
+              Weitere Angaben (optional)
+              <ChevronDown className={`h-4 w-4 transition ${showMore ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+            <div className={`${showMore ? 'grid gap-3' : 'hidden'} sm:contents`}>
             <label className="field text-xs sm:col-span-2">
               On-Site-Verantwortlicher (optional)
               <select
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 data-testid="planning-create-on-site"
                 value={onSiteResponsibleUserId}
                 onChange={(event) => setOnSiteResponsibleUserId(event.target.value)}
@@ -175,7 +188,7 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
             <label className="field text-xs sm:col-span-2">
               Rückgabe-Puffer (optional)
               <select
-                className="field-input"
+                className="field-input h-12 text-base sm:h-auto sm:text-sm"
                 value={returnBufferDays}
                 onChange={(event) => setReturnBufferDays(Math.min(3, Math.max(0, Number(event.target.value) || 0)))}
               >
@@ -186,17 +199,18 @@ export function PlanningCreateModal({ open, onClose, onCreated, initialStartDate
                 ))}
               </select>
             </label>
+            </div>
           </div>
           {error ? <p className="text-xs text-rose-600 dark:text-rose-300">{error}</p> : null}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-line px-4 py-3">
-          <button type="button" className="btn-secondary px-3 py-1.5 text-xs" onClick={onClose} disabled={saving}>
+        <div className="grid grid-cols-2 gap-2 border-t border-line px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:flex sm:items-center sm:justify-end sm:pb-3">
+          <button type="button" className="btn-secondary min-h-[48px] px-3 py-1.5 text-sm sm:min-h-0 sm:text-xs" onClick={onClose} disabled={saving}>
             Abbrechen
           </button>
           <LoadingButton
             type="button"
             data-testid="planning-create-submit"
-            className="btn-primary px-4 py-1.5 text-xs"
+            className="btn-primary min-h-[48px] px-4 py-1.5 text-sm sm:min-h-0 sm:text-xs"
             style={{ backgroundColor: '#4361EE' }}
             isLoading={saving}
             loadingText="Wird angelegt ..."

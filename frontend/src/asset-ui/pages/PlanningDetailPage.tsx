@@ -770,8 +770,37 @@ export function PlanningDetailPage({
       </div>
 
       <div className="surface-card -mt-4 rounded-t-none border-t-0">
-        {/* KPI-Zeile */}
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {/* KPI-Zeile. Mobil als EINE kompakte Zeile, damit die Hardware ohne
+            Scrollen sichtbar ist (bei neuen Planungen sind die Kacheln ohnehin
+            alle leer). */}
+        {isMobile ? (
+          <p className="surface-muted flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-sm text-ink">
+            <span className="font-semibold">
+              {formatGermanDateShort(draft.startDate)}
+              {draft.endDate !== draft.startDate ? ` – ${formatGermanDateShort(draft.endDate)}` : ''}
+            </span>
+            <span className="text-ink-muted">
+              · {dayCount} {dayCount === 1 ? 'Tag' : 'Tage'} · {totalQty} {totalQty === 1 ? 'Gerät' : 'Geräte'}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 font-medium ${
+                conflictCount > 0 ? 'text-rose-600 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'
+              }`}
+            >
+              {conflictCount > 0 ? (
+                <>
+                  <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                  {conflictCount === 1 ? '1 Konflikt' : `${conflictCount} Konflikte`}
+                </>
+              ) : (
+                <>
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" /> keine Konflikte
+                </>
+              )}
+            </span>
+          </p>
+        ) : null}
+        <div className={isMobile ? 'hidden' : 'grid grid-cols-2 gap-2 xl:grid-cols-4'}>
           <div className="surface-muted px-3 py-2">
             <p className="text-[11px] text-ink-muted">Zeitraum</p>
             <p className="mt-0.5 text-sm font-semibold text-ink">
@@ -1002,6 +1031,26 @@ export function PlanningDetailPage({
                   );
                   return { ...current, items };
                 })
+              }
+              onAddCategory={(categoryKey) =>
+                setDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        items: [
+                          ...current.items,
+                          {
+                            categoryKey,
+                            qty: 1,
+                            notes: '',
+                            handoverEnabled: false,
+                            linkedPlanningId: '',
+                            handoverNote: '',
+                          },
+                        ],
+                      }
+                    : current,
+                )
               }
               onAddItem={() =>
                 setDraft((current) =>
