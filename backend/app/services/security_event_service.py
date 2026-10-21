@@ -87,6 +87,21 @@ BACKUP_IMPORTED = "backup_imported"
 # Systemupdate (Portainer-Redeploy aus dem Adminbereich).
 SYSTEM_UPDATE_REQUESTED = "system_update_requested"
 SYSTEM_UPDATE_FAILED = "system_update_failed"
+# Companion App (Smartphone-Kopplung). Nie Kopplungscodes, Geraete-Secrets
+# oder Passkey-Daten im Event — nur Geraete-/Anfrage-IDs und Grund-Codes.
+COMPANION_ENABLED = "companion_enabled"
+COMPANION_DISABLED = "companion_disabled"
+COMPANION_PAIRING_STARTED = "companion_pairing_started"
+COMPANION_PAIRING_CLAIMED = "companion_pairing_claimed"
+COMPANION_PAIRING_APPROVED = "companion_pairing_approved"
+COMPANION_PAIRING_REJECTED = "companion_pairing_rejected"
+COMPANION_PAIRING_INVALID = "companion_pairing_invalid"
+COMPANION_DEVICE_PAIRED = "companion_device_paired"
+COMPANION_DEVICE_REVOKED = "companion_device_revoked"
+COMPANION_SECRET_REUSE = "companion_secret_reuse"
+COMPANION_PASSKEY_REGISTERED = "companion_passkey_registered"
+COMPANION_UNLOCK_SUCCESS = "companion_unlock_success"
+COMPANION_UNLOCK_FAILED = "companion_unlock_failed"
 
 # Key im system_settings-Store: öffentliche Registrierung erlaubt?
 # Fehlender Key == AUS (sicherer Default nach dem Vorfall).

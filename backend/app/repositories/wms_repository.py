@@ -55,7 +55,7 @@ from ..services.auth_service import (
     normalize_role_for_db,
     role_to_app_role,
 )
-from ..services import planning_event_service, product_image_service, security_event_service
+from ..services import companion_service, planning_event_service, product_image_service, security_event_service
 
 logger = logging.getLogger("cloud_web.wms")
 
@@ -1090,6 +1090,9 @@ def upsert_user(db: Session, item: UserItem, *, actor_user_id: str | None = None
         # invalidiert alle bestehenden Tokens dieses Benutzers.
         if record.role != previous_role or record.is_active != previous_is_active:
             record.token_version = int(record.token_version or 0) + 1
+            companion_service.revoke_all_devices(
+                db, record.external_id, companion_service.REASON_SECURITY, commit=False
+            )
     else:
         used_colors = db.scalars(select(UserRecord.signature_color)).all()
         record = UserRecord(
@@ -1237,8 +1240,12 @@ def update_user(
     # Security-Audit Paket B2: Rollenwechsel oder (De-)Aktivierung
     # invalidiert alle bestehenden Tokens dieses Benutzers. Reine
     # Stammdaten-Aenderungen (Name, E-Mail, Abteilung, Standort) nicht.
+    # Gekoppelte Companion-Geraete werden dabei ebenfalls widerrufen.
     if record.role != previous_role or record.is_active != previous_is_active:
         record.token_version = int(record.token_version or 0) + 1
+        companion_service.revoke_all_devices(
+            db, record.external_id, companion_service.REASON_SECURITY, commit=False
+        )
 
     db.commit()
     db.refresh(record)
@@ -1266,8 +1273,11 @@ def reset_user_password(
             raise HTTPException(status_code=400, detail="Passwort muss mindestens 8 Zeichen lang sein.")
         record.password_hash = hash_password(password)
     # Security-Audit Paket B2: Passwortwechsel invalidiert alle bestehenden
-    # Tokens dieses Benutzers.
+    # Tokens dieses Benutzers — inklusive gekoppelter Companion-Geraete.
     record.token_version = int(record.token_version or 0) + 1
+    companion_service.revoke_all_devices(
+        db, record.external_id, companion_service.REASON_SECURITY, commit=False
+    )
     db.commit()
     return temporary_password
 

@@ -297,6 +297,15 @@ def create_app() -> FastAPI:
                 logger.info("Registrierungsverfahren: %s", mode)
             except Exception:  # noqa: BLE001
                 logger.exception("E-Mail-Verifizierungs-Setup fehlgeschlagen — App startet trotzdem")
+        # Companion App: abgelaufene Kopplungen verwerfen, verwaiste
+        # Geraetesitzungen (lange inaktiv) widerrufen.
+        with SessionLocal() as db:
+            try:
+                from .services import companion_service
+
+                companion_service.cleanup(db)
+            except Exception:  # noqa: BLE001
+                logger.exception("Companion-Cleanup fehlgeschlagen — App startet trotzdem")
         # Systemupdate: offene Updatevorgaenge bewerten. Genau hier — nach einem
         # Portainer-Redeploy — laeuft der neue Container zum ersten Mal, und nur
         # hier laesst sich pruefen, ob wirklich der Ziel-Commit aktiv ist. Ein

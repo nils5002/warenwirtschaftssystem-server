@@ -18,6 +18,9 @@ from ..database.models import (
     AssetRecord,
     CategoryRecord,
     LocationRecord,
+    CompanionDeviceRecord,
+    CompanionPairingRecord,
+    CompanionPasskeyRecord,
     MailSettingsRecord,
     MaintenanceRecord,
     PlanningDayRecord,
@@ -652,6 +655,12 @@ def import_backup(db: Session, payload: WarehouseBackupPayload) -> BackupImportR
         db.execute(delete(LocationRecord))
         db.execute(delete(CategoryRecord))
         db.execute(delete(RolePermissionRecord))
+        # Companion-Geraetesitzungen, Kopplungen und Passkeys sind an die
+        # laufende Installation gebunden und werden NIE wiederhergestellt:
+        # Nach einem Restore muessen Smartphones neu verbunden werden.
+        db.execute(delete(CompanionPasskeyRecord))
+        db.execute(delete(CompanionPairingRecord))
+        db.execute(delete(CompanionDeviceRecord))
         db.execute(delete(UserRecord))
 
         for item in payload.categories:
@@ -1092,6 +1101,9 @@ def clear_data_for_import(db: Session, *, keep_user_id: str | None = None) -> Ba
         db.execute(delete(HardwareImportRunRecord))
         db.execute(delete(RolePermissionRecord))
 
+        db.execute(delete(CompanionPasskeyRecord))
+        db.execute(delete(CompanionPairingRecord))
+        db.execute(delete(CompanionDeviceRecord))
         db.execute(delete(UserRecord).where(UserRecord.id.notin_(preserved_admin_ids)))
 
         # Re-seed standard categories so the app keeps a usable category set

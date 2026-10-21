@@ -27,6 +27,8 @@ class AccessContext:
     role: RoleName
     user_id: str | None
     project_contexts: tuple[str, ...]
+    # Companion-Geraetesitzung (``sid``), sonst None (Browser-Anmeldung).
+    device_id: str | None = None
 
 
 def extract_request_token(request: Request) -> str | None:
@@ -85,6 +87,7 @@ def get_access_context(
             role=_normalize_role(user.role),
             user_id=user.userId,
             project_contexts=project_contexts,
+            device_id=user.deviceId,
         )
     settings = get_settings()
     if not settings.allow_legacy_header_auth:
@@ -120,6 +123,55 @@ def require_csrf_header(request: Request) -> None:
         status_code=403,
         detail="Anfrage abgelehnt: Sicherheits-Header fehlt. Bitte die Seite neu laden.",
     )
+
+
+def _origin_of(url: str | None) -> str | None:
+    from urllib.parse import urlsplit
+
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return None
+    if not parts.scheme or not parts.netloc:
+        return None
+    return f"{parts.scheme.lower()}://{parts.netloc.lower()}"
+
+
+def trusted_origins(request: Request, extra: tuple[str | None, ...] = ()) -> set[str]:
+    """Origins, von denen schreibende Cookie-Anfragen kommen duerfen.
+
+    Konfigurierte Adressen (FRONTEND_URL, BASE_URL, CORS_ORIGINS, oeffentliche
+    WWS-Adresse) plus die eigene Adresse laut Host-/Forwarded-Headern. Ein
+    fremder Browser-Kontext kann seinen ``Origin`` nicht faelschen und keine
+    eigenen Host-Header setzen, ohne am CORS-Preflight zu scheitern.
+    """
+    settings = get_settings()
+    candidates: list[str | None] = [settings.frontend_url, settings.base_url, *extra]
+    candidates.extend(item for item in settings.cors_origins_list if item != "*")
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    scheme = forwarded_proto or request.url.scheme
+    for host in (request.headers.get("x-forwarded-host"), request.headers.get("host")):
+        if host:
+            candidates.append(f"{scheme}://{host.split(',')[0].strip()}")
+    return {origin for origin in (_origin_of(item) for item in candidates) if origin}
+
+
+def require_trusted_origin(request: Request, extra: tuple[str | None, ...] = ()) -> None:
+    """Prueft den ``Origin``-Header schreibender Browser-Anfragen.
+
+    Fehlt der Header (Nicht-Browser-Client), entscheidet allein der
+    CSRF-Header; Bearer-Anfragen sind ohnehin nicht CSRF-faehig.
+    """
+    if request.headers.get("authorization", "").strip().lower().startswith("bearer "):
+        return
+    origin = _origin_of(request.headers.get("origin"))
+    if origin is None:
+        return
+    if origin not in trusted_origins(request, extra):
+        raise HTTPException(status_code=403, detail="Anfrage von einer fremden Herkunft abgelehnt.")
 
 
 def require_roles(context: AccessContext, *allowed: RoleName) -> None:

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..database.session import get_db
-from ..database.models import UserRecord
+from ..database.models import CompanionDeviceRecord, UserRecord
 from ..schemas.auth import (
     AuthLoginRequest,
     AuthLoginResponse,
@@ -18,6 +18,7 @@ from ..schemas.auth import (
     AuthVerifyEmailResponse,
 )
 from ..schemas.job import LoginRequest, LoginResponse
+from ..services import companion_service
 from ..services import email_verification_service as verification
 from ..services import mail_config_service
 from ..services import security_event_service as sec
@@ -33,6 +34,7 @@ from ..services.auth_service import (
     issue_access_token,
     register_user,
     test_login,
+    token_session_id,
 )
 from ..services.rate_limiter import (
     account_login_rate_limiter,
@@ -551,8 +553,27 @@ def logout(
             info = decode_access_token(token)
         except HTTPException:
             info = None
-        if info is not None and info.userId:
-            invalidate_sessions(db, info.userId)
+        session_id = token_session_id(token)
+        if info is not None and info.userId and session_id:
+            # Abmeldung auf einem gekoppelten Smartphone: genau diese
+            # Geraetesitzung beenden — Desktop und andere Geraete bleiben.
+            device = db.scalar(
+                select(CompanionDeviceRecord).where(
+                    CompanionDeviceRecord.external_id == session_id,
+                    CompanionDeviceRecord.user_external_id == info.userId,
+                )
+            )
+            if device is not None:
+                companion_service.revoke_device(db, device, companion_service.REASON_LOGOUT)
+            sec.record_event(
+                db, sec.COMPANION_DEVICE_REVOKED, request=request, success=True,
+                user_id=info.userId, identifier=info.email,
+                reason=companion_service.REASON_LOGOUT, meta={"deviceId": session_id},
+            )
+        elif info is not None and info.userId:
+            # Desktop-Logout: alle Browser-Tokens ungueltig, gekoppelte
+            # Companion-Geraete bleiben bewusst verbunden.
+            invalidate_sessions(db, info.userId, include_devices=False)
             sec.record_event(
                 db, sec.LOGOUT, request=request, success=True,
                 user_id=info.userId, identifier=info.email,

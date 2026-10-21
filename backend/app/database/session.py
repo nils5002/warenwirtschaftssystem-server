@@ -181,6 +181,9 @@ _NEW_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # Oeffentliche WWS-Adresse fuer Bestaetigungslinks (Adminoberflaeche).
     # NULL -> FRONTEND_URL aus der ENV bleibt wirksam.
     ("mail_settings", "public_base_url", "VARCHAR(255)"),
+    # Companion App: pro Konto bewusst freizuschalten. DEFAULT 0 -> fuer alle
+    # Bestandsbenutzer aus, bis sie es selbst aktivieren.
+    ("users", "companion_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
 )
 
 

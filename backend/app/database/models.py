@@ -244,6 +244,96 @@ class UserRecord(TimestampMixin, Base):
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Companion App (Smartphone-Kopplung) fuer dieses Konto freigeschaltet?
+    # Default 0: Ohne bewusste Aktivierung durch den Benutzer ist keine mobile
+    # Geraetesitzung nutzbar. Abschalten widerruft alle Geraete des Kontos.
+    companion_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+
+
+class CompanionDeviceRecord(TimestampMixin, Base):
+    """Eine gekoppelte, einzeln widerrufbare Smartphone-Sitzung (Companion App).
+
+    Der langlebige Nachweis des Geraets ist ein zufaelliges Secret im
+    HttpOnly-Cookie ``wms_device``; hier steht ausschliesslich sein SHA-256-
+    Hash. Das Secret rotiert bei jeder Erneuerung — taucht ein bereits
+    abgeloestes Secret nach der Kulanzzeit erneut auf, gilt das Geraet als
+    kompromittiert und wird widerrufen.
+
+    Access-Tokens eines Geraets tragen dessen ``external_id`` als ``sid``;
+    jede Anfrage prueft, dass diese Zeile existiert und nicht widerrufen ist.
+    """
+
+    __tablename__ = "companion_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # Anzeigename + grobe Plattform (aus dem User-Agent, bewusst ungenau).
+    name: Mapped[str] = mapped_column(String(120), nullable=False, default="Smartphone")
+    platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    secret_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    previous_secret_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoke_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Entsperrung per Passkey: bis zu diesem Zeitpunkt darf das Geraet ohne
+    # erneute Nutzerverifikation frische Access-Tokens beziehen.
+    unlocked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Laufende WebAuthn-Challenge (Registrierung oder Entsperrung), einmalig.
+    webauthn_challenge: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    webauthn_challenge_purpose: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    webauthn_challenge_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class CompanionPairingRecord(TimestampMixin, Base):
+    """Kurzlebige, einmalige Kopplungsanfrage (QR-Code am PC).
+
+    Ablauf: pending -> claimed (Handy hat den QR eingelesen) -> approved/
+    rejected (Entscheidung am PC) -> consumed (Geraetesitzung ausgestellt).
+    Gespeichert werden nur Hashes des QR-Codes und des Handy-Nachweises.
+    """
+
+    __tablename__ = "companion_pairing_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    claim_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    match_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    device_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    device_platform: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    device_external_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class CompanionPasskeyRecord(TimestampMixin, Base):
+    """Oeffentlicher Schluessel eines Passkeys zum Entsperren der Companion App.
+
+    Der private Schluessel bleibt im Authenticator/Passkey-Manager. Der Passkey
+    ist an ein Geraet gebunden: Er entsperrt dessen Sitzung, ersetzt aber nie
+    die (am PC widerrufbare) Geraetefreigabe selbst.
+    """
+
+    __tablename__ = "companion_passkeys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    device_external_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    credential_id: Mapped[str] = mapped_column(String(512), unique=True, nullable=False, index=True)
+    public_key: Mapped[str] = mapped_column(Text, nullable=False)
+    sign_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    transports: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EmailVerificationTokenRecord(TimestampMixin, Base):

@@ -22,6 +22,9 @@ class AuthUserInfo(BaseModel):
     # Default [], damit bestehende Konstruktionen (Login/Token) ohne dieses Feld
     # gültig bleiben und ältere Frontends das Feld ignorieren können.
     permissions: list[str] = Field(default_factory=list)
+    # Gesetzt, wenn die Anfrage ueber eine gekoppelte Companion-Geraetesitzung
+    # laeuft (sonst None = normale Browser-Anmeldung).
+    deviceId: str | None = None
 
 
 class AuthLoginResponse(BaseModel):

@@ -263,9 +263,13 @@ def mobile_logout(
     db: Session = Depends(get_db),
     context: AccessContext = Depends(get_access_context),
 ) -> MobileLogoutResponse:
-    """Widerruft alle Tokens des Nutzers (Access + Refresh) über token_version."""
+    """Widerruft alle Tokens des Nutzers (Access + Refresh) über token_version.
+
+    Gekoppelte Companion-Geräte bleiben bestehen — ein Logout der nativen App
+    ist kein Sicherheitsereignis für andere Geräte.
+    """
     if context.user_id:
-        invalidate_sessions(db, context.user_id)
+        invalidate_sessions(db, context.user_id, include_devices=False)
         sec.record_event(
             db, sec.LOGOUT, request=request, success=True, user_id=context.user_id,
         )

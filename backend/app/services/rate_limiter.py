@@ -195,6 +195,32 @@ refresh_rate_limiter = RateLimiter(
     window_seconds=10 * 60,
     block_seconds=10 * 60,
 )
+# Companion App. Kopplung starten (pro Benutzer): ein QR alle paar Sekunden
+# ist normal, eine Flut nicht.
+companion_pairing_start_rate_limiter = RateLimiter(
+    max_attempts=20,
+    window_seconds=10 * 60,
+    block_seconds=10 * 60,
+)
+# QR-Code am Handy einloesen (pro IP): bremst das Durchprobieren von Codes
+# (die Codes selbst haben 256 Bit Entropie und leben 120 s).
+companion_claim_rate_limiter = RateLimiter(
+    max_attempts=20,
+    window_seconds=10 * 60,
+    block_seconds=15 * 60,
+)
+# Statusabfragen waehrend der Kopplung (Polling von PC und Handy).
+companion_poll_rate_limiter = RateLimiter(
+    max_attempts=600,
+    window_seconds=10 * 60,
+    block_seconds=5 * 60,
+)
+# Sitzungserneuerung + Passkey-Entsperrung eines Geraets (pro IP).
+companion_session_rate_limiter = RateLimiter(
+    max_attempts=120,
+    window_seconds=10 * 60,
+    block_seconds=10 * 60,
+)
 # Systemupdate ausloesen: harte Bremse gegen wiederholte Redeploy-Anforderungen
 # (jeder Aufruf erzeugt Backup + Stack-Neustart). Gilt zusaetzlich zum
 # DB-Update-Lock, der parallele Laeufe ohnehin verhindert.

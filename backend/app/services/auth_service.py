@@ -217,6 +217,7 @@ def issue_access_token(
     *,
     token_version: int = 0,
     expires_in: int = AUTH_TOKEN_EXPIRY_SECONDS,
+    session_id: str | None = None,
 ) -> str:
     now = datetime.now(UTC)
     payload = {
@@ -235,6 +236,10 @@ def issue_access_token(
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=expires_in)).timestamp()),
     }
+    if session_id:
+        # Companion-Geraetesitzung: jede Anfrage prueft zusaetzlich, dass
+        # dieses Geraet noch gekoppelt und nicht widerrufen ist.
+        payload["sid"] = str(session_id)
     return _sign_token_payload(payload)
 
 
@@ -311,6 +316,18 @@ def decode_access_token(token: str) -> AuthUserInfo:
     return _payload_to_user_info(_decode_token_payload(token))
 
 
+def token_session_id(token: str) -> str | None:
+    """``sid`` eines (signaturgeprueften) Tokens oder None.
+
+    Stateless wie ``decode_access_token``; abgelaufene/kaputte Tokens -> None.
+    """
+    try:
+        payload = _decode_token_payload(token)
+    except HTTPException:
+        return None
+    return str(payload.get("sid") or "").strip() or None
+
+
 def _coerce_token_version(value: object) -> int:
     try:
         return int(value)  # type: ignore[arg-type]
@@ -346,6 +363,13 @@ def _authenticated_user_from_payload(db: Session, payload: dict) -> UserRecord:
             status_code=401,
             detail="Sitzung ist nicht mehr gültig. Bitte erneut anmelden.",
         )
+    session_id = str(payload.get("sid") or "").strip()
+    if session_id:
+        # Lazy-Import: companion_service importiert Modelle, die wiederum
+        # nicht von hier abhaengen duerfen.
+        from . import companion_service
+
+        companion_service.check_device_session(db, user, session_id)
     return user
 
 
@@ -371,6 +395,7 @@ def authenticate_token(db: Session, token: str) -> AuthUserInfo:
         name=user.name,
         email=user.email,
         role=normalize_user_role(user.role),
+        deviceId=str(payload.get("sid") or "").strip() or None,
     )
 
 
@@ -395,17 +420,28 @@ def authenticate_refresh_token(db: Session, token: str) -> tuple[AuthUserInfo, i
     return info, int(user.token_version or 0)
 
 
-def invalidate_sessions(db: Session, external_id: str) -> None:
+def invalidate_sessions(db: Session, external_id: str, *, include_devices: bool = True) -> None:
     """Erhoeht die token_version eines Benutzers.
 
     Damit werden alle bereits ausgestellten Tokens dieses Benutzers
     ungueltig. Wird beim Logout aufgerufen; die Repository-Schicht erhoeht
     die token_version zusaetzlich direkt bei Passwort-/Rollen-/Statusaenderung.
+
+    ``include_devices``: Gekoppelte Companion-Geraete mit widerrufen. Ein
+    gewoehnlicher Logout laesst sie bewusst bestehen (``False``) — Desktop und
+    Handy sollen sich nicht gegenseitig abmelden. Administrative Widerrufe
+    (Default) beenden dagegen alles.
     """
     user = db.scalar(select(UserRecord).where(UserRecord.external_id == external_id))
     if user is None:
         return
     user.token_version = int(user.token_version or 0) + 1
+    if include_devices:
+        from . import companion_service
+
+        companion_service.revoke_all_devices(
+            db, external_id, companion_service.REASON_SECURITY, commit=False
+        )
     db.commit()
 
 
