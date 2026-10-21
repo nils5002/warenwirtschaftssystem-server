@@ -13,4 +13,8 @@ bcrypt>=4.1
 # Fernet (authentifizierte Verschluesselung) fuer das in der Adminoberflaeche
 # gepflegte SMTP-Passwort — siehe app/services/secret_store.py.
 cryptography>=42.0
+# WebAuthn/Passkeys fuer die Companion App (Entsperren per Face ID,
+# Fingerabdruck oder Geraete-PIN) — keine eigene Kryptografie, siehe
+# app/services/companion_passkey_service.py.
+webauthn>=2.8,<3
 Pillow

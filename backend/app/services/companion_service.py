@@ -61,6 +61,12 @@ SECRET_REUSE_GRACE = timedelta(seconds=60)
 # last_seen_at nicht bei jeder Anfrage schreiben.
 LAST_SEEN_RESOLUTION = timedelta(minutes=5)
 
+# Entsperrung per Passkey: so lange darf ein Geraet ohne erneute
+# Nutzerverifikation weiterarbeiten; jede Nutzung verlaengert das Fenster.
+# Bewusst laenger als die Access-Token-Laufzeit, damit aktive Nutzung nie
+# gesperrt wird.
+UNLOCK_IDLE_WINDOW = timedelta(minutes=30)
+
 PAIRING_TTL = timedelta(seconds=120)
 # Nach dem Einlesen bleibt Zeit fuer die Bestaetigung am PC + Abschluss.
 PAIRING_DECISION_TTL = timedelta(minutes=5)
@@ -104,6 +110,14 @@ def _new_secret() -> str:
 
 def _unauthorized(detail: str = "Geraetesitzung ist nicht mehr gueltig. Bitte erneut verbinden.") -> HTTPException:
     return HTTPException(status_code=401, detail=detail)
+
+
+class DeviceLockedError(HTTPException):
+    """Geraet ist gekoppelt, muss aber erst per Passkey entsperrt werden (423)."""
+
+    def __init__(self, device: "CompanionDeviceRecord") -> None:
+        super().__init__(status_code=423, detail="Companion App ist gesperrt. Bitte entsperren.")
+        self.device = device
 
 
 # --- Plattform-Beschreibung ---------------------------------------------------
@@ -243,6 +257,22 @@ def _device_user(db: Session, device: CompanionDeviceRecord) -> UserRecord:
     return user
 
 
+def is_locked(db: Session, device: CompanionDeviceRecord, now: datetime | None = None) -> bool:
+    """Gesperrt = Passkey vorhanden und Entsperr-Fenster abgelaufen.
+
+    Ohne Passkey gibt es keine Sperre (z. B. Geraet ohne WebAuthn) — die
+    Sitzung bleibt dann allein ueber die PC-seitige Widerrufbarkeit geschuetzt.
+    """
+    if not has_passkey(db, device):
+        return False
+    until = _aware(device.unlocked_until)
+    return until is None or (now or _now()) > until
+
+
+def mark_unlocked(device: CompanionDeviceRecord, now: datetime | None = None) -> None:
+    device.unlocked_until = (now or _now()) + UNLOCK_IDLE_WINDOW
+
+
 def _is_idle_expired(device: CompanionDeviceRecord, now: datetime) -> bool:
     last_seen = _aware(device.last_seen_at) or _aware(device.created_at) or now
     return now - last_seen > DEVICE_IDLE_EXPIRY
@@ -276,6 +306,8 @@ def refresh_device(db: Session, cookie_value: str | None) -> DeviceCredential:
         rotated_at = _aware(device.secret_rotated_at) or now
         if now - rotated_at <= SECRET_REUSE_GRACE:
             user = _device_user(db, device)
+            if is_locked(db, device, now):
+                raise DeviceLockedError(device)
             device.last_seen_at = now
             db.commit()
             return DeviceCredential(device=device, user=user, cookie_value=None)
@@ -293,6 +325,12 @@ def refresh_device(db: Session, cookie_value: str | None) -> DeviceCredential:
         raise _unauthorized("Die Geraetesitzung ist nach langer Inaktivitaet abgelaufen. Bitte erneut verbinden.")
 
     user = _device_user(db, device)
+    if is_locked(db, device, now):
+        # Kein neues Token und keine Rotation, solange nicht per Passkey
+        # entsperrt wurde.
+        raise DeviceLockedError(device)
+    if has_passkey(db, device):
+        mark_unlocked(device, now)
     new_secret = _new_secret()
     device.previous_secret_hash = device.secret_hash
     device.secret_hash = hash_secret(new_secret)
@@ -333,9 +371,15 @@ def check_device_session(db: Session, user: UserRecord, device_id: str) -> Compa
     ):
         raise _unauthorized()
     now = _now()
+    if is_locked(db, device, now):
+        # Gesperrt: auch ein noch laufendes Access-Token gilt nicht mehr. Der
+        # Client erneuert daraufhin und erhaelt 423 -> Sperrbildschirm.
+        raise _unauthorized("Companion App ist gesperrt. Bitte entsperren.")
     last_seen = _aware(device.last_seen_at)
     if last_seen is None or now - last_seen > LAST_SEEN_RESOLUTION:
         device.last_seen_at = now
+        if device.unlocked_until is not None:
+            mark_unlocked(device, now)
         db.commit()
     return device
 

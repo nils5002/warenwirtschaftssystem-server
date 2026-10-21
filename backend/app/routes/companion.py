@@ -23,6 +23,7 @@ from ..database.session import get_db
 from ..schemas.auth import AuthUserInfo
 from ..schemas.companion import (
     CompanionDevice,
+    CompanionLockedResponse,
     CompanionRevokeResponse,
     CompanionSessionResponse,
     CompanionSettingsPayload,
@@ -32,8 +33,12 @@ from ..schemas.companion import (
     PairingClaimStatusResponse,
     PairingStartResponse,
     PairingStatusResponse,
+    PasskeyOptionsResponse,
+    PasskeyVerifyPayload,
 )
+from ..services import companion_passkey_service as passkeys
 from ..services import companion_service as companion
+from ..services import mail_config_service
 from ..services import security_event_service as sec
 from ..services.auth_service import issue_access_token, normalize_user_role
 from ..services.email_service import mask_email
@@ -55,6 +60,7 @@ from .dependencies import (
     get_access_context,
     require_csrf_header,
     require_trusted_origin,
+    trusted_origins,
 )
 
 router = APIRouter(prefix="/api/companion", tags=["Companion"])
@@ -462,6 +468,14 @@ def refresh_session(
     _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
     try:
         credential = companion.refresh_device(db, request.cookies.get(companion.DEVICE_COOKIE_NAME))
+    except companion.DeviceLockedError as locked:
+        # Gekoppelt, aber gesperrt: Cookie behalten, Sperrbildschirm zeigen.
+        return JSONResponse(
+            status_code=423,
+            content=CompanionLockedResponse(
+                deviceId=locked.device.external_id, deviceName=locked.device.name
+            ).model_dump(),
+        )
     except HTTPException as exc:
         if "Sicherheitsgruenden" in str(exc.detail):
             sec.record_event(
@@ -503,3 +517,119 @@ def logout_device(request: Request, response: Response, db: Session = Depends(ge
         secure=_request_is_https(request), samesite="lax",
     )
     return {"ok": True}
+
+
+@router.get("/session", response_model=CompanionSessionResponse)
+def session_info(
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> CompanionSessionResponse:
+    """Infos zur aktuellen Geraetesitzung (nur auf gekoppelten Geraeten)."""
+    device, user = _current_device(db, context)
+    info = AuthUserInfo(
+        userId=user.external_id, name=user.name, email=user.email,
+        role=normalize_user_role(user.role), deviceId=device.external_id,
+    )
+    return CompanionSessionResponse(
+        user=_with_permissions(db, info),
+        deviceId=device.external_id,
+        deviceName=device.name,
+        passkeyRegistered=companion.has_passkey(db, device),
+    )
+
+
+# --- Passkeys / Entsperren -------------------------------------------------------
+
+
+def _current_device(db: Session, context: AccessContext) -> tuple[CompanionDeviceRecord, UserRecord]:
+    if not context.device_id:
+        raise HTTPException(status_code=403, detail="Nur auf einem gekoppelten Geraet verfuegbar.")
+    user = _current_user(db, context)
+    device = companion.own_device_or_404(db, user.external_id, context.device_id)
+    if device.revoked_at is not None:
+        raise HTTPException(status_code=401, detail="Geraetesitzung ist nicht mehr gueltig.")
+    return device, user
+
+
+def _webauthn_origin(request: Request, db: Session) -> tuple[str, str]:
+    public = mail_config_service.public_base_url(db)
+    return passkeys.resolve_origin(request, trusted_origins(request, extra=(public.url,)))
+
+
+@router.post("/passkey/register/options", response_model=PasskeyOptionsResponse)
+def passkey_register_options(
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> PasskeyOptionsResponse:
+    _write_guard(request)
+    _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
+    device, user = _current_device(db, context)
+    _origin, rp_id = _webauthn_origin(request, db)
+    return PasskeyOptionsResponse(options=passkeys.registration_options(db, device, user, rp_id))
+
+
+@router.post("/passkey/register/verify", response_model=CompanionSessionResponse)
+def passkey_register_verify(
+    payload: PasskeyVerifyPayload,
+    request: Request,
+    db: Session = Depends(get_db),
+    context: AccessContext = Depends(get_access_context),
+) -> CompanionSessionResponse:
+    _write_guard(request)
+    _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
+    device, user = _current_device(db, context)
+    origin, rp_id = _webauthn_origin(request, db)
+    passkeys.verify_registration(db, device, user, payload.credential, origin=origin, rp_id=rp_id)
+    companion.mark_unlocked(device)
+    db.commit()
+    sec.record_event(
+        db, sec.COMPANION_PASSKEY_REGISTERED, request=request, success=True,
+        user_id=user.external_id, identifier=user.email, meta={"deviceId": device.external_id},
+    )
+    return session_info(db, context)
+
+
+def _locked_device(request: Request, db: Session) -> CompanionDeviceRecord:
+    device = companion.device_from_cookie(db, request.cookies.get(companion.DEVICE_COOKIE_NAME))
+    if device is None:
+        raise HTTPException(status_code=401, detail="Geraetesitzung ist nicht mehr gueltig. Bitte erneut verbinden.")
+    return device
+
+
+@router.post("/unlock/options", response_model=PasskeyOptionsResponse)
+def unlock_options(request: Request, db: Session = Depends(get_db)) -> PasskeyOptionsResponse:
+    _write_guard(request)
+    _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
+    device = _locked_device(request, db)
+    _origin, rp_id = _webauthn_origin(request, db)
+    return PasskeyOptionsResponse(options=passkeys.unlock_options(db, device, rp_id))
+
+
+@router.post("/unlock/verify", response_model=CompanionSessionResponse)
+def unlock_verify(
+    payload: PasskeyVerifyPayload,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    _write_guard(request)
+    _limit(companion_session_rate_limiter, f"session:{client_ip(request)}")
+    device = _locked_device(request, db)
+    origin, rp_id = _webauthn_origin(request, db)
+    try:
+        passkeys.verify_unlock(db, device, payload.credential, origin=origin, rp_id=rp_id)
+    except HTTPException:
+        sec.record_event(
+            db, sec.COMPANION_UNLOCK_FAILED, request=request, severity="warning",
+            user_id=device.user_external_id, meta={"deviceId": device.external_id},
+        )
+        raise
+    companion.mark_unlocked(device)
+    db.commit()
+    sec.record_event(
+        db, sec.COMPANION_UNLOCK_SUCCESS, request=request, success=True,
+        user_id=device.user_external_id, meta={"deviceId": device.external_id},
+    )
+    # Jetzt regulaer erneuern (rotiert das Secret, setzt frische Cookies).
+    return refresh_session(request, response, db)
