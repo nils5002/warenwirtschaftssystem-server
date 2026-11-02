@@ -19,7 +19,7 @@ werden, wenn lokale Prüfungen **und** die produktionsnahe Containerprüfung gr�
   `requirements.txt`, Start `uvicorn app.main:app --host 0.0.0.0 --port 8000`
   mit `--proxy-headers`. **Bewusst 1 Worker** (SQLite-Locking) — nicht erhöhen.
   Host-Port `${BACKEND_PORT:-8001}`. Healthcheck: `GET /health` (kein DB-Roundtrip).
-- **Frontend-Image** (`frontend/Dockerfile`): `node:20-alpine`, `vite build` zur
+- **Frontend-Image** (`frontend/Dockerfile`): `node:24-alpine`, `vite build` zur
   Build-Zeit (Args `VITE_API_URL`/`VITE_API_BASE`/`VITE_PROXY_TARGET`), Auslieferung
   via **`vite preview`** auf 4173 (kein nginx — `frontend/nginx.default.conf` wird vom
   Dockerfile NICHT verwendet). Der Preview-Server proxied `/api` + `/media` über die
