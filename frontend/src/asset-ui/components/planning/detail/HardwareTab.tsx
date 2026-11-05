@@ -296,7 +296,7 @@ export function HardwareTab({
 
         {canEdit ? (
           <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-muted">Hinzufügen</p>
+            <p className="mb-1.5 text-xs font-semibold text-ink-muted">Hinzufügen</p>
             <div className="grid grid-cols-2 gap-2">
               {categoryOptions
                 .filter((option) => !usedCategories.has(normalizeCategory(option)))
@@ -320,7 +320,7 @@ export function HardwareTab({
       <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
         <table className="w-full min-w-[720px] border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+            <tr className="text-left text-xs text-ink-faint">
               <th className="w-[20%] border-b border-line bg-surface-2 px-3 py-2">Kategorie</th>
               <th className="w-[9%] border-b border-line bg-surface-2 px-2 py-2">Menge</th>
               <th className="w-[18%] border-b border-line bg-surface-2 px-2 py-2">Ausgegeben</th>

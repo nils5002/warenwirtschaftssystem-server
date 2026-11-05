@@ -235,7 +235,7 @@ export function PlanningTimelineWeek({
 
       {/* Auslastungszeile */}
       <div className="mt-1 border-t border-line pt-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        <p className="text-xs font-semibold text-ink-muted">
           Geräte im Einsatz
         </p>
         <div className="mt-1 grid grid-cols-7" data-testid="timeline-utilization">

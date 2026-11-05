@@ -127,7 +127,7 @@ function ThemeMenu({
           role="menu"
           className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface p-1.5 shadow-panel"
         >
-          <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-faint">
+          <p className="px-2 py-1 text-xs font-semibold text-ink-faint">
             Design
           </p>
           {THEME_OPTIONS.map((option) => {
@@ -200,7 +200,7 @@ export function Topbar({
               <Menu className="h-5 w-5" />
             </button>
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-primary">{crumbGroup}</p>
+              <p className="truncate text-xs font-semibold text-primary">{crumbGroup}</p>
               <p className="truncate text-sm font-semibold text-ink">{activeLabel}</p>
             </div>
           </div>
@@ -265,7 +265,7 @@ export function Topbar({
         {/* Projektkontext (Freitext, dezent als eigenes Feld). */}
         <div className="hidden min-w-0 lg:block">
           <label className="block rounded-xl border border-line bg-surface-2 px-3 py-1.5 transition focus-within:border-primary">
-            <span className="block text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            <span className="block text-xs font-semibold text-ink-faint">
               Projektkontext
             </span>
             <input
@@ -318,7 +318,7 @@ export function Topbar({
           </span>
           <span className="hidden text-left leading-tight lg:block">
             <span className="block max-w-[160px] truncate text-xs font-semibold text-ink">{userName}</span>
-            <span className="block text-[10px] font-medium uppercase tracking-wider text-ink-faint">{activeRole}</span>
+            <span className="block text-xs font-medium text-ink-faint">{activeRole}</span>
           </span>
         </button>
 

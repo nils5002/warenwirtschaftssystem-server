@@ -18,6 +18,7 @@ import {
   Search,
   Undo2,
   X,
+  StickyNote,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QrScannerDialog } from '../components/QrScannerDialog';
@@ -901,7 +902,12 @@ function RecentRow({ scan, assets, busy, onIgnore, onUnignore, onNote, onAssign 
               Ignoriert{scan.ignoreReason ? `: ${scan.ignoreReason}` : ''}
             </p>
           ) : null}
-          {scan.note ? <p className="mt-0.5 truncate text-[11px] italic text-slate-500">📝 {scan.note}</p> : null}
+          {scan.note ? (
+            <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-slate-500">
+              <StickyNote className="h-3 w-3 shrink-0" />
+              {scan.note}
+            </p>
+          ) : null}
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="text-xs font-semibold text-slate-600">{item.label}</span>

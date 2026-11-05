@@ -395,7 +395,7 @@ export function PlanningPage({
                       </div>
                     ) : null}
                     <details className="mt-2">
-                      <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                      <summary className="cursor-pointer text-xs font-semibold text-amber-700 dark:text-amber-300">
                         Tagesdetails
                       </summary>
                       <ul className="mt-1.5 space-y-1">
@@ -415,7 +415,7 @@ export function PlanningPage({
                     </details>
                     {(group.recommendations ?? []).length > 0 ? (
                       <details className="mt-2" data-testid={`conflict-cause-recommendations-${group.id}`}>
-                        <summary className="cursor-pointer text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                        <summary className="cursor-pointer text-xs font-semibold text-amber-700 dark:text-amber-300">
                           Lösungsvorschläge ({(group.recommendations ?? []).length})
                         </summary>
                         <ul className="mt-1.5 space-y-1.5">
@@ -452,7 +452,7 @@ export function PlanningPage({
           <article className="surface-card" data-testid="conflict-causes-panel">
             <h3 className="text-sm font-semibold text-ink">Konfliktursachen</h3>
             <p className="mt-2 rounded-xl border border-dashed border-line bg-surface-2 px-3 py-6 text-center text-sm text-ink-muted">
-              Aktuell gibt es keine offenen Engpässe — alle Planungen sind gedeckt.
+              Aktuell gibt es keine offenen Engpässe, alle Planungen sind gedeckt.
             </p>
           </article>
         )

@@ -96,12 +96,10 @@ export function EmailVerificationPage() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <div className="fixed inset-0 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-20 top-0 h-80 w-80 rounded-full bg-sky-500/16 blur-3xl" />
-        <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-indigo-500/16 blur-3xl" />
       </div>
 
       <main className="relative mx-auto flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="relative w-full max-w-[440px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/55 px-5 py-6 shadow-[0_30px_80px_rgba(2,6,23,0.7)] backdrop-blur-[24px] sm:px-6">
+        <div className="relative w-full max-w-[440px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/90 px-5 py-6 shadow-[0_24px_64px_rgba(2,6,23,0.55)] sm:px-6">
           <div className="relative flex flex-col items-center text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-sky-300/10">
               {isPending ? (
@@ -112,12 +110,9 @@ export function EmailVerificationPage() {
                 <MailWarning className="h-5 w-5 text-amber-300" />
               )}
             </div>
-            <p className="mt-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200/90">
-              WARENWIRTSCHAFT
-            </p>
-            <h1 className="mt-1.5 text-xl font-semibold text-white sm:text-2xl">
+            <h1 className="mt-3 text-xl font-semibold text-white sm:text-2xl">
               {isPending
-                ? 'E-Mail wird bestätigt...'
+                ? 'E-Mail wird bestätigt …'
                 : isSuccess
                   ? 'E-Mail-Adresse bestätigt'
                   : 'Bestätigung nicht möglich'}
@@ -136,7 +131,7 @@ export function EmailVerificationPage() {
               <button
                 type="button"
                 onClick={() => navigate('/login', { replace: true })}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
               >
                 <LogIn className="h-4 w-4" />
                 Zur Anmeldung
@@ -169,7 +164,7 @@ export function EmailVerificationPage() {
               <button
                 type="submit"
                 disabled={resendBusy}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {resendBusy ? (
                   <>

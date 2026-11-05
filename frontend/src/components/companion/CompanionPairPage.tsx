@@ -168,8 +168,8 @@ export function CompanionPairPage() {
               <p className="text-sm text-ink-muted">{phase.claim.accountEmail}</p>
             </div>
             <div className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-center">
-              <p className="text-xs uppercase tracking-wide text-ink-muted">Abgleichcode</p>
-              <p className="mt-1 font-mono text-3xl font-semibold tracking-[0.3em]">{phase.claim.matchCode}</p>
+              <p className="text-xs text-ink-muted">Abgleichcode</p>
+              <p className="mt-1 font-mono text-3xl font-semibold">{phase.claim.matchCode}</p>
             </div>
             <p className="text-sm" role="status">
               Bitte bestätige die Verbindung jetzt <strong>am PC</strong> und prüfe, dass dort derselbe Code angezeigt wird.

@@ -48,7 +48,7 @@ export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabl
         <Icon className="h-4 w-4" />
       </div>
       <div className="min-w-0">
-        <p className={`truncate text-[10px] font-bold uppercase tracking-[0.12em] ${tones.label}`}>{title}</p>
+        <p className={`truncate text-xs font-semibold ${tones.label}`}>{title}</p>
         <div className="flex items-baseline gap-2">
           <p className="text-2xl font-semibold leading-tight tracking-tight text-ink">{value}</p>
           <p className="hidden truncate text-[11px] font-medium text-ink-faint 2xl:block">{trend}</p>
@@ -61,7 +61,7 @@ export function KpiCard({ title, value, trend, tone, icon: Icon, onClick, disabl
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0">
-        <p className={`truncate text-[11px] font-bold uppercase tracking-[0.12em] ${tones.label}`}>{title}</p>
+        <p className={`truncate text-xs font-semibold ${tones.label}`}>{title}</p>
         <p className="mt-1 text-3xl font-semibold tracking-tight text-ink">{value}</p>
         <p className="mt-1 truncate text-xs font-medium text-ink-faint">{trend}</p>
       </div>

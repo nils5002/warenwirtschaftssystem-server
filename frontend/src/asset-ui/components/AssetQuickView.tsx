@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { InventoryTag } from '../../ui';
 import { CalendarClock, ClipboardCheck, MapPin, UserRound, Wrench, X } from 'lucide-react';
 import { getAssetQrCode } from '../qr';
 import { AssetQrCard } from './AssetQrCard';
@@ -85,11 +86,11 @@ export function AssetQuickView({
 
         <div className="mt-6 grid gap-3">
           <div className="rounded-2xl border border-line bg-surface-2 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Stammdaten</p>
+            <p className="text-xs font-semibold text-ink-faint">Stammdaten</p>
             <dl className="mt-3 space-y-3 text-sm">
               <div className="flex items-start justify-between gap-3">
                 <dt className="text-ink-muted">Inventarnummer</dt>
-                <dd className="text-right font-medium text-ink">{asset.tagNumber}</dd>
+                <dd className="text-right"><InventoryTag value={asset.tagNumber} /></dd>
               </div>
               <div className="flex items-start justify-between gap-3">
                 <dt className="text-ink-muted">Seriennummer</dt>
@@ -107,7 +108,7 @@ export function AssetQuickView({
           </div>
 
           <div className="rounded-2xl border border-line bg-surface-2 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Standort</p>
+            <p className="text-xs font-semibold text-ink-faint">Standort</p>
             <div className="mt-3 flex items-start gap-3">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
               <div>
@@ -118,7 +119,7 @@ export function AssetQuickView({
           </div>
 
           <div className="rounded-2xl border border-line bg-surface-2 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Verfügbarkeit</p>
+            <p className="text-xs font-semibold text-ink-faint">Verfügbarkeit</p>
             <div className="mt-3 space-y-3 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-ink-muted">Aktuell</span>
@@ -136,7 +137,7 @@ export function AssetQuickView({
           </div>
 
           <div className="rounded-2xl border border-line bg-surface-2 p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">Zugewiesen / Projekt</p>
+            <p className="text-xs font-semibold text-ink-faint">Zugewiesen / Projekt</p>
             <div className="mt-3 flex items-start gap-3">
               <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-faint" />
               <div>
@@ -149,21 +150,21 @@ export function AssetQuickView({
           <div className="rounded-2xl border border-line bg-surface-2 p-4">
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <ClipboardCheck className="h-3.5 w-3.5" />
                   Letzte Ausgabe
                 </p>
                 <p className="mt-2 text-sm font-medium text-ink">{asset.lastCheckout}</p>
               </div>
               <div>
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <CalendarClock className="h-3.5 w-3.5" />
                   Reservierung
                 </p>
                 <p className="mt-2 text-sm font-medium text-ink">{asset.nextReservation}</p>
               </div>
               <div>
-                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <Wrench className="h-3.5 w-3.5" />
                   Wartung
                 </p>

@@ -57,7 +57,7 @@ export function AssetQrCard({ qrValue, assetName, tagNumber, compact = false }: 
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+      <p className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
         <QrCode className="h-3.5 w-3.5" />
         QR-Code
       </p>

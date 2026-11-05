@@ -212,7 +212,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
         <div className="border-b border-line bg-surface/80 px-5 py-4 backdrop-blur sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-faint">Inventar</p>
+              <p className="text-xs font-semibold text-ink-faint">Inventar</p>
               <h3 className="mt-1 text-2xl font-semibold text-ink">Gerät bearbeiten</h3>
               <p className="mt-1 text-sm text-ink-muted">
                 Alle editierbaren Stammdaten in einem Dialog. Status, Ausgabe/Rücknahme und Wartung bleiben in ihren Fach-Workflows.
@@ -234,7 +234,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-5">
               <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-faint">Stammdaten</h4>
+                <h4 className="text-sm font-semibold text-ink-faint">Stammdaten</h4>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="field">
                     Gerätename
@@ -302,7 +302,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-faint">Status & Standort</h4>
+                <h4 className="text-sm font-semibold text-ink-faint">Status & Standort</h4>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="field">
                     Aktueller Status
@@ -348,7 +348,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-faint">Technische Daten</h4>
+                <h4 className="text-sm font-semibold text-ink-faint">Technische Daten</h4>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="field">
                     IP-Adresse
@@ -383,7 +383,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
-                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-ink-faint">Wartung & Hinweise</h4>
+                <h4 className="text-sm font-semibold text-ink-faint">Wartung & Hinweise</h4>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
                   <label className="field">
                     Wartungsstatus
@@ -394,7 +394,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
                   </label>
 
                   <div className="rounded-2xl border border-line bg-canvas/70 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Asset-Flags</p>
+                    <p className="text-xs font-semibold text-ink-faint">Asset-Flags</p>
                     <div className="mt-3 space-y-3">
                       <label className="flex items-start gap-3 text-sm text-ink">
                         <input
@@ -464,7 +464,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
 
             <aside className="space-y-5">
               <section className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <QrCode className="h-3.5 w-3.5" />
                   Produktbild
                 </p>
@@ -519,7 +519,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <QrCode className="h-3.5 w-3.5" />
                   QR-Vorschau
                 </p>
@@ -535,7 +535,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Workflow-Info
                 </p>
@@ -556,7 +556,7 @@ export function AssetEditModal({ asset, categories, onClose, onSave, onRefreshIm
               </section>
 
               <section className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-amber-300">
                   <Wrench className="h-3.5 w-3.5" />
                   Fachlogik geschützt
                 </p>

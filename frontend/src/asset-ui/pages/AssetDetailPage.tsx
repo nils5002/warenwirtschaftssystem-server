@@ -8,7 +8,7 @@ import { KpiCard } from '../components/KpiCard';
 import { StatusBadge } from '../components/StatusBadge';
 import { getAssetQrCode } from '../qr';
 import { getTelecomPassSettings } from '../../services/wmsApi';
-import { PageHeader } from '../../ui';
+import { InventoryTag, PageHeader } from '../../ui';
 import type { ActivityItem, AppRole, Asset, CategoryItem, MaintenanceItem } from '../types';
 
 function formatEuro(value: number): string {
@@ -125,7 +125,7 @@ export function AssetDetailPage({
       <PageHeader
         kicker="Asset-Detailseite"
         title={asset.name}
-        subtitle={`Inventarnummer ${asset.tagNumber} • Seriennummer ${asset.serialNumber}`}
+        subtitle={`Inventarnummer ${asset.tagNumber}, Seriennummer ${asset.serialNumber}`}
         actions={
           <>
             <button className="btn-secondary w-full sm:w-auto" onClick={() => onReserveAsset(asset.id)}>
@@ -224,47 +224,47 @@ export function AssetDetailPage({
           <div className="space-y-4 lg:col-span-8">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Kategorie</p>
+                <p className="text-xs font-semibold text-ink-faint">Kategorie</p>
                 <p className="mt-1 text-sm font-medium text-ink">{asset.category}</p>
               </div>
               <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Inventarnummer</p>
-                <p className="mt-1 text-sm font-medium text-ink">{asset.tagNumber}</p>
+                <p className="text-xs font-semibold text-ink-faint">Inventarnummer</p>
+                <p className="mt-1"><InventoryTag value={asset.tagNumber} /></p>
               </div>
               <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Seriennummer</p>
+                <p className="text-xs font-semibold text-ink-faint">Seriennummer</p>
                 <p className="mt-1 text-sm font-medium text-ink">{asset.serialNumber}</p>
               </div>
               <div className="rounded-2xl border border-line bg-surface-2 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">Wartungsstatus</p>
+                <p className="text-xs font-semibold text-ink-faint">Wartungsstatus</p>
                 <p className="mt-1 text-sm font-medium text-ink">{asset.maintenanceState}</p>
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <ClipboardList className="h-3.5 w-3.5" />
                   Letzte Ausgabe
                 </p>
                 <p className="mt-2 text-sm font-medium text-ink">{asset.lastCheckout}</p>
               </div>
               <div className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <CalendarClock className="h-3.5 w-3.5" />
                   Nächste Reservierung
                 </p>
                 <p className="mt-2 text-sm font-medium text-ink">{asset.nextReservation}</p>
               </div>
               <div className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Wartung
                 </p>
                 <p className="mt-2 text-sm font-medium text-ink">{asset.maintenanceState}</p>
               </div>
               <div className="rounded-2xl border border-line bg-surface p-4">
-                <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                   <Wrench className="h-3.5 w-3.5" />
                   Offene Tickets
                 </p>
@@ -273,7 +273,7 @@ export function AssetDetailPage({
             </div>
 
             <div className="rounded-2xl border border-line bg-surface p-4">
-              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink-faint">
+              <p className="inline-flex items-center gap-2 text-xs font-semibold text-ink-faint">
                 <PenSquare className="h-3.5 w-3.5" />
                 Notizen
               </p>
@@ -293,7 +293,7 @@ export function AssetDetailPage({
           </h3>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <p className="text-xs font-semibold text-slate-500">
                 Telekompass gesamt
               </p>
               <p className="mt-1 text-sm font-medium text-slate-900">
@@ -301,7 +301,7 @@ export function AssetDetailPage({
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <p className="text-xs font-semibold text-slate-500">
                 Aktueller Wert
               </p>
               <p className="mt-1 text-sm font-medium text-slate-900">

@@ -329,7 +329,7 @@ export function IssueReturnTab({
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]">
         <div className="rounded-xl border border-line bg-surface-2 p-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          <h4 className="text-xs font-semibold text-ink-muted">
             Fortschritt je Kategorie
           </h4>
           <div className="mt-2 space-y-2">
@@ -366,7 +366,7 @@ export function IssueReturnTab({
         </div>
 
         <div className="rounded-xl border border-line bg-surface-2 p-3">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Zuletzt erfasst</h4>
+          <h4 className="text-xs font-semibold text-ink-muted">Zuletzt erfasst</h4>
           <ul className="mt-2 space-y-1.5">
             {recentEvents.map((event) => (
               <li key={event.id} className="flex items-center gap-2 text-xs">

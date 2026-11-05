@@ -29,7 +29,7 @@ import { getAssetQrCode } from '../qr';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { useUrlFlag, useUrlQueryState } from '../../hooks/useUrlQueryState';
 import { StatusBadge } from '../components/StatusBadge';
-import { ContextMenu, PageHeader, ToggleSwitch } from '../../ui';
+import { InventoryTag, ContextMenu, PageHeader, ToggleSwitch } from '../../ui';
 import type { ContextMenuItem } from '../../ui';
 import type { AppPage, Asset, CategoryItem } from '../types';
 
@@ -1120,7 +1120,7 @@ export function AssetsPage({
         dense
         kicker="Inventar"
         title="Gerätebestand & Verfügbarkeit"
-        subtitle="Bestand filtern, Zustand prüfen — Aktionen per Rechtsklick auf eine Zeile."
+        subtitle="Bestand filtern und Zustand prüfen, Aktionen per Rechtsklick auf eine Zeile"
         actions={
           <>
             {canManageAssets ? (
@@ -1290,7 +1290,7 @@ export function AssetsPage({
                   Scan" erscheint erst ab 2xl (>=1536px). */}
               <table className="w-full min-w-[840px] border-collapse text-sm table-fixed">
             <thead>
-              <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+              <tr className="text-left text-xs text-ink-faint">
                 {canManageAssets ? <th className="sticky top-0 z-20 w-11 border-b border-line bg-surface-2 px-3 py-2.5"> </th> : null}
                 <th className="sticky top-0 z-20 border-b border-line bg-surface-2 px-3 py-2.5">Asset / Inventarnummer</th>
                 <th className="sticky top-0 z-20 w-[14%] border-b border-line bg-surface-2 px-3 py-2.5">Kategorie</th>
@@ -1361,10 +1361,10 @@ export function AssetsPage({
                             </span>
                           ) : null}
                         </div>
-                        <p className="truncate text-xs text-ink-faint">
-                          {asset.tagNumber}
-                          {asset.serialNumber ? <span className="text-ink-muted"> · {asset.serialNumber}</span> : null}
-                        </p>
+                        <div className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-ink-faint">
+                          <InventoryTag value={asset.tagNumber} />
+                          {asset.serialNumber ? <span className="truncate">SN {asset.serialNumber}</span> : null}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -1413,27 +1413,27 @@ export function AssetsPage({
                     <td colSpan={canManageAssets ? 7 : 6} className="px-3 pb-3 pt-1">
                       <div className="grid gap-x-6 gap-y-1.5 text-xs text-ink-muted sm:grid-cols-2 lg:grid-cols-3">
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">Modell</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">Modell</span>
                           <span className="truncate" title={asset.model || '-'}>{asset.model || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">Seriennummer</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">Seriennummer</span>
                           <span className="truncate" title={asset.serialNumber || '-'}>{asset.serialNumber || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">IP-Adresse</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">IP-Adresse</span>
                           <span className="truncate" title={asset.ipAddress || '-'}>{asset.ipAddress || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">MAC LAN</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">MAC LAN</span>
                           <span className="truncate font-mono" title={asset.macLan || '-'}>{asset.macLan || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">MAC WLAN</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">MAC WLAN</span>
                           <span className="truncate font-mono" title={asset.macWlan || '-'}>{asset.macWlan || '-'}</span>
                         </div>
                         <div className="flex min-w-0 gap-2">
-                          <span className="w-24 shrink-0 uppercase tracking-wide text-[10px] text-ink-faint">QR / Asset-ID</span>
+                          <span className="w-24 shrink-0 text-xs text-ink-faint">QR / Asset-ID</span>
                           <span className="truncate" title={asset.qrCode || asset.tagNumber}>{asset.qrCode || asset.tagNumber || '-'}</span>
                         </div>
                       </div>
@@ -1466,7 +1466,7 @@ export function AssetsPage({
                     {asset.availableForPlanning === false ? (
                       <span
                         className="inline-flex items-center rounded-full border border-white/10 bg-slate-500/10 px-2 py-0.5 text-[10px] font-semibold text-ink-muted"
-                        title="Aus Einsatzplanung ausgeschlossen — bleibt im Inventar nutzbar"
+                        title="Aus Einsatzplanung ausgeschlossen, bleibt im Inventar nutzbar"
                       >
                         Nicht planbar
                       </span>
@@ -1474,7 +1474,7 @@ export function AssetsPage({
                     {asset.category === 'Laptop' && asset.cardPrinterCompatible === false ? (
                       <span
                         className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800"
-                        title="Nicht kartendrucker-kompatibel — wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
+                        title="Nicht kartendrucker-kompatibel, wird in Projekten mit Kartendrucker-Bedarf nicht eingeplant"
                       >
                         Kein Kartendrucker
                       </span>
@@ -1499,7 +1499,7 @@ export function AssetsPage({
                     )}{' '}
                     • {asset.location}
                   </p>
-                      <p className="mt-1 break-all text-xs text-ink-faint">{asset.tagNumber}</p>
+                      <InventoryTag value={asset.tagNumber} className="mt-1" />
                     </div>
                   </div>
                 </div>
@@ -1619,7 +1619,7 @@ export function AssetsPage({
           >
             <div className="mb-3 flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint">QR-Code</p>
+                <p className="text-xs font-semibold text-ink-faint">QR-Code</p>
                 <h3 className="truncate text-lg font-semibold text-ink" title={qrAsset.name}>{qrAsset.name}</h3>
                 <p className="text-xs text-ink-muted">Inventarnummer {qrAsset.tagNumber}</p>
               </div>
@@ -1641,7 +1641,7 @@ export function AssetsPage({
           <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Admin / Techniker</p>
+                <p className="text-xs font-semibold text-brand-700">Admin / Techniker</p>
                 <h3 className="text-lg font-semibold text-slate-900">Admin-Aktionen für {adminActionAsset.name}</h3>
                 <p className="text-xs text-slate-500">Inventarnummer {adminActionAsset.tagNumber}</p>
               </div>
@@ -1863,7 +1863,7 @@ export function AssetsPage({
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Admin / Techniker</p>
+                <p className="text-xs font-semibold text-brand-700">Admin / Techniker</p>
                 <h3 className="text-lg font-semibold text-slate-900">Bulk-Aktionen</h3>
                 <p className="text-xs text-slate-500">{selectedIds.length} ausgewählte Geräte</p>
               </div>
@@ -2056,7 +2056,7 @@ export function AssetsPage({
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Admin / Techniker</p>
+                <p className="text-xs font-semibold text-brand-700">Admin / Techniker</p>
                 <h3 className="text-lg font-semibold text-slate-900">Neue Hardware erfassen</h3>
                 <p className="text-xs text-slate-500">Mobile-Flow: Daten erfassen, speichern, QR-Code aufkleben.</p>
               </div>

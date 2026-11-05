@@ -103,7 +103,7 @@ export function UpdateNotesModal() {
               <Sparkles className="h-4 w-4" aria-hidden="true" />
             </span>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700 dark:text-brand-300">
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">
                 Version {notes.version}
               </p>
               <h2

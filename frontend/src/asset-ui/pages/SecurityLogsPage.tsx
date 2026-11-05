@@ -308,7 +308,7 @@ export function SecurityLogsPage() {
             <div className="soft-scrollbar hidden overflow-x-auto md:block">
               <table className="w-full min-w-[46rem] border-collapse text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <tr className="border-b border-slate-200 text-left text-xs text-slate-500">
                     <th className="py-2 pr-3 font-semibold">Zeitpunkt</th>
                     <th className="py-2 pr-3 font-semibold">Ereignis</th>
                     <th className="py-2 pr-3 font-semibold">Benutzer / Eingabe</th>

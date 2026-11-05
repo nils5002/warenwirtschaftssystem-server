@@ -37,7 +37,7 @@ function NavGroup({
 }) {
   return (
     <div>
-      <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.15em] text-ink-faint">{title}</p>
+      <p className="mb-2 px-3 text-xs font-semibold text-ink-faint">{title}</p>
       <div className="space-y-1">
         {items.map((item) => {
           const active = item.key === activePage;
@@ -128,7 +128,7 @@ export function Sidebar({ items, activePage, onSelect, mobileOpen, onCloseMobile
         {/* Kompakter Live-Block; auf sehr flachen Laptop-Displays (<680px
             Höhe) ausgeblendet, damit die Navigation nicht gequetscht wird. */}
         <div className="mt-3 hidden rounded-2xl border border-line bg-surface-2 p-3 [@media(min-height:680px)]:block">
-          <p className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-ink-muted">
+          <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
             Live Betrieb
           </p>

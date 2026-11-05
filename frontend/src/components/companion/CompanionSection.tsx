@@ -157,8 +157,8 @@ function PairingDialog({ onClose, onPaired }: { onClose: () => void; onPaired: (
               <p className="mt-1">{deviceLabel(pairing?.deviceName || 'Smartphone', pairing?.devicePlatform)}</p>
             </div>
             <div className="text-center">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Abgleichcode</p>
-              <p className="mt-1 font-mono text-3xl font-semibold tracking-[0.3em] text-slate-900">{pairing?.matchCode}</p>
+              <p className="text-xs text-slate-500">Abgleichcode</p>
+              <p className="mt-1 font-mono text-3xl font-semibold text-slate-900">{pairing?.matchCode}</p>
               <p className="mt-1 text-xs text-slate-500">Muss mit dem Code auf dem Smartphone übereinstimmen.</p>
             </div>
             <div className="grid grid-cols-2 gap-2">

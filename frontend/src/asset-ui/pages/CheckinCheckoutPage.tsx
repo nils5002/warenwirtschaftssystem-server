@@ -912,7 +912,7 @@ export function CheckinCheckoutPage({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
               Gescannte Geräte
             </p>
             <p className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
@@ -1103,7 +1103,7 @@ export function CheckinCheckoutPage({
           <div
             className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Schritt 1</p>
+            <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">Schritt 1</p>
             <label className={`field ${isMobile ? 'mt-1' : 'mt-1'}`}>
               <span className={isMobile ? 'sr-only' : ''}>Gerät scannen</span>
               {/* Mobile: Input über zwei Buttons in einer Zeile (2 Reihen total).
@@ -1164,7 +1164,7 @@ export function CheckinCheckoutPage({
           })}
 
           <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 2</p>
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Schritt 2</p>
             {isMobile ? (
               <div className="mt-1">
                 <NativeProjectSelect
@@ -1329,7 +1329,7 @@ export function CheckinCheckoutPage({
           ) : null}
 
           <div className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'}`}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-300">Schritt 1</p>
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">Schritt 1</p>
             <label className="field mt-1">
               <span className={isMobile ? 'sr-only' : ''}>Gerät scannen</span>
               <div className="space-y-2 sm:grid sm:grid-cols-[1fr_auto_auto] sm:gap-2 sm:space-y-0">
@@ -1393,7 +1393,7 @@ export function CheckinCheckoutPage({
           <div
             className={`rounded-xl border border-slate-200 bg-slate-50/70 dark:border-slate-700/70 dark:bg-slate-950/30 ${isMobile ? 'p-2.5' : 'p-3'} text-sm`}
           >
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">Schritt 2</p>
+            <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">Schritt 2</p>
             {!isMobile ? (
               <>
                 {checkinAsset ? (

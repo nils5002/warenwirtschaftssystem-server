@@ -938,7 +938,7 @@ export function PlanningDetailPage({
               </div>
               <aside className="space-y-3 text-xs">
                 <div className="rounded-xl border border-line bg-surface-2 p-3">
-                  <h4 className="font-semibold uppercase tracking-wide text-ink-muted">Ablauf</h4>
+                  <h4 className="font-semibold text-ink-muted">Ablauf</h4>
                   <div className={`mt-2 space-y-2 ${flow?.cancelled ? 'opacity-50' : ''}`}>
                     {flow?.steps.map((step) => (
                       <div
@@ -962,7 +962,7 @@ export function PlanningDetailPage({
                   {flow?.cancelled ? <p className="mt-2 text-ink-muted">Planung storniert</p> : null}
                 </div>
                 <div className="rounded-xl border border-line bg-surface-2 p-3">
-                  <h4 className="font-semibold uppercase tracking-wide text-ink-muted">Verantwortlich</h4>
+                  <h4 className="font-semibold text-ink-muted">Verantwortlich</h4>
                   {canEdit ? (
                     <select
                       className="field-input mt-2 h-8 w-full text-xs"
@@ -981,7 +981,7 @@ export function PlanningDetailPage({
                   )}
                 </div>
                 <div className="rounded-xl border border-line bg-surface-2 p-3">
-                  <h4 className="font-semibold uppercase tracking-wide text-ink-muted">On-Site-Verantwortlich</h4>
+                  <h4 className="font-semibold text-ink-muted">On-Site-Verantwortlich</h4>
                   {canEdit ? (
                     <select
                       className="field-input mt-2 h-8 w-full text-xs"
@@ -1006,7 +1006,7 @@ export function PlanningDetailPage({
                   </p>
                 </div>
                 <div className="rounded-xl border border-line bg-surface-2 p-3">
-                  <h4 className="font-semibold uppercase tracking-wide text-ink-muted">Nächste Schritte</h4>
+                  <h4 className="font-semibold text-ink-muted">Nächste Schritte</h4>
                   <p className="mt-1.5 leading-relaxed text-ink-muted">{nextSteps}</p>
                 </div>
               </aside>

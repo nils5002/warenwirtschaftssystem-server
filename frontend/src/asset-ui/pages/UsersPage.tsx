@@ -685,7 +685,7 @@ export function UsersPage({
         <div className="soft-scrollbar hidden overflow-x-auto md:block">
           <table className="w-full min-w-[760px] border-separate border-spacing-y-2 text-sm">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="text-left text-xs text-slate-500">
                 <th className="px-3 py-2">
                   <input
                     type="checkbox"
@@ -1040,7 +1040,7 @@ export function UsersPage({
           <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-panel sm:p-5">
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Benutzerverwaltung</p>
+                <p className="text-xs font-semibold text-brand-700">Benutzerverwaltung</p>
                 <h3 className="text-lg font-semibold text-slate-900">{form.id ? 'Benutzer bearbeiten' : 'Benutzer anlegen'}</h3>
               </div>
               <button type="button" className="btn-ghost px-2 py-1 text-xs" onClick={closeForm}>
@@ -1151,7 +1151,7 @@ export function UsersPage({
                           className={`h-7 w-7 rounded-full border-2 transition ${
                             active
                               ? 'scale-110 border-slate-900 ring-2 ring-slate-400 dark:border-white dark:ring-slate-500'
-                              : 'border-transparent hover:scale-110'
+                              : 'border-transparent hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-600'
                           }`}
                           style={{ backgroundColor: option.value }}
                           title={option.label}
@@ -1261,7 +1261,7 @@ export function UsersPage({
           >
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">Sicherheitsdetails</p>
+                <p className="text-xs font-semibold text-brand-700">Sicherheitsdetails</p>
                 <h3 className="text-lg font-semibold text-slate-900">{securityUser.name}</h3>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   <StatusBadge value={securityUser.status} />

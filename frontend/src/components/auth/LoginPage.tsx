@@ -157,24 +157,17 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_center,rgba(15,23,42,0.02)_0%,rgba(2,6,23,0.2)_72%,rgba(2,6,23,0.32)_100%)]" />
       <div className="fixed inset-0 bg-gradient-to-br from-slate-950/16 via-slate-900/10 to-indigo-950/18" />
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -left-20 top-0 h-80 w-80 rounded-full bg-sky-500/16 blur-3xl" />
-        <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-indigo-500/16 blur-3xl" />
       </div>
       <main className="relative mx-auto flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div data-hm="login-card" className="relative w-full max-w-[400px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/45 px-5 py-5 shadow-[0_30px_80px_rgba(2,6,23,0.7),0_0_60px_rgba(14,165,233,0.12)] backdrop-blur-[24px] sm:px-6 sm:py-6">
-          <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.02)_42%,rgba(2,132,199,0.08)_100%)]" />
+        <div data-hm="login-card" className="relative w-full max-w-[400px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/90 px-5 py-5 shadow-[0_24px_64px_rgba(2,6,23,0.55)] sm:px-6 sm:py-6">
           <div className="relative flex flex-col">
             <div className="flex flex-col items-center text-center">
-              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-sky-300/10 shadow-[0_0_28px_rgba(56,189,248,0.25)]">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-sky-300/10">
                 <Boxes className="h-5 w-5 text-sky-200" />
               </div>
-              <p className="mt-2.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200/90">WARENWIRTSCHAFT</p>
-              <h1 className="mt-1.5 text-xl font-semibold text-white sm:text-2xl">Willkommen.</h1>
+              <h1 className="mt-3 text-xl font-semibold text-white sm:text-2xl">Warenwirtschaft</h1>
               <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-slate-200/90">
                 Hardware, Planung und Rückgabe zentral verwalten
-              </p>
-              <p data-hm="login-chips" className="mt-2.5 inline-flex rounded-full border border-sky-200/20 bg-sky-300/10 px-2.5 py-0.5 text-[10px] font-medium text-sky-100/90">
-                Inventar · Einsatzplanung · QR-Scan
               </p>
             </div>
 
@@ -254,7 +247,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={backToLogin}
-                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500"
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-500"
                 >
                   <MailCheck className="h-4 w-4" />
                   Zur Anmeldung
@@ -368,7 +361,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
 
               <button
                 type="submit"
-                className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-sky-900/30 transition hover:from-sky-400 hover:to-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-1 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/70 disabled:cursor-not-allowed disabled:opacity-70"
                 disabled={busy}
               >
                 {busy ? (

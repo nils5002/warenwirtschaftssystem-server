@@ -229,7 +229,7 @@ function GroupRows({
     <>
       <tr className="bg-slate-50">
         <td colSpan={roles.length + 1} className="px-1 py-1.5">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
             <ShieldCheck className="h-3.5 w-3.5" />
             {group.label}
           </span>

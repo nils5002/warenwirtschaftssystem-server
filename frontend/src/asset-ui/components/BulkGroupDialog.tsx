@@ -208,7 +208,7 @@ export function BulkGroupDialog({
       >
         <div className="mb-3 flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+            <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">
               Sammel-QR
             </p>
             <h3 className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">{title}</h3>

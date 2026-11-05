@@ -796,7 +796,7 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
           <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
             <table className="w-full border-collapse text-sm">
               <thead>
-                <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                <tr className="bg-slate-50 text-left text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                   <th className="w-10 px-3 py-2.5">
                     <input
                       type="checkbox"
@@ -1067,13 +1067,13 @@ export function ExternalPoolPage({ assets, categories, isMobile = false, onReloa
                 </label>
                 <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                   <div className="surface-muted px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Kategorie</p>
+                    <p className="text-xs font-semibold text-slate-500">Kategorie</p>
                     <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">
                       {selectedAssets[0]?.category ?? '—'}
                     </p>
                   </div>
                   <div className="surface-muted px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Anzahl Geräte</p>
+                    <p className="text-xs font-semibold text-slate-500">Anzahl Geräte</p>
                     <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">
                       {selectedAssets.length}
                     </p>

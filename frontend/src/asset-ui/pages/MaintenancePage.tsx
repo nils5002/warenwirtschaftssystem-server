@@ -273,7 +273,7 @@ export function MaintenancePage({
                 onDragOver={(event) => onDragOverColumn(event, column.title)}
                 onDrop={(event) => onDropColumn(event, column.title)}
               >
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <p className="text-xs font-semibold text-slate-600">
                   {column.title === 'Erledigt' ? 'Erledigt' : `${column.title} (${column.items.length})`}
                 </p>
 

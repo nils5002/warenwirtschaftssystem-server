@@ -130,7 +130,7 @@ export function QrScannerDialog({ title, onDetected, onClose }: QrScannerDialogP
       <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-4 shadow-panel">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-700">QR-Scanner</p>
+            <p className="text-xs font-semibold text-brand-700">QR-Scanner</p>
             <h3 className="text-base font-semibold text-slate-900">{title}</h3>
           </div>
           <button

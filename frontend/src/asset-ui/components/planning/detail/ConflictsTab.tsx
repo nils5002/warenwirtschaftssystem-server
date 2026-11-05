@@ -153,7 +153,7 @@ export function ConflictsTab({
       <div className="hidden overflow-x-auto rounded-xl border border-line md:block">
         <table className="w-full min-w-[620px] border-collapse text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+            <tr className="text-left text-xs text-ink-faint">
               <th className="w-[26%] border-b border-line bg-surface-2 px-3 py-2">Kategorie</th>
               <th className="w-[12%] border-b border-line bg-surface-2 px-2 py-2 text-right">Bedarf</th>
               <th className="w-[18%] border-b border-line bg-surface-2 px-2 py-2 text-right">Frei im Zeitraum</th>

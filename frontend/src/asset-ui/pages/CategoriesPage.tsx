@@ -283,7 +283,7 @@ export function CategoriesPage({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                    <p className="text-xs text-slate-500 dark:text-slate-300">
                       {item.category}
                     </p>
                     <p className="mt-2 text-2xl font-semibold text-slate-900 dark:text-slate-100">{item.count}</p>

@@ -192,7 +192,7 @@ export function UpdateNotesAdminPage() {
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {/* Liste */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vorhandene Notizen</p>
+          <p className="text-xs font-semibold text-slate-500">Vorhandene Notizen</p>
           {notes.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950">
               Noch keine Update-Notizen angelegt.
@@ -244,7 +244,7 @@ export function UpdateNotesAdminPage() {
 
         {/* Editor */}
         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/40">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p className="text-xs font-semibold text-slate-500">
             {editor.id ? 'Notiz bearbeiten' : 'Neue Notiz'}
           </p>
 
@@ -339,7 +339,7 @@ export function UpdateNotesAdminPage() {
 
           {showPreview ? (
             <div className="mt-4 rounded-2xl border border-brand-200 bg-white p-3 dark:border-brand-800 dark:bg-slate-950">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-700 dark:text-brand-300">
+              <p className="text-xs font-semibold text-brand-700 dark:text-brand-300">
                 Version {editor.version || '—'}
               </p>
               {editor.title ? (

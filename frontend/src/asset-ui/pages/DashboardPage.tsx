@@ -6,10 +6,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Handshake,
-  Laptop,
-  MonitorSmartphone,
   PackagePlus,
-  Printer,
   RefreshCw,
   ScanLine,
   Sparkles,
@@ -149,74 +146,28 @@ function summarizeActivityLine(
   return { main: detail, actor, actionLabel };
 }
 
-// Zeitabhängige Begrüßung (rein clientseitig, keine Serverdaten nötig).
-function greetingFor(name?: string): string {
-  const hour = new Date().getHours();
-  const part = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
-  const first = name?.trim().split(/\s+/)[0];
-  return first ? `${part}, ${first}!` : `${part}!`;
+// Datum als Kontext im Seitenkopf (statt einer Begrüßung).
+function formatTodayLong(): string {
+  return new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
 }
 
-const WEEKDAYS = ['MO', 'DI', 'MI', 'DO', 'FR', 'SA', 'SO'];
+const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const MONTHS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 
-function getMetricTone(
-  tone: 'positive' | 'neutral' | 'warning' | 'critical' | 'info',
-  theme: Theme,
-): {
-  background: string;
-  borderColor: string;
-  iconClass: string;
-  labelClass: string;
-} {
-  const isDark = isDarkTheme(theme);
+// Kennzahl-Kacheln: neutrale Fläche, Status nur am Icon (eine Farbe je Bedeutung).
+function getMetricTone(tone: 'positive' | 'neutral' | 'warning' | 'critical' | 'info'): { iconClass: string } {
   switch (tone) {
     case 'positive':
-      return {
-        background: isDark
-          ? 'linear-gradient(135deg, rgba(18, 66, 55, 0.96) 0%, rgba(14, 29, 43, 0.98) 100%)'
-          : 'linear-gradient(135deg, rgba(220, 252, 231, 0.96) 0%, rgba(240, 253, 244, 0.98) 100%)',
-        borderColor: isDark ? 'rgba(52, 211, 153, 0.18)' : 'rgba(22, 163, 74, 0.18)',
-        iconClass: 'bg-emerald-400/14 text-emerald-200 dark:bg-emerald-400/16 dark:text-emerald-200',
-        labelClass: 'text-emerald-700 dark:text-emerald-200/85',
-      };
+      return { iconClass: 'text-emerald-600 dark:text-emerald-300' };
     case 'warning':
-      return {
-        background: isDark
-          ? 'linear-gradient(135deg, rgba(86, 64, 16, 0.95) 0%, rgba(37, 28, 14, 0.98) 100%)'
-          : 'linear-gradient(135deg, rgba(254, 243, 199, 0.96) 0%, rgba(255, 251, 235, 0.98) 100%)',
-        borderColor: isDark ? 'rgba(251, 191, 36, 0.18)' : 'rgba(217, 119, 6, 0.18)',
-        iconClass: 'bg-amber-400/14 text-amber-200 dark:bg-amber-400/16 dark:text-amber-200',
-        labelClass: 'text-amber-700 dark:text-amber-200/85',
-      };
+      return { iconClass: 'text-amber-600 dark:text-amber-300' };
     case 'critical':
-      return {
-        background: isDark
-          ? 'linear-gradient(135deg, rgba(84, 27, 49, 0.95) 0%, rgba(37, 16, 26, 0.98) 100%)'
-          : 'linear-gradient(135deg, rgba(255, 228, 230, 0.97) 0%, rgba(255, 241, 242, 0.98) 100%)',
-        borderColor: isDark ? 'rgba(251, 113, 133, 0.18)' : 'rgba(225, 29, 72, 0.16)',
-        iconClass: 'bg-rose-400/14 text-rose-200 dark:bg-rose-400/16 dark:text-rose-200',
-        labelClass: 'text-rose-700 dark:text-rose-200/85',
-      };
+      return { iconClass: 'text-rose-600 dark:text-rose-300' };
     case 'info':
-      return {
-        background: isDark
-          ? 'linear-gradient(135deg, rgba(19, 74, 92, 0.95) 0%, rgba(14, 32, 43, 0.98) 100%)'
-          : 'linear-gradient(135deg, rgba(207, 250, 254, 0.97) 0%, rgba(240, 253, 250, 0.98) 100%)',
-        borderColor: isDark ? 'rgba(103, 232, 249, 0.18)' : 'rgba(8, 145, 178, 0.16)',
-        iconClass: 'bg-cyan-400/14 text-cyan-200 dark:bg-cyan-400/16 dark:text-cyan-200',
-        labelClass: 'text-cyan-700 dark:text-cyan-100/85',
-      };
+      return { iconClass: 'text-cyan-700 dark:text-cyan-300' };
     case 'neutral':
     default:
-      return {
-        background: isDark
-          ? 'linear-gradient(135deg, rgba(20, 53, 83, 0.96) 0%, rgba(12, 24, 42, 0.98) 100%)'
-          : 'linear-gradient(135deg, rgba(219, 234, 254, 0.97) 0%, rgba(239, 246, 255, 0.98) 100%)',
-        borderColor: isDark ? 'rgba(96, 165, 250, 0.18)' : 'rgba(37, 99, 235, 0.16)',
-        iconClass: 'bg-sky-400/14 text-sky-200 dark:bg-sky-400/16 dark:text-sky-200',
-        labelClass: 'text-sky-700 dark:text-sky-100/85',
-      };
+      return { iconClass: 'text-sky-700 dark:text-sky-300' };
   }
 }
 
@@ -284,7 +235,7 @@ function MiniCalendar({ markedDays }: { markedDays?: ReadonlySet<number> }) {
       <p className="mb-3 text-sm font-semibold text-ink">
         {MONTHS[month]} {year}
       </p>
-      <div className="grid grid-cols-7 gap-y-1 text-center text-[10px] font-semibold tracking-[0.14em] text-ink-faint">
+      <div className="grid grid-cols-7 gap-y-1 text-center text-[10px] font-semibold text-ink-faint">
         {WEEKDAYS.map((day) => (
           <span key={day}>{day}</span>
         ))}
@@ -298,7 +249,7 @@ function MiniCalendar({ markedDays }: { markedDays?: ReadonlySet<number> }) {
               <span
                 className={`relative flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${
                   day === today
-                    ? 'bg-primary text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_10px_30px_rgba(47,125,246,0.35)]'
+                    ? 'bg-primary text-white'
                     : markedDays?.has(day)
                       ? 'bg-primary/10 font-semibold text-ink'
                       : 'text-ink-muted'
@@ -471,12 +422,6 @@ export function DashboardPage({
         ? 'linear-gradient(180deg, rgba(15, 27, 46, 0.94) 0%, rgba(10, 20, 35, 0.98) 100%)'
         : 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
   };
-  const heroStyle = {
-    background:
-      isDarkTheme(theme)
-        ? 'radial-gradient(circle at 22% 0%, rgba(47, 125, 246, 0.18) 0%, transparent 34%), linear-gradient(135deg, rgba(13, 21, 37, 0.98) 0%, rgba(9, 18, 33, 0.98) 60%, rgba(9, 20, 36, 0.98) 100%)'
-        : 'radial-gradient(circle at 22% 0%, rgba(37, 99, 235, 0.16) 0%, transparent 34%), linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 246, 255, 0.98) 100%)',
-  };
 
   const metricCards: Array<{
     title: string;
@@ -538,67 +483,28 @@ export function DashboardPage({
     <section className="space-y-5 pb-2">
       <article
         data-hm="dashboard-hero"
-        className="animate-fade-up relative overflow-hidden rounded-[30px] border border-line shadow-soft"
-        style={heroStyle}
+        className="animate-fade-up rounded-[20px] border border-line bg-surface shadow-soft"
       >
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 opacity-95"
-          style={{
-            background:
-              isDarkTheme(theme)
-                ? 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(79, 172, 255, 0.08) 60%, transparent 100%)'
-                : 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(37, 99, 235, 0.07) 60%, transparent 100%)',
-          }}
-        />
-        <svg
-          aria-hidden
-          viewBox="0 0 1200 260"
-          className="pointer-events-none absolute inset-0 hidden h-full w-full lg:block"
-          preserveAspectRatio="none"
-        >
-          <path d="M760 210L990 72" stroke="rgba(125, 211, 252, 0.38)" strokeWidth="1.4" />
-          <path d="M860 214L1090 48" stroke="rgba(191, 219, 254, 0.28)" strokeWidth="1.2" />
-          <path d="M930 216L1155 92" stroke="rgba(103, 232, 249, 0.20)" strokeWidth="1.1" />
-        </svg>
-        <span className="pointer-events-none absolute left-[62%] top-7 h-1.5 w-1.5 rounded-full bg-sky-200 shadow-[0_0_18px_rgba(186,230,253,0.85)]" />
-        <span className="pointer-events-none absolute left-[70%] top-16 h-1 w-1 rounded-full bg-sky-100 shadow-[0_0_14px_rgba(191,219,254,0.8)]" />
-        <span className="pointer-events-none absolute left-[76%] top-9 h-1 w-1 rounded-full bg-cyan-100 shadow-[0_0_14px_rgba(165,243,252,0.75)]" />
-        <span className="pointer-events-none absolute left-[84%] top-16 h-1.5 w-1.5 rounded-full bg-slate-100 shadow-[0_0_18px_rgba(226,232,240,0.75)]" />
-        <span className="pointer-events-none absolute left-[90%] top-11 h-1 w-1 rounded-full bg-sky-200 shadow-[0_0_14px_rgba(186,230,253,0.75)]" />
-        <div className="relative flex flex-col justify-between gap-6 px-5 py-6 md:px-7 md:py-7 lg:flex-row lg:items-start">
-          <div className="max-w-2xl">
-            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-primary/80 dark:text-sky-200/75">Dashboard</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-ink lg:text-[2.15rem]">{greetingFor(userName)}</h2>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-ink-muted">
-              Hier ist die aktuelle Übersicht über Hardware, Einsätze, Tickets und die laufende Betriebslage.
-            </p>
-          </div>
-          <div data-hm="hero-deco" className="hidden items-center gap-4 text-white/80 lg:flex">
-            <Printer className="h-14 w-14 text-slate-100/80" strokeWidth={1.5} />
-            <MonitorSmartphone className="h-16 w-16 text-sky-100/80" strokeWidth={1.35} />
-            <Laptop className="h-14 w-14 text-slate-100/80" strokeWidth={1.35} />
-          </div>
+        <div className="px-5 py-6 md:px-7 md:py-7">
+          <h2 className="text-3xl font-semibold tracking-tight text-ink lg:text-[2.25rem]">Betriebslage</h2>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-ink-muted">
+            Hardware, Einsätze und Tickets am {formatTodayLong()}
+          </p>
         </div>
       </article>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metricCards.map((metric) => {
-          const tone = getMetricTone(metric.tone, theme);
+          const tone = getMetricTone(metric.tone);
           const cardInner = (
-            <div data-hm="metric-card" className="relative h-full overflow-hidden rounded-[24px] px-5 py-4 md:px-5 md:py-5">
-              <div
-                aria-hidden
-                className="absolute inset-0 opacity-90"
-                style={{ background: tone.background, borderColor: tone.borderColor }}
-              />
+            <div data-hm="metric-card" className="relative h-full bg-surface px-5 py-5">
               <div className="relative flex items-start gap-3.5">
-                <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${tone.iconClass}`}>
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 ${tone.iconClass}`}>
                   <metric.icon className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <p className={`text-[11px] font-bold uppercase tracking-[0.14em] ${tone.labelClass}`}>{metric.title}</p>
-                  <p className="mt-1 text-4xl font-semibold leading-none tracking-tight text-ink">{metric.value}</p>
+                  <p className="text-xs font-medium text-ink-muted">{metric.title}</p>
+                  <p className="mt-2 text-4xl font-semibold leading-none tracking-tight text-ink tabular-nums">{metric.value}</p>
                   <p className="mt-2 text-xs font-medium text-ink-muted">{metric.trend}</p>
                 </div>
               </div>
@@ -612,7 +518,7 @@ export function DashboardPage({
                   key={metric.title}
                   aria-disabled="true"
                   title="Keine Berechtigung"
-                  className="overflow-hidden rounded-[24px] border border-line opacity-60 shadow-soft"
+                  className="overflow-hidden rounded-2xl border border-line opacity-60 shadow-soft"
                 >
                   {cardInner}
                 </div>
@@ -623,7 +529,7 @@ export function DashboardPage({
                 key={metric.title}
                 type="button"
                 onClick={metric.onClick}
-                className="group overflow-hidden rounded-[24px] border border-line text-left shadow-soft transition duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="group overflow-hidden rounded-2xl border border-line text-left shadow-soft transition duration-200 hover:-translate-y-0.5 hover:border-line-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {cardInner}
               </button>
@@ -631,7 +537,7 @@ export function DashboardPage({
           }
 
           return (
-            <div key={metric.title} className="overflow-hidden rounded-[24px] border border-line shadow-soft">
+            <div key={metric.title} className="overflow-hidden rounded-2xl border border-line shadow-soft">
               {cardInner}
             </div>
           );
@@ -640,7 +546,7 @@ export function DashboardPage({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.82fr)]">
         <article
-          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          className="animate-fade-up relative overflow-hidden rounded-[20px] border border-line shadow-soft"
           style={cardShellStyle}
         >
           <div className="relative p-4 md:p-5">
@@ -662,7 +568,7 @@ export function DashboardPage({
 
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_240px]">
               <div
-                className="relative overflow-hidden rounded-[24px] border border-line px-4 py-4"
+                className="relative overflow-hidden rounded-2xl border border-line px-4 py-4"
                 style={insetShellStyle}
               >
                 {myPlanningsState === 'loading' ? (
@@ -689,7 +595,7 @@ export function DashboardPage({
                   </div>
                 ) : personalPlannings.length ? (
                   <div className="relative">
-                    <div className="mb-3 flex items-center justify-between text-[11px] uppercase tracking-[0.16em] text-ink-faint">
+                    <div className="mb-3 flex items-center justify-between text-xs text-ink-faint">
                       <span>Meine Einsätze</span>
                       <span>
                         {personalPlannings.length} {personalPlannings.length === 1 ? 'Eintrag' : 'Einträge'}
@@ -771,19 +677,19 @@ export function DashboardPage({
                     ) : null}
                     <div className="mt-4 grid gap-2 border-t border-line/70 pt-3 text-xs text-ink-muted sm:grid-cols-3">
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Heute im Einsatz</p>
+                        <p className="text-xs text-ink-faint">Heute im Einsatz</p>
                         <p className="mt-1 font-semibold text-ink">
                           {myActiveToday.length} {myActiveToday.length === 1 ? 'Einsatz' : 'Einsätze'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Offene Konflikte</p>
+                        <p className="text-xs text-ink-faint">Offene Konflikte</p>
                         <p className={`mt-1 font-semibold ${myOpenConflictCount > 0 ? 'text-rose-500 dark:text-rose-300' : 'text-ink'}`}>
                           {myOpenConflictCount}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-faint">Nächster Einsatz</p>
+                        <p className="text-xs text-ink-faint">Nächster Einsatz</p>
                         <p className="mt-1 font-semibold text-ink">
                           {nextPersonalPlanning ? formatGermanDate(nextPersonalPlanning.startDate) : '—'}
                         </p>
@@ -801,7 +707,7 @@ export function DashboardPage({
               </div>
 
               <div
-                className="rounded-[24px] border border-line px-4 py-4"
+                className="rounded-2xl border border-line px-4 py-4"
                 style={insetShellStyle}
               >
                 <MiniCalendar markedDays={markedCalendarDays} />
@@ -827,7 +733,7 @@ export function DashboardPage({
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-line/70 bg-surface/70 px-3 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-ink-faint">Engpässe &amp; Risiken</p>
+                  <p className="text-xs font-semibold text-ink-faint">Engpässe &amp; Risiken</p>
                   {risks.length ? (
                     <ul className="mt-3 space-y-2.5">
                       {risks.slice(0, 3).map((risk) => (
@@ -852,7 +758,7 @@ export function DashboardPage({
         </article>
 
         <article
-          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          className="animate-fade-up relative overflow-hidden rounded-[20px] border border-line shadow-soft"
           style={cardShellStyle}
         >
           <div className="relative p-4 md:p-5">
@@ -897,7 +803,7 @@ export function DashboardPage({
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.82fr)]">
         <article
-          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          className="animate-fade-up relative overflow-hidden rounded-[20px] border border-line shadow-soft"
           style={cardShellStyle}
         >
           <div className="relative p-4 md:p-5">
@@ -920,7 +826,7 @@ export function DashboardPage({
               <div className="overflow-x-auto rounded-[22px] border border-line" style={insetShellStyle}>
                 <table className="w-full min-w-[620px] text-sm">
                   <thead>
-                    <tr className="border-b border-line/80 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-faint">
+                    <tr className="border-b border-line/80 text-left text-xs font-semibold text-ink-faint">
                       <th className="px-4 py-3 font-semibold">Zeit</th>
                       <th className="px-4 py-3 font-semibold">Typ</th>
                       <th className="px-4 py-3 font-semibold">Details</th>
@@ -975,7 +881,7 @@ export function DashboardPage({
         </article>
 
         <article
-          className="animate-fade-up relative overflow-hidden rounded-[28px] border border-line shadow-soft"
+          className="animate-fade-up relative overflow-hidden rounded-[20px] border border-line shadow-soft"
           style={cardShellStyle}
         >
           <div className="relative p-4 md:p-5">
