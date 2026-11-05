@@ -23,7 +23,7 @@ import { canAccessPage } from '../../config/pageAccess';
 import { planningDetailPath } from '../../routing/appRoutes';
 import { navigate } from '../../routing/router';
 import type { ActivityItem, AppPage, AppRole, Asset, MaintenanceItem, ReservationItem } from '../types';
-import type { Theme } from '../../hooks/useTheme';
+import { isDarkTheme, type Theme } from '../../hooks/useTheme';
 import { getCurrentUser, listPlannings } from '../../services/wmsApi';
 import type { PlanningListItem, WmsOverview } from '../../services/wmsApi';
 import { formatGermanDate, isDateBooked, toIsoDate } from './planningPeriod';
@@ -88,7 +88,7 @@ function hashText(value: string): number {
 }
 
 function getAssetAccentStyle(key: string, theme: Theme) {
-  const palette = theme === 'dark' ? ASSET_ACCENTS_DARK : ASSET_ACCENTS_LIGHT;
+  const palette = isDarkTheme(theme) ? ASSET_ACCENTS_DARK : ASSET_ACCENTS_LIGHT;
   return palette[hashText(key) % palette.length];
 }
 
@@ -169,7 +169,7 @@ function getMetricTone(
   iconClass: string;
   labelClass: string;
 } {
-  const isDark = theme === 'dark';
+  const isDark = isDarkTheme(theme);
   switch (tone) {
     case 'positive':
       return {
@@ -461,19 +461,19 @@ export function DashboardPage({
 
   const cardShellStyle = {
     background:
-      theme === 'dark'
+      isDarkTheme(theme)
         ? 'linear-gradient(180deg, rgba(12, 20, 34, 0.98) 0%, rgba(7, 13, 24, 0.98) 100%)'
         : 'linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(243, 246, 251, 0.98) 100%)',
   };
   const insetShellStyle = {
     background:
-      theme === 'dark'
+      isDarkTheme(theme)
         ? 'linear-gradient(180deg, rgba(15, 27, 46, 0.94) 0%, rgba(10, 20, 35, 0.98) 100%)'
         : 'linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%)',
   };
   const heroStyle = {
     background:
-      theme === 'dark'
+      isDarkTheme(theme)
         ? 'radial-gradient(circle at 22% 0%, rgba(47, 125, 246, 0.18) 0%, transparent 34%), linear-gradient(135deg, rgba(13, 21, 37, 0.98) 0%, rgba(9, 18, 33, 0.98) 60%, rgba(9, 20, 36, 0.98) 100%)'
         : 'radial-gradient(circle at 22% 0%, rgba(37, 99, 235, 0.16) 0%, transparent 34%), linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(240, 246, 255, 0.98) 100%)',
   };
@@ -537,6 +537,7 @@ export function DashboardPage({
   return (
     <section className="space-y-5 pb-2">
       <article
+        data-hm="dashboard-hero"
         className="animate-fade-up relative overflow-hidden rounded-[30px] border border-line shadow-soft"
         style={heroStyle}
       >
@@ -545,7 +546,7 @@ export function DashboardPage({
           className="pointer-events-none absolute inset-0 opacity-95"
           style={{
             background:
-              theme === 'dark'
+              isDarkTheme(theme)
                 ? 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(79, 172, 255, 0.08) 60%, transparent 100%)'
                 : 'linear-gradient(115deg, transparent 0%, transparent 60%, rgba(37, 99, 235, 0.07) 60%, transparent 100%)',
           }}
@@ -573,7 +574,7 @@ export function DashboardPage({
               Hier ist die aktuelle Übersicht über Hardware, Einsätze, Tickets und die laufende Betriebslage.
             </p>
           </div>
-          <div className="hidden items-center gap-4 text-white/80 lg:flex">
+          <div data-hm="hero-deco" className="hidden items-center gap-4 text-white/80 lg:flex">
             <Printer className="h-14 w-14 text-slate-100/80" strokeWidth={1.5} />
             <MonitorSmartphone className="h-16 w-16 text-sky-100/80" strokeWidth={1.35} />
             <Laptop className="h-14 w-14 text-slate-100/80" strokeWidth={1.35} />
@@ -585,7 +586,7 @@ export function DashboardPage({
         {metricCards.map((metric) => {
           const tone = getMetricTone(metric.tone, theme);
           const cardInner = (
-            <div className="relative h-full overflow-hidden rounded-[24px] px-5 py-4 md:px-5 md:py-5">
+            <div data-hm="metric-card" className="relative h-full overflow-hidden rounded-[24px] px-5 py-4 md:px-5 md:py-5">
               <div
                 aria-hidden
                 className="absolute inset-0 opacity-90"

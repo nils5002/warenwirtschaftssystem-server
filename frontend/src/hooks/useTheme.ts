@@ -4,15 +4,22 @@ import { useCallback, useEffect, useState } from 'react';
 // - 'light'  : helle Variante (kühl, weiße Cards auf grau-blauem Grund)
 // - 'dark'   : Navy-Produkt-Look (Default für Sitzungen ohne Präferenz)
 // - 'studio' : warmes, ruhiges Sand/Creme-Theme nach den Studio-Mockups
-export type Theme = 'light' | 'dark' | 'studio';
+// - 'hallmark': Vorschau der Hallmark-Audit-Fixes (Dark-Familie, setzt zusätzlich
+//               'dark' auf <html>, damit alle dark:-Utilities weiter greifen)
+export type Theme = 'light' | 'dark' | 'studio' | 'hallmark';
 
 // Reihenfolge für das zyklische Durchschalten (z. B. Kompakt-Topbar auf Mobile).
-export const THEME_ORDER: Theme[] = ['light', 'dark', 'studio'];
+export const THEME_ORDER: Theme[] = ['light', 'dark', 'studio', 'hallmark'];
+
+// Themes der Dark-Familie (für Stellen, die Inline-Farben je Hell/Dunkel wählen).
+export function isDarkTheme(theme: Theme): boolean {
+  return theme === 'dark' || theme === 'hallmark';
+}
 
 const THEME_STORAGE_KEY = 'asset-console-theme';
 
 function isTheme(value: unknown): value is Theme {
-  return value === 'light' || value === 'dark' || value === 'studio';
+  return value === 'light' || value === 'dark' || value === 'studio' || value === 'hallmark';
 }
 
 function resolveInitialTheme(): Theme {
@@ -32,11 +39,13 @@ function resolveInitialTheme(): Theme {
 // darf aktiv sein — Light ist der klassenlose Basiszustand (:root ohne Modifier).
 function applyThemeClass(theme: Theme): void {
   const root = document.documentElement;
-  root.classList.remove('dark', 'studio');
+  root.classList.remove('dark', 'studio', 'hallmark');
   if (theme === 'dark') {
     root.classList.add('dark');
   } else if (theme === 'studio') {
     root.classList.add('studio');
+  } else if (theme === 'hallmark') {
+    root.classList.add('dark', 'hallmark');
   }
 }
 

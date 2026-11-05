@@ -1,4 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+/* Schriften des Hallmark-Vorschau-Themes (siehe Block am Dateiende). */
+@import url('https://api.fontshare.com/v2/css?f[]=switzer@400,500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -758,5 +761,164 @@ h3 {
     -webkit-box-orient: vertical;
     overflow: hidden;
     color: #000;
+  }
+}
+
+
+/* ============================================================
+   HALLMARK-Vorschau-Theme (4. Kachel im Theme-Menü)
+   Hallmark · audit-preview · theme: Rim (night), dealt 1/3 · scope: app
+   · redesign: polish · built: the project
+   Zeigt alle Fixes aus dem Hallmark-Audit, ohne Hell/Dunkel/Studio
+   anzufassen. Alles hier greift nur unter :root.hallmark (zusammen mit
+   .dark, damit dark:-Utilities weiter funktionieren). Zum Übernehmen in
+   alle Themes: einzelne Regeln aus diesem Block heraus verschieben.
+   Abweichung von Rim: Signal ist das Rim-Himmelblau statt Orange, weil
+   Orange/Amber im WWS den Status Defekt/Wartung trägt.
+   ============================================================ */
+:root.hallmark {
+  color-scheme: dark;
+  --hm-paper: oklch(9% 0.008 75);
+  --hm-paper-2: oklch(12.5% 0.009 75);
+  --hm-paper-3: oklch(15.5% 0.009 75);
+  --hm-ink: oklch(94% 0.010 80);
+  --hm-ink-2: oklch(84% 0.011 80);
+  --hm-muted: oklch(72% 0.012 80);
+  --hm-faint: oklch(60% 0.010 80);
+  --hm-rule: oklch(25% 0.010 78);
+  --hm-rule-2: oklch(19% 0.009 78);
+  --hm-signal: oklch(74% 0.12 250);
+  --hm-signal-hover: oklch(80% 0.11 250);
+  --hm-signal-ink: oklch(14% 0.03 250);
+  --hm-focus: oklch(82% 0.11 250);
+  --hm-font: 'Switzer', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --hm-mono: 'Geist Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --ui-bg: var(--hm-paper);
+  --ui-bg-soft: var(--hm-paper);
+  --ui-surface: var(--hm-paper-2);
+  --ui-surface-2: var(--hm-paper-3);
+  --ui-border: var(--hm-rule);
+  --ui-border-strong: oklch(34% 0.010 78);
+  --ui-text: var(--hm-ink);
+  --ui-text-muted: var(--hm-muted);
+  --ui-text-faint: var(--hm-faint);
+  --ui-primary: var(--hm-signal);
+  --ui-primary-hover: var(--hm-signal-hover);
+  --ui-primary-soft: color-mix(in oklab, var(--hm-signal) 16%, transparent);
+}
+
+/* Fläche und Schrift: flacher warmer Grund, keine Radial-Glows. */
+:root.hallmark body {
+  background: var(--hm-paper);
+  font-family: var(--hm-font);
+  color: var(--hm-ink-2);
+}
+:root.hallmark :is(h1, h2, h3) {
+  font-family: var(--hm-font);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  color: var(--hm-ink);
+}
+
+/* Gate 67: Labels in Satzschreibung, ungesperrt. */
+:root.hallmark .uppercase { text-transform: none; }
+:root.hallmark :is(.tracking-wide, .tracking-wider, .tracking-widest, [class*="tracking-[0."]) {
+  letter-spacing: 0;
+}
+
+/* Gate 54: Eyebrow (kleines Label direkt über einer Überschrift) entfällt. */
+:root.hallmark :is(p, span, div).uppercase:has(+ :is(h1, h2, h3)) { display: none; }
+
+/* Gate 63: Mittelpunkt-Kette auf dem Login. */
+:root.hallmark [data-hm="login-chips"] { display: none; }
+
+/* Messwerte in Mono (Rim): große Kennzahlen in KPI-Karten und Dashboard. */
+:root.hallmark p:is(.text-2xl, .text-3xl, .text-4xl) {
+  font-family: var(--hm-mono);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Rim: nichts Rundes, Tiefe nur über Helligkeit. Spinner bleiben rund. */
+:root.hallmark *:not(.animate-spin) { border-radius: 0; }
+:root.hallmark [class*="shadow"] { box-shadow: none; }
+
+/* Gate 29 + 2a: kein Glas, keine Glows, keine Verläufe. */
+:root.hallmark [class*="backdrop-blur"] { backdrop-filter: none; -webkit-backdrop-filter: none; }
+:root.hallmark :is([class*="blur-3xl"], [class*="blur-2xl"]) { display: none; }
+:root.hallmark :is([class*="bg-gradient-to"], [class*="bg-[linear-gradient"], [class*="bg-[radial-gradient"]) {
+  background-image: none;
+}
+:root.hallmark .from-sky-500 {
+  background-color: var(--hm-signal);
+  color: var(--hm-signal-ink);
+}
+:root.hallmark .from-sky-500:hover { background-color: var(--hm-signal-hover); }
+/* Inline-Verläufe (nur Dashboard: Hero, Karten-Shells, KPI-Tönung). */
+:root.hallmark [style*="gradient"] { background: var(--hm-paper-2) !important; }
+
+/* Primärfarbe: helles Signal braucht dunkle Schrift (Kontrast). */
+:root.hallmark :is(.bg-primary, .btn-primary) { color: var(--hm-signal-ink); }
+:root.hallmark :is(.bg-primary, .btn-primary) .text-white { color: inherit; }
+
+/* Switzer gibt es nur in 400/500: fettere Stufen nicht synthetisch fetten. */
+:root.hallmark :is(.font-semibold, .font-bold, .font-extrabold, .font-black, b, strong, th) { font-weight: 500; }
+
+/* Gate 26a/39a: ein einheitlicher, sofort sichtbarer Fokusring per outline. */
+:root.hallmark :focus-visible {
+  outline: 2px solid var(--hm-focus);
+  outline-offset: 2px;
+}
+
+/* Gate 10a: keine Breitenanimation (ProgressBar). */
+:root.hallmark .transition-\[width\] { transition: none; }
+
+/* Dashboard: Deko-Linien, Sternpunkte und Geräte-Illustration im Hero weg,
+   KPI-Kacheln neutral (Status bleibt am Icon). */
+:root.hallmark [data-hm="dashboard-hero"] > :is(svg, span),
+:root.hallmark [data-hm="hero-deco"] { display: none; }
+:root.hallmark [data-hm="metric-card"] { background: var(--hm-paper-2); }
+:root.hallmark [data-hm="metric-card"] p { color: var(--hm-muted); }
+:root.hallmark [data-hm="metric-card"] p:is(.text-2xl, .text-3xl, .text-4xl) { color: var(--hm-ink); }
+
+/* Fix: Leerzustand der Wochenansicht lief über die Spaltenlinien. */
+:root.hallmark [data-hm="timeline-empty"] {
+  width: max-content;
+  max-width: calc(100% - 2rem);
+  margin: 1.5rem auto;
+  padding: 0.75rem 1rem;
+  background: var(--hm-paper-2);
+  border: 1px solid var(--hm-rule);
+}
+
+/* Login: massive Karte statt Glas über dem Hintergrundbild. */
+:root.hallmark [data-hm="login-card"] {
+  background: var(--hm-paper);
+  border-color: var(--hm-rule);
+}
+
+/* Kühle Navy-Literale der Dark-Variante auf die warmen Rim-Flächen ziehen. */
+:root.hallmark :is(.dark\:bg-slate-900, .dark\:bg-slate-950, .dark\:bg-slate-950\/95) { background-color: var(--hm-paper-2); }
+:root.hallmark :is(.dark\:bg-slate-900\/40, .dark\:bg-slate-900\/60, .dark\:bg-slate-900\/70, .dark\:bg-slate-950\/30, .dark\:bg-slate-950\/40) {
+  background-color: var(--hm-paper-3);
+}
+:root.hallmark :is(.dark\:border-slate-700, .dark\:border-slate-800, .dark\:border-slate-700\/60, .dark\:border-slate-700\/70) { border-color: var(--hm-rule); }
+:root.hallmark :is(.dark\:text-slate-50, .dark\:text-slate-100, .dark\:text-slate-200) { color: var(--hm-ink); }
+:root.hallmark :is(.dark\:text-slate-300, .dark\:text-slate-400) { color: var(--hm-muted); }
+:root.hallmark .dark\:text-slate-500 { color: var(--hm-faint); }
+
+/* Gate 27: Reduced Motion. */
+@media (prefers-reduced-motion: reduce) {
+  :root.hallmark *,
+  :root.hallmark *::before,
+  :root.hallmark *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

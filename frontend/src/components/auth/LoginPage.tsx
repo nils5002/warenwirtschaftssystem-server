@@ -161,7 +161,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
         <div className="absolute right-0 top-20 h-96 w-96 rounded-full bg-indigo-500/16 blur-3xl" />
       </div>
       <main className="relative mx-auto flex min-h-screen w-full items-center justify-center overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div className="relative w-full max-w-[400px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/45 px-5 py-5 shadow-[0_30px_80px_rgba(2,6,23,0.7),0_0_60px_rgba(14,165,233,0.12)] backdrop-blur-[24px] sm:px-6 sm:py-6">
+        <div data-hm="login-card" className="relative w-full max-w-[400px] overflow-hidden rounded-[1.5rem] border border-white/15 bg-slate-950/45 px-5 py-5 shadow-[0_30px_80px_rgba(2,6,23,0.7),0_0_60px_rgba(14,165,233,0.12)] backdrop-blur-[24px] sm:px-6 sm:py-6">
           <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.02)_42%,rgba(2,132,199,0.08)_100%)]" />
           <div className="relative flex flex-col">
             <div className="flex flex-col items-center text-center">
@@ -173,7 +173,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               <p className="mt-1 max-w-sm text-[13px] leading-relaxed text-slate-200/90">
                 Hardware, Planung und Rückgabe zentral verwalten
               </p>
-              <p className="mt-2.5 inline-flex rounded-full border border-sky-200/20 bg-sky-300/10 px-2.5 py-0.5 text-[10px] font-medium text-sky-100/90">
+              <p data-hm="login-chips" className="mt-2.5 inline-flex rounded-full border border-sky-200/20 bg-sky-300/10 px-2.5 py-0.5 text-[10px] font-medium text-sky-100/90">
                 Inventar · Einsatzplanung · QR-Scan
               </p>
             </div>

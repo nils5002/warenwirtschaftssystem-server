@@ -221,7 +221,7 @@ export function PlanningTimelineWeek({
             Tagesspalten-Buttons durch; nur die Segmente selbst sind klickbar. */}
         <div className="pointer-events-none relative space-y-1.5 py-2">
           {lanes.length === 0 ? (
-            <p className="pointer-events-none relative z-10 px-3 py-8 text-center text-sm text-ink-muted">
+            <p data-hm="timeline-empty" className="pointer-events-none relative z-10 px-3 py-8 text-center text-sm text-ink-muted">
               Keine Planungen in dieser Woche.
             </p>
           ) : null}

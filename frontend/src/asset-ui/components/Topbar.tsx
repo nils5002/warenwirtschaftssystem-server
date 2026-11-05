@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bell, Check, CircleHelp, LogOut, Menu, Moon, Palette, Search, Sun } from 'lucide-react';
+import { Bell, Check, CircleHelp, LogOut, Menu, Moon, Palette, Ruler, Search, Sun } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { AppPage, AppRole } from '../types';
 import { type Theme } from '../../hooks/useTheme';
@@ -62,6 +62,7 @@ const THEME_OPTIONS: ThemeOption[] = [
   { value: 'light', label: 'Hell', hint: 'Helle Oberfläche', icon: Sun },
   { value: 'dark', label: 'Dunkel', hint: 'Navy-Produkt-Look', icon: Moon },
   { value: 'studio', label: 'Studio', hint: 'Warmes Sand-Theme', icon: Palette },
+  { value: 'hallmark', label: 'Hallmark', hint: 'Vorschau der Audit-Fixes', icon: Ruler },
 ];
 
 const THEME_META: Record<Theme, ThemeOption> = THEME_OPTIONS.reduce(
@@ -72,7 +73,7 @@ const THEME_META: Record<Theme, ThemeOption> = THEME_OPTIONS.reduce(
   {} as Record<Theme, ThemeOption>,
 );
 
-// Dreifach-Theme-Auswahl als kleines Popover. Ein-Klick statt Zyklus, damit
+// Theme-Auswahl (Hell/Dunkel/Studio/Hallmark) als kleines Popover. Ein-Klick statt Zyklus, damit
 // jedes Theme (inkl. Studio) direkt erreichbar und erkennbar ist.
 function ThemeMenu({
   theme,
