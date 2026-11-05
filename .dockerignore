@@ -8,10 +8,23 @@
 # Diese Datei gilt nur fuer das Backend-Image. Das Frontend-Image hat den
 # Kontext ./frontend und damit seine eigene frontend/.dockerignore.
 
-# Frontend wird separat gebaut und im Backend-Kontext nicht benoetigt.
-frontend/
+# Frontend-QUELLEN bleiben BEWUSST im Kontext, obwohl das Backend-Image sie
+# nicht ausliefert (die Laufzeit-Stufe kopiert nur backend/). Grund: Die Stufe
+# `buildmeta` kopiert den ganzen Kontext und schreibt dabei die Buildzeit. Fehlt
+# frontend/ hier, ist der Kontext bei einem reinen Frontend-Commit identisch,
+# Docker nimmt den Cache, die Buildzeit bleibt gleich, und das Systemupdate
+# meldet faelschlich "unerwartete Version" (system_update_service). Nur die
+# erzeugten Artefakte bleiben draussen.
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/playwright-report/
+frontend/test-results/
+**/node_modules/
 
 # Doku, Deploy-Skripte, Werkzeuge — nicht Teil des Images.
+# Diese Liste spiegelt system_update_service._NON_IMAGE_PREFIXES: Commits, die
+# nur hier etwas aendern, gelten beim Update als "kein neues Image noetig".
 docs/
 deploy/
 scripts/

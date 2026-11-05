@@ -266,6 +266,103 @@ def _run_to_item(record: SystemUpdateRunRecord) -> SystemUpdateRunItem:
 
 # --- GitHub-Abfrage -----------------------------------------------------------
 
+def _github_headers(settings: Settings) -> dict[str, str]:
+    """Header fuer GitHub-API-Aufrufe. Das Token geht nur als Header raus."""
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "warehouse-system-update-check",
+    }
+    token = (settings.github_api_token or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+# Pfade, die in KEINEM Image landen. Spiegelt die Root-.dockerignore (Kontext
+# des Backend-Images); das Frontend-Image baut ohnehin nur aus frontend/.
+# Ein Commit, der nur solche Pfade aendert, erzeugt beim Redeploy kein neues
+# Image — die unveraenderte Buildzeit ist dann kein Fehler.
+_NON_IMAGE_PREFIXES: tuple[str, ...] = (
+    "docs/",
+    "deploy/",
+    "scripts/",
+    ".github/",
+    ".claude/",
+    "graphify-out/",
+    "Hardwarebestand/",
+)
+# GitHub liefert im Vergleich hoechstens 300 Dateien; bei mehr ist die Liste
+# unvollstaendig und taugt nicht als Beleg.
+_GITHUB_COMPARE_FILE_LIMIT = 300
+
+
+def _affects_images(path: str) -> bool:
+    """True, wenn eine Aenderung an ``path`` ein neues Image erzeugen kann.
+
+    Im Zweifel True: Nur ausdruecklich ausgeschlossene Pfade gelten als
+    image-neutral, damit nie ein Update ohne Beleg als Erfolg zaehlt.
+    """
+    clean = (path or "").strip().lstrip("/")
+    if not clean:
+        return True
+    if "/" not in clean and clean.lower().endswith(".md"):
+        return False
+    return not clean.startswith(_NON_IMAGE_PREFIXES)
+
+
+def _changed_files_between(source: str, target: str, settings: Settings) -> list[str] | None:
+    """Geaenderte Dateien zwischen zwei Commits laut GitHub.
+
+    ``None`` = nicht belegbar (GitHub nicht erreichbar, Antwort unerwartet,
+    Liste abgeschnitten oder ``target`` liegt nicht vor ``source``).
+    """
+    if not (_SHA_PATTERN.match(source or "") and _SHA_PATTERN.match(target or "")):
+        return None
+    try:
+        _validate_config(settings)
+    except HTTPException:
+        return None
+    repo = settings.github_repository.strip()
+    url = f"{GITHUB_API_BASE}/repos/{repo}/compare/{source}...{target}"
+    try:
+        response = requests.get(url, headers=_github_headers(settings), timeout=_GITHUB_TIMEOUT)
+    except requests.RequestException as exc:
+        logger.warning("GitHub-Vergleich fehlgeschlagen: %s", type(exc).__name__)
+        return None
+    if response.status_code != 200:
+        logger.warning("GitHub-Vergleich: HTTP %s", response.status_code)
+        return None
+    try:
+        data = response.json()
+        status = str(data.get("status") or "")
+        files = data.get("files")
+    except (ValueError, AttributeError):
+        return None
+    if status not in ("ahead", "identical") or not isinstance(files, list):
+        return None
+    if len(files) >= _GITHUB_COMPARE_FILE_LIMIT:
+        return None
+    names: list[str] = []
+    for item in files:
+        if not isinstance(item, dict) or not item.get("filename"):
+            return None
+        names.append(str(item["filename"]))
+        if item.get("previous_filename"):
+            names.append(str(item["previous_filename"]))
+    return names
+
+
+def _update_needs_no_new_image(source: str | None, target: str | None, settings: Settings) -> bool:
+    """Belegt, dass zwischen ``source`` und ``target`` nichts Image-Relevantes liegt."""
+    if not source or not target:
+        return False
+    changed = _changed_files_between(source, target, settings)
+    if changed is None:
+        return False
+    return not any(_affects_images(name) for name in changed)
+
+
 def fetch_latest_commit(settings: Settings | None = None) -> CommitInfo:
     """Liest den HEAD-Commit des konfigurierten Branches von der GitHub-API.
 
@@ -278,17 +375,9 @@ def fetch_latest_commit(settings: Settings | None = None) -> CommitInfo:
     repo = settings.github_repository.strip()
     branch = settings.github_branch.strip()
     url = f"{GITHUB_API_BASE}/repos/{repo}/commits/{branch}"
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "warehouse-system-update-check",
-    }
-    token = (settings.github_api_token or "").strip()
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
 
     try:
-        response = requests.get(url, headers=headers, timeout=_GITHUB_TIMEOUT)
+        response = requests.get(url, headers=_github_headers(settings), timeout=_GITHUB_TIMEOUT)
     except requests.RequestException as exc:
         # Nur der Ausnahmetyp wird geloggt — die Meldung koennte theoretisch
         # den Header-Inhalt enthalten.
@@ -831,6 +920,10 @@ def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int
        den Stand, der beim Ausloesen als Ziel ermittelt wurde. Restrisiko: Wird
        in genau diesem Zeitfenster erneut gepusht, laeuft ein neuerer Commit als
        protokolliert. Die naechste Versionspruefung zieht das gerade.
+    3. **Kein Image noetig**: Die Buildzeit ist gleich, aber GitHub belegt, dass
+       zwischen Ausgangs- und Zielcommit nur Pfade ausserhalb der Images liegen
+       (Doku, Deploy-Skripte, ...). Dann baut Docker zu Recht aus dem Cache —
+       ``success``, und der Zielcommit wird fuer das laufende Image bestaetigt.
 
     Ohne beide Belege: ``timeout`` bei ueberschrittenem Zeitfenster, sonst
     ``failed``. Erfolg wird nie ohne Beleg gemeldet.
@@ -874,6 +967,25 @@ def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int
                 build_time=current_build_time,
             )
             installed = record.target_commit
+        elif (
+            record.target_commit
+            and not rebuilt
+            and _update_needs_no_new_image(record.source_commit, record.target_commit, settings)
+        ):
+            record.status = "success"
+            record.message = (
+                "Das Update wurde übernommen. Die neue Version ändert nur Dokumentation "
+                "oder Werkzeuge, ein neues Image war nicht nötig."
+            )
+            record.error_details = None
+            record.detected_commit_after_restart = record.target_commit
+            _store_confirmed_version(
+                db,
+                commit=record.target_commit,
+                branch=(settings.github_branch or "").strip() or None,
+                build_time=current_build_time,
+            )
+            installed = record.target_commit
         elif installed is None:
             record.status = "failed"
             record.message = (
@@ -891,8 +1003,9 @@ def reconcile_pending_runs(db: Session, settings: Settings | None = None) -> int
         else:
             record.status = "failed"
             record.message = (
-                "Nach dem Neustart läuft eine unerwartete Version. Bitte den Stack in "
-                "Portainer prüfen."
+                "Nach dem Neustart läuft weiterhin das bisherige Image (unveränderte "
+                "Buildzeit). Portainer hat den Stack offenbar nicht neu gebaut. Bitte "
+                "den Stack in Portainer prüfen."
             )
             record.error_details = "unexpected_commit"
 

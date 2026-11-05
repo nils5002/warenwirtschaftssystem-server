@@ -106,6 +106,19 @@ class _FakeRequests:
 # --- Fixtures -----------------------------------------------------------------
 
 
+# Echte Funktion fuer die Tests, die den GitHub-Vergleich selbst pruefen.
+_REAL_CHANGED_FILES = system_update_service._changed_files_between
+
+
+@pytest.fixture(autouse=True)
+def _no_github_compare(monkeypatch: pytest.MonkeyPatch):
+    """Die Auswertung nach dem Neustart darf in Tests nie echt nach GitHub gehen.
+
+    Standard: Vergleich nicht belegbar (wie bei einem GitHub-Ausfall).
+    """
+    monkeypatch.setattr(system_update_service, "_changed_files_between", lambda *_a, **_k: None)
+
+
 @pytest.fixture(autouse=True)
 def _clean_state():
     """Update-Läufe und Rate-Limiter zwischen den Tests zurücksetzen."""
@@ -1054,3 +1067,127 @@ def test_update_endpoint_ignores_request_body(monkeypatch, fake_requests, backup
     assert fake_requests.get_calls == [
         "https://api.github.com/repos/nils5002/warenwirtschaftssystem-server/commits/main"
     ]
+
+
+
+# --- Gleiche Buildzeit: Commit ohne Image-Aenderung ----------------------------
+
+
+def _compare_payload(files: list[str], status: str = "ahead") -> dict:
+    return {"status": status, "files": [{"filename": name} for name in files]}
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("frontend/src/index.css", True),
+        ("backend/app/main.py", True),
+        ("docker-compose.yml", True),
+        (".dockerignore", True),
+        ("package.json", True),
+        ("README.md", False),
+        ("DEPLOYMENT.md", False),
+        ("backend/README.md", True),
+        ("docs/betrieb.md", False),
+        ("deploy/server/deploy.sh", False),
+        ("scripts/dev-local.ps1", False),
+        (".claude/skills/dev/SKILL.md", False),
+        ("", True),
+    ],
+)
+def test_affects_images_is_conservative(path, expected):
+    assert system_update_service._affects_images(path) is expected
+
+
+def test_reconcile_accepts_docs_only_update_without_new_image(monkeypatch):
+    """Nur Doku geaendert: gleicher Build ist korrekt, kein Fehlschlag."""
+    _use_image_info(monkeypatch, _image_info(build_time="2026-11-05T12:37:00Z"))
+    monkeypatch.setattr(
+        system_update_service,
+        "_changed_files_between",
+        lambda *_a, **_k: ["docs/betrieb.md", "README.md", "scripts/dev-local.ps1"],
+    )
+    external_id = _pending_run()
+    with SessionLocal() as db:
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id=external_id).one()
+        run.source_build_time = "2026-11-05T12:37:00Z"
+        db.commit()
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=None))
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id=external_id).one()
+        assert run.status == "success"
+        assert run.detected_commit_after_restart == LATEST_COMMIT
+    assert system_update_service.installed_commit(_settings(app_git_commit=None)) == LATEST_COMMIT
+
+
+def test_reconcile_rejects_same_build_when_app_code_changed(monkeypatch):
+    """Frontend geaendert, aber kein neues Image: bleibt ein Fehlschlag."""
+    _use_image_info(monkeypatch, _image_info(build_time="2026-11-05T12:37:00Z"))
+    monkeypatch.setattr(
+        system_update_service,
+        "_changed_files_between",
+        lambda *_a, **_k: ["docs/betrieb.md", "frontend/src/index.css"],
+    )
+    external_id = _pending_run()
+    with SessionLocal() as db:
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id=external_id).one()
+        run.source_build_time = "2026-11-05T12:37:00Z"
+        db.commit()
+        system_update_service.reconcile_pending_runs(db, _settings(app_git_commit=INSTALLED_COMMIT))
+        run = db.query(SystemUpdateRunRecord).filter_by(external_id=external_id).one()
+        assert run.status == "failed"
+        assert run.error_details == "unexpected_commit"
+        assert "bisherige Image" in run.message
+
+
+def test_changed_files_reads_github_compare(monkeypatch, fake_requests):
+    fake_requests.get_response = _FakeResponse(
+        200, {"status": "ahead", "files": [{"filename": "docs/a.md", "previous_filename": "docs/b.md"}]}
+    )
+    files = _REAL_CHANGED_FILES(INSTALLED_COMMIT, LATEST_COMMIT, _settings())
+    assert files == ["docs/a.md", "docs/b.md"]
+    assert fake_requests.get_calls == [
+        "https://api.github.com/repos/nils5002/warenwirtschaftssystem-server/compare/"
+        f"{INSTALLED_COMMIT}...{LATEST_COMMIT}"
+    ]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _FakeResponse(200, _compare_payload(["docs/a.md"], status="diverged")),
+        _FakeResponse(200, _compare_payload(["docs/a.md"], status="behind")),
+        _FakeResponse(200, _compare_payload([f"docs/{i}.md" for i in range(300)])),
+        _FakeResponse(404, {"message": "Not Found"}),
+        _FakeResponse(200, None),
+    ],
+)
+def test_changed_files_is_unprovable_on_doubtful_answers(monkeypatch, fake_requests, response):
+    fake_requests.get_response = response
+    assert _REAL_CHANGED_FILES(INSTALLED_COMMIT, LATEST_COMMIT, _settings()) is None
+
+
+def test_changed_files_is_unprovable_when_github_is_down(monkeypatch, fake_requests):
+    fake_requests.get_error = requests.ConnectionError("down")
+    assert _REAL_CHANGED_FILES(INSTALLED_COMMIT, LATEST_COMMIT, _settings()) is None
+
+
+def test_dockerignore_keeps_frontend_sources_and_matches_non_image_paths():
+    """Wachhund: .dockerignore und die Liste im Service muessen zusammenpassen.
+
+    Fehlt frontend/ im Backend-Kontext, bekommt ein reiner Frontend-Commit
+    keinen neuen Build und das Update meldet faelschlich einen Fehler.
+    """
+    from pathlib import Path
+
+    lines = {
+        line.strip()
+        for line in (Path(__file__).resolve().parents[2] / ".dockerignore")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert "frontend/" not in lines
+    assert "frontend" not in lines
+    for prefix in system_update_service._NON_IMAGE_PREFIXES:
+        assert prefix in lines, prefix
+    assert "*.md" in lines
