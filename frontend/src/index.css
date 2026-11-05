@@ -769,6 +769,7 @@ h3 {
    HALLMARK-Vorschau-Theme (4. Kachel im Theme-Menü)
    Hallmark · audit-preview · theme: Rim (night), dealt 1/3 · scope: app
    · redesign: polish · built: the project
+   Zwei Varianten: :root.hallmark (+ .dark) = Dunkel, :root.hallmark.hallmark-light = Hell.
    Zeigt alle Fixes aus dem Hallmark-Audit, ohne Hell/Dunkel/Studio
    anzufassen. Alles hier greift nur unter :root.hallmark (zusammen mit
    .dark, damit dark:-Utilities weiter funktionieren). Zum Übernehmen in
@@ -791,6 +792,10 @@ h3 {
   --hm-signal-hover: oklch(80% 0.11 250);
   --hm-signal-ink: oklch(14% 0.03 250);
   --hm-focus: oklch(82% 0.11 250);
+  /* Login-Karte bleibt in beiden Varianten dunkel (liegt über dem Foto). */
+  --hm-night: oklch(9% 0.008 75);
+  --hm-night-rule: oklch(25% 0.010 78);
+  --hm-night-ink: oklch(94% 0.010 80);
   --hm-font: 'Switzer', 'Manrope', ui-sans-serif, system-ui, sans-serif;
   --hm-mono: 'Geist Mono', ui-monospace, 'Cascadia Mono', monospace;
 
@@ -806,6 +811,27 @@ h3 {
   --ui-primary: var(--hm-signal);
   --ui-primary-hover: var(--hm-signal-hover);
   --ui-primary-soft: color-mix(in oklab, var(--hm-signal) 16%, transparent);
+}
+
+/* Helle Variante: warmes Papier, dunkle Tinte, tiefes Rim-Blau als Signal
+   (weiße Schrift auf dem Signal, Kontrast >= 4.5:1). */
+:root.hallmark.hallmark-light {
+  color-scheme: light;
+  --hm-paper: oklch(96.5% 0.007 80);
+  --hm-paper-2: oklch(99.3% 0.003 80);
+  --hm-paper-3: oklch(93.5% 0.008 80);
+  --hm-ink: oklch(21% 0.010 75);
+  --hm-ink-2: oklch(31% 0.010 75);
+  --hm-muted: oklch(45% 0.012 78);
+  --hm-faint: oklch(53% 0.010 78);
+  --hm-rule: oklch(86% 0.009 78);
+  --hm-rule-2: oklch(91% 0.008 78);
+  --hm-signal: oklch(50% 0.15 252);
+  --hm-signal-hover: oklch(44% 0.15 252);
+  --hm-signal-ink: oklch(99% 0.002 80);
+  --hm-focus: oklch(50% 0.15 252);
+  --ui-border-strong: oklch(74% 0.010 78);
+  --ui-primary-soft: color-mix(in oklab, var(--hm-signal) 12%, transparent);
 }
 
 /* Fläche und Schrift: flacher warmer Grund, keine Radial-Glows. */
@@ -897,19 +923,34 @@ h3 {
 
 /* Login: massive Karte statt Glas über dem Hintergrundbild. */
 :root.hallmark [data-hm="login-card"] {
-  background: var(--hm-paper);
-  border-color: var(--hm-rule);
+  background: var(--hm-night);
+  border-color: var(--hm-night-rule);
 }
+:root.hallmark [data-hm="login-card"] :is(h1, h2, h3) { color: var(--hm-night-ink); }
 
-/* Kühle Navy-Literale der Dark-Variante auf die warmen Rim-Flächen ziehen. */
-:root.hallmark :is(.dark\:bg-slate-900, .dark\:bg-slate-950, .dark\:bg-slate-950\/95) { background-color: var(--hm-paper-2); }
-:root.hallmark :is(.dark\:bg-slate-900\/40, .dark\:bg-slate-900\/60, .dark\:bg-slate-900\/70, .dark\:bg-slate-950\/30, .dark\:bg-slate-950\/40) {
+/* Helle Variante: die KPI-Icons des Dashboards sind im Code auf helle Töne
+   (für dunkle Kacheln) festgelegt; auf Papier brauchen sie dunkle Statustöne. */
+:root.hallmark.hallmark-light {
+  --hm-tone-ok: oklch(48% 0.12 155);
+  --hm-tone-warn: oklch(52% 0.13 70);
+  --hm-tone-bad: oklch(50% 0.17 20);
+  --hm-tone-info: oklch(48% 0.13 245);
+}
+:root.hallmark.hallmark-light [data-hm="metric-card"] .text-emerald-200 { color: var(--hm-tone-ok); }
+:root.hallmark.hallmark-light [data-hm="metric-card"] .text-amber-200 { color: var(--hm-tone-warn); }
+:root.hallmark.hallmark-light [data-hm="metric-card"] :is(.text-rose-200, .text-red-200) { color: var(--hm-tone-bad); }
+:root.hallmark.hallmark-light [data-hm="metric-card"] :is(.text-sky-200, .text-cyan-200, .text-blue-200, .text-teal-200) { color: var(--hm-tone-info); }
+
+/* Kühle Navy-Literale der Dark-Variante auf die warmen Rim-Flächen ziehen
+   (nur dunkle Variante, .dark ist dort mitgesetzt). */
+:root.hallmark.dark :is(.dark\:bg-slate-900, .dark\:bg-slate-950, .dark\:bg-slate-950\/95) { background-color: var(--hm-paper-2); }
+:root.hallmark.dark :is(.dark\:bg-slate-900\/40, .dark\:bg-slate-900\/60, .dark\:bg-slate-900\/70, .dark\:bg-slate-950\/30, .dark\:bg-slate-950\/40) {
   background-color: var(--hm-paper-3);
 }
-:root.hallmark :is(.dark\:border-slate-700, .dark\:border-slate-800, .dark\:border-slate-700\/60, .dark\:border-slate-700\/70) { border-color: var(--hm-rule); }
-:root.hallmark :is(.dark\:text-slate-50, .dark\:text-slate-100, .dark\:text-slate-200) { color: var(--hm-ink); }
-:root.hallmark :is(.dark\:text-slate-300, .dark\:text-slate-400) { color: var(--hm-muted); }
-:root.hallmark .dark\:text-slate-500 { color: var(--hm-faint); }
+:root.hallmark.dark :is(.dark\:border-slate-700, .dark\:border-slate-800, .dark\:border-slate-700\/60, .dark\:border-slate-700\/70) { border-color: var(--hm-rule); }
+:root.hallmark.dark :is(.dark\:text-slate-50, .dark\:text-slate-100, .dark\:text-slate-200) { color: var(--hm-ink); }
+:root.hallmark.dark :is(.dark\:text-slate-300, .dark\:text-slate-400) { color: var(--hm-muted); }
+:root.hallmark.dark .dark\:text-slate-500 { color: var(--hm-faint); }
 
 /* Gate 27: Reduced Motion. */
 @media (prefers-reduced-motion: reduce) {

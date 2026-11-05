@@ -62,7 +62,8 @@ const THEME_OPTIONS: ThemeOption[] = [
   { value: 'light', label: 'Hell', hint: 'Helle Oberfläche', icon: Sun },
   { value: 'dark', label: 'Dunkel', hint: 'Navy-Produkt-Look', icon: Moon },
   { value: 'studio', label: 'Studio', hint: 'Warmes Sand-Theme', icon: Palette },
-  { value: 'hallmark', label: 'Hallmark', hint: 'Vorschau der Audit-Fixes', icon: Ruler },
+  { value: 'hallmark', label: 'Hallmark Dunkel', hint: 'Audit-Fixes, dunkle Variante', icon: Ruler },
+  { value: 'hallmark-light', label: 'Hallmark Hell', hint: 'Audit-Fixes, helle Variante', icon: Ruler },
 ];
 
 const THEME_META: Record<Theme, ThemeOption> = THEME_OPTIONS.reduce(
@@ -73,7 +74,7 @@ const THEME_META: Record<Theme, ThemeOption> = THEME_OPTIONS.reduce(
   {} as Record<Theme, ThemeOption>,
 );
 
-// Theme-Auswahl (Hell/Dunkel/Studio/Hallmark) als kleines Popover. Ein-Klick statt Zyklus, damit
+// Theme-Auswahl (Hell/Dunkel/Studio/Hallmark Dunkel/Hallmark Hell) als kleines Popover. Ein-Klick statt Zyklus, damit
 // jedes Theme (inkl. Studio) direkt erreichbar und erkennbar ist.
 function ThemeMenu({
   theme,

@@ -6,10 +6,11 @@ import { useCallback, useEffect, useState } from 'react';
 // - 'studio' : warmes, ruhiges Sand/Creme-Theme nach den Studio-Mockups
 // - 'hallmark': Vorschau der Hallmark-Audit-Fixes (Dark-Familie, setzt zusätzlich
 //               'dark' auf <html>, damit alle dark:-Utilities weiter greifen)
-export type Theme = 'light' | 'dark' | 'studio' | 'hallmark';
+// - 'hallmark-light': dieselben Fixes als helle Variante (Light-Familie)
+export type Theme = 'light' | 'dark' | 'studio' | 'hallmark' | 'hallmark-light';
 
 // Reihenfolge für das zyklische Durchschalten (z. B. Kompakt-Topbar auf Mobile).
-export const THEME_ORDER: Theme[] = ['light', 'dark', 'studio', 'hallmark'];
+export const THEME_ORDER: Theme[] = ['light', 'dark', 'studio', 'hallmark', 'hallmark-light'];
 
 // Themes der Dark-Familie (für Stellen, die Inline-Farben je Hell/Dunkel wählen).
 export function isDarkTheme(theme: Theme): boolean {
@@ -19,7 +20,13 @@ export function isDarkTheme(theme: Theme): boolean {
 const THEME_STORAGE_KEY = 'asset-console-theme';
 
 function isTheme(value: unknown): value is Theme {
-  return value === 'light' || value === 'dark' || value === 'studio' || value === 'hallmark';
+  return (
+    value === 'light' ||
+    value === 'dark' ||
+    value === 'studio' ||
+    value === 'hallmark' ||
+    value === 'hallmark-light'
+  );
 }
 
 function resolveInitialTheme(): Theme {
@@ -39,13 +46,15 @@ function resolveInitialTheme(): Theme {
 // darf aktiv sein — Light ist der klassenlose Basiszustand (:root ohne Modifier).
 function applyThemeClass(theme: Theme): void {
   const root = document.documentElement;
-  root.classList.remove('dark', 'studio', 'hallmark');
+  root.classList.remove('dark', 'studio', 'hallmark', 'hallmark-light');
   if (theme === 'dark') {
     root.classList.add('dark');
   } else if (theme === 'studio') {
     root.classList.add('studio');
   } else if (theme === 'hallmark') {
     root.classList.add('dark', 'hallmark');
+  } else if (theme === 'hallmark-light') {
+    root.classList.add('hallmark', 'hallmark-light');
   }
 }
 
